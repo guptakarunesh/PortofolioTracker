@@ -94,6 +94,49 @@ async function fetchYahooQuote(symbol) {
   }
 }
 
+async function fetchYahooConvertedRates() {
+  const [goldUsd, silverUsd, usdInr] = await Promise.all([
+    fetchYahooQuote('GC=F'),
+    fetchYahooQuote('SI=F'),
+    fetchYahooQuote('USDINR=X')
+  ]);
+
+  const usdInrRate = Number(usdInr?.perOunceInr);
+  const goldUsdPerOunce = Number(goldUsd?.perOunceInr);
+  const silverUsdPerOunce = Number(silverUsd?.perOunceInr);
+
+  if (!Number.isFinite(usdInrRate) || usdInrRate <= 0) {
+    throw new Error('Invalid USDINR quote');
+  }
+  if (!Number.isFinite(goldUsdPerOunce) || goldUsdPerOunce <= 0) {
+    throw new Error('Invalid GC=F quote');
+  }
+  if (!Number.isFinite(silverUsdPerOunce) || silverUsdPerOunce <= 0) {
+    throw new Error('Invalid SI=F quote');
+  }
+
+  const goldPerOunceInr = goldUsdPerOunce * usdInrRate;
+  const silverPerOunceInr = silverUsdPerOunce * usdInrRate;
+  const asOf = new Date().toISOString();
+
+  return {
+    source: 'yahoo-converted-live',
+    lastUpdated: asOf,
+    gold: {
+      symbol: 'XAUINR',
+      perOunceInr: goldPerOunceInr,
+      perGramInr: goldPerOunceInr / TROY_OUNCE_TO_GRAM,
+      asOf
+    },
+    silver: {
+      symbol: 'XAGINR',
+      perOunceInr: silverPerOunceInr,
+      perGramInr: silverPerOunceInr / TROY_OUNCE_TO_GRAM,
+      asOf
+    }
+  };
+}
+
 function parseEbullionPerGramInr(html, metal) {
   if (!html || typeof html !== 'string') return null;
 
@@ -479,6 +522,24 @@ router.get('/live', async (req, res) => {
   }
 
   try {
+    const yahooConverted = await fetchYahooConvertedRates();
+    const payload = {
+      ...yahooConverted,
+      warning: 'Primary scrape source unavailable, using Yahoo converted live quotes.',
+      error: errors.join(' | '),
+      cacheTtlMs: LIVE_REFRESH_MS,
+      cacheAgeMs: 0
+    };
+    liveRatesCache = {
+      data: payload,
+      fetchedAt: Date.now()
+    };
+    return res.json(payload);
+  } catch (error) {
+    errors.push(`yahoo-converted: ${String(error?.message || error)}`);
+  }
+
+  try {
     const ebullion = await fetchEbullionRates();
     const payload = {
       ...ebullion,
@@ -552,6 +613,17 @@ router.get('/live', async (req, res) => {
     return res.json(payload);
   } catch (error) {
     errors.push(`google: ${String(error?.message || error)}`);
+  }
+
+  if (liveRatesCache.data) {
+    return res.json({
+      ...liveRatesCache.data,
+      warning: 'Returning last known live rates because all providers are currently unavailable.',
+      error: errors.join(' | '),
+      cacheTtlMs: LIVE_REFRESH_MS,
+      cacheAgeMs: Date.now() - liveRatesCache.fetchedAt,
+      stale: true
+    });
   }
 
   try {

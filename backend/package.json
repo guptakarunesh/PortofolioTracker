@@ -1,0 +1,19 @@
+{
+  "name": "indian-portfolio-tracker-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "dayjs": "^1.11.13",
+    "express": "^4.21.2",
+    "morgan": "^1.10.0"
+  }
+}

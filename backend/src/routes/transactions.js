@@ -1,13 +1,30 @@
 import { Router } from 'express';
 import { db } from '../lib/db.js';
+import { decryptString, encryptString } from '../lib/crypto.js';
+import requireActiveSubscription from '../middleware/requireActiveSubscription.js';
+import { requireAccountWrite } from '../middleware/accountAccess.js';
 
 const router = Router();
 
 router.get('/', (req, res) => {
   const rows = db
     .prepare('SELECT * FROM transactions WHERE user_id = ? ORDER BY tx_date DESC, id DESC')
-    .all(req.userId);
+    .all(req.accountUserId)
+    .map((row) => ({
+      ...row,
+      asset_name: decryptString(row.asset_name),
+      account_ref: decryptString(row.account_ref),
+      remarks: decryptString(row.remarks)
+    }));
   res.json(rows);
+});
+
+router.use((req, res, next) => {
+  if (req.method === 'GET') return next();
+  return requireActiveSubscription(req, res, (err) => {
+    if (err) return next(err);
+    return requireAccountWrite(req, res, next);
+  });
 });
 
 router.post('/', (req, res) => {
@@ -36,26 +53,32 @@ router.post('/', (req, res) => {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
     .run(
-      req.userId,
+      req.accountUserId,
       tx_date,
       category,
       sub_category,
       tx_type,
-      asset_name,
+      encryptString(asset_name),
       Number(amount),
       units == null || units === '' ? null : Number(units),
       price == null || price === '' ? null : Number(price),
-      account_ref,
-      remarks
+      encryptString(account_ref),
+      encryptString(remarks)
     );
 
-  res.status(201).json(
-    db.prepare('SELECT * FROM transactions WHERE id = ? AND user_id = ?').get(result.lastInsertRowid, req.userId)
-  );
+  const row = db
+    .prepare('SELECT * FROM transactions WHERE id = ? AND user_id = ?')
+    .get(result.lastInsertRowid, req.accountUserId);
+  res.status(201).json({
+    ...row,
+    asset_name: decryptString(row.asset_name),
+    account_ref: decryptString(row.account_ref),
+    remarks: decryptString(row.remarks)
+  });
 });
 
 router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.userId);
+  db.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.accountUserId);
   res.status(204).send();
 });
 

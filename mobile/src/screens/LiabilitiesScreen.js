@@ -1,17 +1,39 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { api } from '../api/client';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
-import { formatINR } from '../utils/format';
+import { formatAmountFromInr } from '../utils/format';
+import { useTheme } from '../theme';
 
-const blankForm = { loan_type: 'Home Loan', lender: '', outstanding_amount: '' };
+const LOAN_TYPE_OPTIONS = [
+  'Home Loan',
+  'Car Loan',
+  'Personal Loan',
+  'Education Loan',
+  'Credit Card',
+  'Business Loan',
+  'Gold Loan',
+  'Other'
+];
 
-export default function LiabilitiesScreen() {
+const blankForm = { loan_type: LOAN_TYPE_OPTIONS[0], lender: '', outstanding_amount: '' };
+
+const displayAmount = (value, hideSensitive, currency, fxRates) =>
+  hideSensitive ? '••••••' : formatAmountFromInr(value, currency, fxRates);
+
+export default function LiabilitiesScreen({
+  hideSensitive = false,
+  preferredCurrency = 'INR',
+  fxRates = { INR: 1 },
+  readOnly = false
+}) {
+  const { theme } = useTheme();
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(blankForm);
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState('');
+  const [showLoanTypeOptions, setShowLoanTypeOptions] = useState(false);
 
   const load = useCallback(async () => {
     const rows = await api.getLiabilities();
@@ -25,19 +47,29 @@ export default function LiabilitiesScreen() {
   const resetForm = () => {
     setForm(blankForm);
     setEditingId(null);
+    setShowLoanTypeOptions(false);
   };
 
   const startEdit = (item) => {
+    if (readOnly) {
+      setMessage('Subscription expired. Renew to edit liabilities.');
+      return;
+    }
     setEditingId(item.id);
     setForm({
       loan_type: item.loan_type || 'Home Loan',
       lender: item.lender || '',
       outstanding_amount: String(item.outstanding_amount ?? '')
     });
+    setShowLoanTypeOptions(false);
     setMessage(`Editing ${item.loan_type}`);
   };
 
   const submit = async () => {
+    if (readOnly) {
+      setMessage('Subscription expired. Renew to edit liabilities.');
+      return;
+    }
     if (!form.loan_type.trim() || !form.lender.trim()) {
       setMessage('Loan type and lender are required.');
       return;
@@ -62,6 +94,10 @@ export default function LiabilitiesScreen() {
   };
 
   const remove = async (id) => {
+    if (readOnly) {
+      setMessage('Subscription expired. Renew to edit liabilities.');
+      return;
+    }
     await api.deleteLiability(id);
     if (editingId === id) resetForm();
     setMessage('Liability deleted.');
@@ -71,63 +107,180 @@ export default function LiabilitiesScreen() {
   return (
     <View>
       <SectionCard title={editingId ? 'Edit Liability' : 'Add Liability'}>
-        <Text style={styles.label}>Loan Type</Text>
-        <TextInput style={styles.input} value={form.loan_type} onChangeText={(v) => setForm((f) => ({ ...f, loan_type: v }))} />
+        {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>Subscription expired. View-only mode.</Text> : null}
+        <Text style={[styles.label, { color: theme.muted }]}>Loan Type</Text>
+        <Pressable
+          style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
+          disabled={readOnly}
+          onPress={() => setShowLoanTypeOptions((v) => !v)}
+        >
+          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{form.loan_type || 'Select loan type'}</Text>
+          <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showLoanTypeOptions ? '▲' : '▼'}</Text>
+        </Pressable>
+        {showLoanTypeOptions ? (
+          <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
+            {LOAN_TYPE_OPTIONS.map((type) => (
+              <Pressable
+                key={type}
+                style={[
+                  styles.dropdownItem,
+                  { borderBottomColor: theme.border },
+                  form.loan_type === type && { backgroundColor: theme.accentSoft }
+                ]}
+                onPress={() => {
+                  setForm((f) => ({ ...f, loan_type: type }));
+                  setShowLoanTypeOptions(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.dropdownItemText,
+                    { color: theme.text },
+                    form.loan_type === type && { color: theme.accent, fontWeight: '700' }
+                  ]}
+                >
+                  {type}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
 
-        <Text style={styles.label}>Lender</Text>
-        <TextInput style={styles.input} value={form.lender} onChangeText={(v) => setForm((f) => ({ ...f, lender: v }))} />
+        <Text style={[styles.label, { color: theme.muted }]}>Lender</Text>
+        <TextInput
+          style={[
+            styles.input,
+            { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText },
+            readOnly && { backgroundColor: theme.background, color: theme.muted }
+          ]}
+          value={form.lender}
+          onChangeText={(v) => setForm((f) => ({ ...f, lender: v }))}
+          editable={!readOnly}
+        />
 
-        <Text style={styles.label}>Outstanding Amount (INR)</Text>
-        <TextInput style={styles.input} keyboardType="numeric" value={form.outstanding_amount} onChangeText={(v) => setForm((f) => ({ ...f, outstanding_amount: v }))} />
+        <Text style={[styles.label, { color: theme.muted }]}>Outstanding Amount</Text>
+        <TextInput
+          style={[
+            styles.input,
+            { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText },
+            readOnly && { backgroundColor: theme.background, color: theme.muted }
+          ]}
+          keyboardType="numeric"
+          value={form.outstanding_amount}
+          onChangeText={(v) => setForm((f) => ({ ...f, outstanding_amount: v }))}
+          editable={!readOnly}
+        />
 
-        <PillButton label={editingId ? 'Update Liability' : 'Save Liability'} onPress={() => submit().catch((e) => setMessage(e.message))} />
+        <PillButton
+          label={editingId ? 'Update Liability' : 'Save Liability'}
+          onPress={() => submit().catch((e) => setMessage(e.message))}
+          disabled={readOnly}
+        />
         {editingId ? (
           <View style={{ marginTop: 8 }}>
-            <PillButton label="Cancel Edit" kind="ghost" onPress={resetForm} />
+            <PillButton label="Cancel Edit" kind="ghost" onPress={resetForm} disabled={readOnly} />
           </View>
         ) : null}
       </SectionCard>
 
       <SectionCard title="Current Liabilities">
         {items.map((item) => (
-          <View key={item.id} style={styles.row}>
+          <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{item.loan_type}</Text>
-              <Text style={styles.sub}>{item.lender}</Text>
+              <Text style={[styles.name, { color: theme.text }]}>{item.loan_type}</Text>
+              <Text style={[styles.sub, { color: theme.muted }]}>{item.lender}</Text>
             </View>
             <View style={styles.rightCol}>
-              <Text style={styles.amount}>{formatINR(item.outstanding_amount)}</Text>
+              <Text style={[styles.amount, { color: theme.danger }]}>
+                {displayAmount(item.outstanding_amount, hideSensitive, preferredCurrency, fxRates)}
+              </Text>
               <View style={styles.actionsRow}>
-                <PillButton label="Edit" kind="ghost" onPress={() => startEdit(item)} />
-                <PillButton label="Delete" kind="ghost" onPress={() => remove(item.id).catch((e) => setMessage(e.message))} />
+                <PillButton label="Edit" kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
+                <PillButton
+                  label="Delete"
+                  kind="ghost"
+                  onPress={() => remove(item.id).catch((e) => setMessage(e.message))}
+                  disabled={readOnly}
+                />
               </View>
             </View>
           </View>
         ))}
       </SectionCard>
 
-      {!!message && <Text style={styles.message}>{message}</Text>}
+      {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  label: { color: '#183750', fontWeight: '600', marginBottom: 4 },
+  label: { color: '#35526e', fontWeight: '700', marginBottom: 5 },
+  dropdownTrigger: {
+    borderWidth: 1,
+    borderColor: '#c6d8eb',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  dropdownText: {
+    color: '#183750'
+  },
+  dropdownArrow: {
+    color: '#607d99',
+    fontSize: 12
+  },
+  dropdownMenu: {
+    borderWidth: 1,
+    borderColor: '#c6d8eb',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 12,
+    overflow: 'hidden'
+  },
+  dropdownItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eef2f8'
+  },
+  dropdownItemActive: {
+    backgroundColor: '#e9f2ff'
+  },
+  dropdownItemText: {
+    color: '#183750'
+  },
+  dropdownItemTextActive: {
+    color: '#0f5fb8',
+    fontWeight: '700'
+  },
   input: {
     borderWidth: 1,
-    borderColor: '#c9d8ea',
+    borderColor: '#c6d8eb',
     backgroundColor: '#fff',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 10
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12
+  },
+  inputDisabled: {
+    backgroundColor: '#f2f4f7',
+    color: '#8aa0b6'
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eef2f8',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#e4ebf5',
+    borderRadius: 12,
+    backgroundColor: '#fbfdff',
+    marginBottom: 8,
     gap: 10
   },
   rightCol: {
@@ -140,6 +293,7 @@ const styles = StyleSheet.create({
   },
   name: { color: '#0f3557', fontWeight: '700' },
   sub: { color: '#607d99' },
-  amount: { color: '#b3261e', fontWeight: '700' },
-  message: { color: '#0f3557', marginBottom: 20 }
+  amount: { color: '#b3261e', fontWeight: '800' },
+  readOnlyText: { color: '#9a6b00', fontWeight: '700', marginBottom: 8 },
+  message: { color: '#0f3557', marginBottom: 20, fontWeight: '600' }
 });

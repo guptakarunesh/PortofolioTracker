@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../theme';
 
 export default function SectionCard({ title, children }) {
+  const { theme } = useTheme();
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>{title}</Text>
+    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, shadowColor: theme.text }]}>
+      <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
       {children}
     </View>
   );
@@ -12,17 +14,19 @@ export default function SectionCard({ title, children }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#d5deea'
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3
   },
   title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f3557',
-    marginBottom: 10
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 12,
+    letterSpacing: 0.2
   }
 });

@@ -1,9 +1,32 @@
-export const formatINR = (value) =>
-  new Intl.NumberFormat('en-IN', {
+export const formatINR = (value, currency = 'INR') =>
+  new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'INR',
+    currency,
+    currencyDisplay: 'narrowSymbol',
     maximumFractionDigits: 0
   }).format(Number(value || 0));
+
+export const convertFromInr = (value, currency = 'INR', fxRates = {}) => {
+  const amount = Number(value || 0);
+  if (currency === 'INR') return amount;
+  const rate = Number(fxRates?.[currency]);
+  if (!Number.isFinite(rate) || rate <= 0) return amount;
+  return amount * rate;
+};
+
+export const formatAmountFromInr = (value, currency = 'INR', fxRates = {}) =>
+  formatINR(convertFromInr(value, currency, fxRates), currency);
+
+export const currencySymbol = (currency = 'INR') => {
+  const formatted = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    currencyDisplay: 'narrowSymbol',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(0);
+  return formatted.replace(/[0-9,.\s]/g, '') || currency;
+};
 
 export const formatPct = (value) => `${Number(value || 0).toFixed(2)}%`;
 

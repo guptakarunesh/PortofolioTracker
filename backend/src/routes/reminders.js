@@ -1,16 +1,40 @@
 import { Router } from 'express';
 import { db } from '../lib/db.js';
+import { ensureSubscriptionForUser, isPremiumActive } from '../lib/subscription.js';
+import { decryptString, encryptString } from '../lib/crypto.js';
+import { requireAccountWrite } from '../middleware/accountAccess.js';
 
 const router = Router();
 
 router.get('/', (req, res) => {
+  const subscription = ensureSubscriptionForUser(req.accountUserId);
+  if (!isPremiumActive(subscription)) {
+    return res
+      .status(403)
+      .json({ error: 'premium_required', message: 'Premium subscription required', feature: 'reminders' });
+  }
   const rows = db
     .prepare('SELECT * FROM reminders WHERE user_id = ? ORDER BY due_date ASC, id ASC')
-    .all(req.userId);
+    .all(req.accountUserId)
+    .map((row) => ({
+      ...row,
+      description: decryptString(row.description)
+    }));
   res.json(rows);
 });
 
+router.use((req, res, next) => {
+  if (req.method === 'GET') return next();
+  return requireAccountWrite(req, res, next);
+});
+
 router.post('/', (req, res) => {
+  const subscription = ensureSubscriptionForUser(req.accountUserId);
+  if (!isPremiumActive(subscription)) {
+    return res
+      .status(403)
+      .json({ error: 'premium_required', message: 'Premium subscription required', feature: 'reminders' });
+  }
   const {
     due_date,
     category,
@@ -30,33 +54,48 @@ router.post('/', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `)
     .run(
-      req.userId,
+      req.accountUserId,
       due_date,
       category,
-      description,
+      encryptString(description),
       Number(amount || 0),
       status,
       Number(alert_days_before || 7)
     );
 
-  res.status(201).json(
-    db.prepare('SELECT * FROM reminders WHERE id = ? AND user_id = ?').get(result.lastInsertRowid, req.userId)
-  );
+  const row = db
+    .prepare('SELECT * FROM reminders WHERE id = ? AND user_id = ?')
+    .get(result.lastInsertRowid, req.accountUserId);
+  res.status(201).json({
+    ...row,
+    description: decryptString(row.description)
+  });
 });
 
 router.patch('/:id/status', (req, res) => {
+  const subscription = ensureSubscriptionForUser(req.accountUserId);
+  if (!isPremiumActive(subscription)) {
+    return res
+      .status(403)
+      .json({ error: 'premium_required', message: 'Premium subscription required', feature: 'reminders' });
+  }
   const id = Number(req.params.id);
   const { status } = req.body;
   if (!status) return res.status(400).json({ error: 'status is required' });
 
-  db.prepare('UPDATE reminders SET status = ? WHERE id = ? AND user_id = ?').run(status, id, req.userId);
-  const row = db.prepare('SELECT * FROM reminders WHERE id = ? AND user_id = ?').get(id, req.userId);
+  db.prepare('UPDATE reminders SET status = ? WHERE id = ? AND user_id = ?').run(status, id, req.accountUserId);
+  const row = db
+    .prepare('SELECT * FROM reminders WHERE id = ? AND user_id = ?')
+    .get(id, req.accountUserId);
   if (!row) return res.status(404).json({ error: 'reminder not found' });
-  res.json(row);
+  res.json({
+    ...row,
+    description: decryptString(row.description)
+  });
 });
 
 router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.userId);
+  db.prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.accountUserId);
   res.status(204).send();
 });
 

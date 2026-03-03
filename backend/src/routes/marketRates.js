@@ -627,7 +627,7 @@ router.get('/live', async (req, res) => {
   }
 
   try {
-    const fallback = fallbackSettings(req.userId);
+    const fallback = fallbackSettings(req.accountUserId);
     const payload = {
       ...fallback,
       lastUpdated: new Date().toISOString(),
@@ -687,8 +687,8 @@ router.post('/update', async (req, res) => {
   `);
 
   const tx = db.transaction(() => {
-    stmt.run(req.userId, 'gold_24k_per_gram', String(goldValue), nowIso());
-    stmt.run(req.userId, 'silver_per_gram', String(silverValue), nowIso());
+    stmt.run(req.accountUserId, 'gold_24k_per_gram', String(goldValue), nowIso());
+    stmt.run(req.accountUserId, 'silver_per_gram', String(silverValue), nowIso());
   });
 
   tx();
@@ -710,7 +710,7 @@ router.post('/update', async (req, res) => {
 router.get('/current', (req, res) => {
   const rows = db
     .prepare('SELECT key, value FROM user_settings WHERE user_id = ? AND key IN (?, ?)')
-    .all(req.userId, 'gold_24k_per_gram', 'silver_per_gram');
+    .all(req.accountUserId, 'gold_24k_per_gram', 'silver_per_gram');
 
   const map = rows.reduce((acc, row) => {
     acc[row.key] = Number(row.value);

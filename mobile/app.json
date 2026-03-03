@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Indian Portfolio Tracker",
+    "name": "Networth Manager",
     "slug": "indian-portfolio-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,6 +11,14 @@
     },
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Networth Manager to use Face ID for secure login."
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true

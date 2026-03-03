@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "test": "node --test"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -15,5 +16,9 @@
     "dayjs": "^1.11.13",
     "express": "^4.21.2",
     "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "supertest": "^6.3.4",
+    "node-mocks-http": "^1.11.0"
   }
 }

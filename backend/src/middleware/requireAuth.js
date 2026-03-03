@@ -1,5 +1,6 @@
 import { db } from '../lib/db.js';
 import { hashToken } from '../lib/auth.js';
+import { decryptString } from '../lib/crypto.js';
 
 export default function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization || '';
@@ -32,9 +33,9 @@ export default function requireAuth(req, res, next) {
   req.userId = session.user_id;
   req.user = {
     id: session.user_id,
-    full_name: session.full_name,
-    mobile: session.mobile,
-    email: session.email || ''
+    full_name: decryptString(session.full_name),
+    mobile: decryptString(session.mobile),
+    email: decryptString(session.email || '')
   };
   req.sessionTokenHash = tokenHash;
 

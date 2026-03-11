@@ -25,6 +25,7 @@ export default function LaunchScreen({ dark, onDone = () => {} }) {
         player={player}
         style={styles.video}
         contentFit="cover"
+        allowsPictureInPicture={false}
         nativeControls={false}
       />
     </View>

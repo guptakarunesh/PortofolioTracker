@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Linking } from 'react-native';
+import { View, Text, StyleSheet, Linking } from 'react-native';
 import SectionCard from '../components/SectionCard';
 import StatTile from '../components/StatTile';
 import PillButton from '../components/PillButton';
+import DateField from '../components/DateField';
 import { api, buildApiUrl, getAuthToken } from '../api/client';
 import { formatDate, formatAmountFromInr, formatPct } from '../utils/format';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 
 const ASSET_TARGET_CATEGORIES = [
   'Banking & Deposits',
@@ -28,38 +30,31 @@ const displayAmount = (value, hideSensitive, currency, fxRates) =>
 
 export default function DashboardScreen({ hideSensitive = false, preferredCurrency = 'INR', fxRates = { INR: 1 } }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [data, setData] = useState(null);
-  const [allocationInsight, setAllocationInsight] = useState(null);
   const [settings, setSettings] = useState({});
   const [error, setError] = useState('');
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
-  const [calendarVisible, setCalendarVisible] = useState(false);
 
   const loadSummary = useCallback(async () => {
     const response = await api.getSummary();
     setData(response);
   }, []);
 
-  const loadAllocationInsight = useCallback(async () => {
-    const response = await api.getAllocationInsight();
-    setAllocationInsight(response);
-  }, []);
-
   const loadAll = useCallback(async () => {
     setError('');
     await Promise.all([
       loadSummary(),
-      loadAllocationInsight(),
       api.getSettings().then((response) => setSettings(response || {}))
     ]).catch((e) => setError(e.message));
-  }, [loadAllocationInsight, loadSummary]);
+  }, [loadSummary]);
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
 
   if (!data) {
-    return <Text style={[styles.muted, { color: theme.muted }]}>{error || 'Loading dashboard...'}</Text>;
+    return <Text style={[styles.muted, { color: theme.muted }]}>{error || t('Loading dashboard...')}</Text>;
   }
 
   const sortedAllocation = [...(data.allocation || [])].sort(
@@ -85,29 +80,28 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
 
   return (
     <View>
-      <SectionCard title="Net Worth Summary">
+      <SectionCard title={t('Net Worth Summary')}>
         <View style={styles.row}>
-          <StatTile label="Total Assets" value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} />
-          <StatTile label="Liabilities" value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} />
+          <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} />
+          <StatTile label={t('Liabilities')} value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} />
         </View>
         <View style={{ marginTop: 10 }}>
           <StatTile
-            label="Net Worth"
+            label={t('Net Worth')}
             value={displayAmount(data.netWorth, hideSensitive, currency, fxRates)}
             positive={data.netWorth >= 0}
           />
         </View>
-        <Text style={[styles.muted, { color: theme.muted }]}>Last updated: {formatDate(data.lastUpdated)}</Text>
+        <Text style={[styles.muted, { color: theme.muted }]}>{t('Last updated: {date}', { date: formatDate(data.lastUpdated) })}</Text>
       </SectionCard>
 
-      <SectionCard title="Asset Allocation">
-        <Text style={[styles.subtleInfo, { color: theme.muted }]}>Chart view (with value and %)</Text>
+      <SectionCard title={t('Asset Allocation')}>
         <View style={styles.chartWrap}>
           {sortedAllocation.map((item, idx) => (
             <View key={item.category} style={[styles.chartRow, { borderColor: theme.border, backgroundColor: theme.card }]}>
               <View style={styles.chartLegendRow}>
                 <View style={[styles.legendDot, { backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }]} />
-                <Text style={[styles.allocLabel, { color: theme.text }]}>{item.category}</Text>
+                <Text style={[styles.allocLabel, { color: theme.text }]}>{t(item.category)}</Text>
               </View>
               <View style={styles.chartValueRow}>
                 <Text style={[styles.allocValue, { color: theme.text }]}>
@@ -128,48 +122,12 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
         </View>
       </SectionCard>
 
-      <SectionCard title="AI Allocation Insight (India)">
-        {allocationInsight ? (
-          <View style={styles.aiWrap}>
-            <View style={styles.aiHead}>
-              <Text style={[styles.aiProfile, { color: theme.text }]}>Profile: {allocationInsight.profile}</Text>
-              <View style={[styles.aiScoreChip, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
-                <Text style={[styles.aiScoreText, { color: theme.accent }]}>
-                  Score {Number(allocationInsight.score || 0)}/100
-                </Text>
-              </View>
-            </View>
-            <Text style={[styles.subtleInfo, { color: theme.muted }]}>{allocationInsight.summary}</Text>
-
-            {(allocationInsight.suggestions || []).map((line) => (
-              <Text key={line} style={[styles.aiLine, { color: theme.muted }]}>
-                - {line}
-              </Text>
-            ))}
-
-            {(allocationInsight.gaps || [])
-              .filter((gap) => gap.status !== 'within')
-              .sort((a, b) => Number(b.gapPct || 0) - Number(a.gapPct || 0))
-              .slice(0, 4)
-              .map((gap) => (
-                <Text key={gap.category} style={[styles.aiGap, { color: theme.muted }]}>
-                  {gap.category}: {formatPct(gap.currentPct)} vs {gap.targetMin}-{gap.targetMax}%
-                </Text>
-              ))}
-
-            <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>{allocationInsight.disclaimer}</Text>
-          </View>
-        ) : (
-          <Text style={[styles.subtleInfo, { color: theme.muted }]}>Loading AI insight...</Text>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Yearly Target Progress">
+      <SectionCard title={t('Yearly Target Progress')}>
         {targetProgressRows.length ? (
           targetProgressRows.map((row) => (
             <View key={row.category} style={[styles.targetRow, { borderBottomColor: theme.border }]}>
               <View style={styles.targetHeadRow}>
-                <Text style={[styles.targetLabel, { color: theme.text }]}>{row.category}</Text>
+                <Text style={[styles.targetLabel, { color: theme.text }]}>{t(row.category)}</Text>
                 <Text style={[styles.targetPct, { color: theme.accent }]}>{formatPct(row.pct)}</Text>
               </View>
               <Text style={[styles.targetSub, { color: theme.muted }]}>
@@ -181,21 +139,24 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
             </View>
           ))
         ) : (
-          <Text style={[styles.subtleInfo, { color: theme.muted }]}>No yearly targets set yet. Add them in Settings.</Text>
+          <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('No yearly targets set yet. Add them in Settings.')}</Text>
         )}
       </SectionCard>
 
-      <SectionCard title="Snapshot PDF Report">
-        <Text style={[styles.subtleInfo, { color: theme.muted }]}>Download asset and liability snapshot for a selected date.</Text>
-        <Pressable style={[styles.reportInput, { borderColor: theme.border, backgroundColor: theme.inputBg }]} onPress={() => setCalendarVisible(true)}>
-          <Text style={[styles.dateValue, { color: theme.text }]}>{reportDate}</Text>
-        </Pressable>
+      <SectionCard title={t('Snapshot PDF Report')}>
+        <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('Download asset and liability snapshot for a selected date.')}</Text>
+        <DateField
+          value={reportDate}
+          onChange={setReportDate}
+          theme={theme}
+          placeholder="YYYY-MM-DD"
+        />
         <PillButton
-          label="Download Snapshot PDF"
+          label={t('Download Snapshot PDF')}
           onPress={() => {
             const token = getAuthToken();
             if (!token) {
-              setError('Session expired. Please login again.');
+              setError(t('Session expired. Please login again.'));
               return;
             }
             const url = buildApiUrl(
@@ -205,41 +166,6 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
           }}
         />
       </SectionCard>
-
-      <Modal visible={calendarVisible} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Pick Snapshot Day</Text>
-            <View style={styles.dayGrid}>
-              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
-                const [y, m] = reportDate.split('-');
-                const d = String(day).padStart(2, '0');
-                const date = `${y}-${m}-${d}`;
-                const selected = date === reportDate;
-                return (
-                  <Pressable
-                    key={date}
-                    style={[
-                      styles.dayCell,
-                      { borderColor: theme.border },
-                      selected && { backgroundColor: theme.accent, borderColor: theme.accent }
-                    ]}
-                    onPress={() => {
-                      setReportDate(date);
-                      setCalendarVisible(false);
-                    }}
-                  >
-                    <Text style={[styles.dayText, { color: theme.text }, selected && styles.dayTextActive]}>{day}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Pressable style={styles.closeBtn} onPress={() => setCalendarVisible(false)}>
-              <Text style={[styles.closeBtnText, { color: theme.accent }]}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
 
       {error ? <Text style={[styles.muted, { color: theme.danger }]}>{error}</Text> : null}
     </View>
@@ -275,46 +201,6 @@ const styles = StyleSheet.create({
   },
   chartWrap: {
     gap: 12
-  },
-  aiWrap: {
-    gap: 8
-  },
-  aiHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10
-  },
-  aiProfile: {
-    color: '#183750',
-    fontWeight: '800',
-    textTransform: 'capitalize'
-  },
-  aiScoreChip: {
-    backgroundColor: '#eaf8f3',
-    borderColor: '#9bdac2',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4
-  },
-  aiScoreText: {
-    color: '#0f766e',
-    fontWeight: '800'
-  },
-  aiLine: {
-    color: '#35526e',
-    lineHeight: 19
-  },
-  aiGap: {
-    color: '#35526e',
-    fontSize: 12,
-    fontWeight: '600'
-  },
-  aiDisclaimer: {
-    marginTop: 2,
-    color: '#607d99',
-    fontSize: 12
   },
   chartRow: {
     gap: 8,
@@ -360,7 +246,8 @@ const styles = StyleSheet.create({
   },
   targetSub: {
     marginTop: 4,
-    color: '#607d99'
+    color: '#607d99',
+    fontWeight: '600'
   },
   progressTrack: {
     marginTop: 6,
@@ -376,70 +263,8 @@ const styles = StyleSheet.create({
   },
   subtleInfo: {
     color: '#607d99',
-    lineHeight: 18
-  },
-  reportInput: {
-    borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    marginTop: 6
-  },
-  dateValue: {
-    color: '#35526e',
-    fontWeight: '700'
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    paddingHorizontal: 20
-  },
-  modalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16
-  },
-  modalTitle: {
-    color: '#0f2f4d',
-    fontWeight: '800',
-    marginBottom: 8
-  },
-  dayGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6
-  },
-  dayCell: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#d1d9e6',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  dayCellActive: {
-    backgroundColor: '#0f766e',
-    borderColor: '#0f766e'
-  },
-  dayText: {
-    color: '#35526e'
-  },
-  dayTextActive: {
-    color: '#fff',
-    fontWeight: '700'
-  },
-  closeBtn: {
-    marginTop: 10,
-    alignSelf: 'flex-end'
-  },
-  closeBtnText: {
-    color: '#0f766e',
-    fontWeight: '700'
+    lineHeight: 18,
+    fontWeight: '600'
   },
   textDark: {
     color: '#e7edf5'

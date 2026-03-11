@@ -1,4 +1,4 @@
-const DEFAULT_PROVIDER = 'razorpay';
+const DEFAULT_PROVIDER = 'cashfree';
 
 export function getPaymentProvider(requestedProvider) {
   return requestedProvider || process.env.PAYMENT_PROVIDER || DEFAULT_PROVIDER;

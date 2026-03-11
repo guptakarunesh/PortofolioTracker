@@ -17,6 +17,30 @@ Full-stack mobile app code for the Indian investment tracker project.
 
 Backend runs on `http://localhost:4000`.
 
+### Support Console (Admin)
+
+Built-in support admins are seeded automatically:
+- `Admin1 / Pass1`
+- `Admin2 / Pass2`
+- `Admin3 / Pass3`
+
+Use `Forgot Password` in `/support` to generate reset code and set a new password.
+
+Open support UI:
+- `GET /support`
+
+Support API base:
+- `POST /api/support/auth/login`
+- `POST /api/support/auth/forgot-password`
+- `POST /api/support/auth/reset-password`
+- `POST /api/support/auth/logout` (requires support bearer token)
+- `GET /api/support/health` (requires support bearer token)
+- `GET /api/support/users?query=...`
+- `GET /api/support/users/:id/overview`
+- `GET /api/support/users/:id/history`
+- `GET /api/support/users/:id/agent-context`
+- `POST /api/support/users/:id/actions`
+
 ### Backend Tests
 
 - Run all backend tests: `npm test` (in `/backend`)
@@ -24,8 +48,18 @@ Backend runs on `http://localhost:4000`.
 
 ### OTP Login Configuration (India)
 
-Configure OTP delivery via environment variables (default provider is `msg91_v5`):
-- `OTP_PROVIDER=msg91_v5` (or `msg91_legacy`, or `mock` for local testing)
+Configure OTP delivery via environment variables:
+- `OTP_PROVIDER=firebase` (recommended) or `msg91_v5`, `msg91_legacy`, `gupshup_template`, `mock`
+- For Firebase phone auth:
+  - `FIREBASE_WEB_API_KEY=...`
+  - Optional: `FIREBASE_TENANT_ID=...`
+  - Optional: `FIREBASE_AUTH_BASE_URL=https://identitytoolkit.googleapis.com/v1`
+  - Send `firebase_recaptcha_token` in OTP request payload (`/api/auth/otp/send`, `/api/auth/mpin/reset/request`, `/api/auth/security-pin/reset/request`)
+  - Mobile client reCAPTCHA config (Expo) uses:
+    - `EXPO_PUBLIC_FIREBASE_API_KEY`
+    - `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
+    - `EXPO_PUBLIC_FIREBASE_APP_ID`
+    - Optional: `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN` (defaults to `<projectId>.firebaseapp.com`)
 - `MSG91_AUTH_KEY=...`
 - `MSG91_TEMPLATE_ID=...`
 - Optional: `MSG91_SENDER_ID=...`
@@ -39,6 +73,24 @@ Configure OTP delivery via environment variables (default provider is `msg91_v5`
 - Optional: `OTP_MAX_ATTEMPTS=5`
 - Optional: `OTP_LENGTH=6`
 - Optional: `OTP_COUNTRY_CODE=91`
+
+### Subscription Payments (Cashfree)
+
+The app now supports Cashfree PG for subscription checkout.
+
+Backend env (`backend/.env`):
+- `PAYMENT_PROVIDER=cashfree`
+- `CASHFREE_ENV=sandbox` (or `production`)
+- `CASHFREE_APP_ID=...`
+- `CASHFREE_SECRET_KEY=...`
+- Optional: `CASHFREE_API_VERSION=2023-08-01`
+- Optional: `CASHFREE_RETURN_URL=https://.../api/subscription/cashfree/return?order_id={order_id}`
+- Optional: `CASHFREE_NOTIFY_URL=https://...` (webhook URL)
+
+Flow:
+- `POST /api/subscription/cashfree/order` creates an order and returns checkout URL.
+- App opens Cashfree checkout in browser.
+- App calls `POST /api/subscription/cashfree/verify` to confirm payment and activate plan.
 
 ## Mobile Setup
 
@@ -90,6 +142,23 @@ Default API behavior:
 - `GET/POST/DELETE /api/reminders`
 - `PATCH /api/reminders/:id/status`
 - `GET/PUT /api/settings`
+- `GET /api/ai/insights`
+
+Note: `POST /api/auth/register` now requires a `country` field (used to set the preferred currency).
+
+### AI Insights (Optional)
+
+Set `OPENAI_API_KEY` on the backend (env var or `backend/.env`) to enable `/api/ai/insights`. The app will:
+- Summarize your current portfolio allocation (educational only, not investment advice)
+- Use OpenAI web search to surface recent macro/geopolitical context (may be incomplete/outdated)
+
+Optional: set `OPENAI_MODEL` (defaults to `gpt-5`).
+
+Example `backend/.env`:
+```
+OPENAI_API_KEY=sk-...redacted...
+OPENAI_MODEL=gpt-5
+```
 
 ## Demo Account (after seeding)
 

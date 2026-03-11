@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 
 const blankForm = {
   asset_name: '',
@@ -14,6 +15,7 @@ const blankForm = {
 
 export default function TrackersScreen({ hideSensitive = false }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(blankForm);
   const [editingId, setEditingId] = useState(null);
@@ -41,12 +43,12 @@ export default function TrackersScreen({ hideSensitive = false }) {
       login_id: item.login_id || '',
       notes: item.notes || ''
     });
-    setMessage(`Editing tracker for ${item.asset_name}`);
+    setMessage(t('Editing tracker for {name}', { name: item.asset_name }));
   };
 
   const submit = async () => {
     if (!form.asset_name.trim() || !form.website_url.trim() || !form.login_id.trim()) {
-      setMessage('Asset name, website URL and login ID are required.');
+      setMessage(t('Asset name, website URL and login ID are required.'));
       return;
     }
 
@@ -59,10 +61,10 @@ export default function TrackersScreen({ hideSensitive = false }) {
 
     if (editingId) {
       await api.updateTracker(editingId, payload);
-      setMessage('Tracker updated.');
+      setMessage(t('Tracker updated.'));
     } else {
       await api.createTracker(payload);
-      setMessage('Tracker added.');
+      setMessage(t('Tracker added.'));
     }
 
     resetForm();
@@ -72,33 +74,33 @@ export default function TrackersScreen({ hideSensitive = false }) {
   const remove = async (id) => {
     await api.deleteTracker(id);
     if (editingId === id) resetForm();
-    setMessage('Tracker deleted.');
+    setMessage(t('Tracker deleted.'));
     await load();
   };
 
   return (
     <View>
-      <SectionCard title={editingId ? 'Edit Tracker Credential' : 'Add Tracker Credential'}>
-        <Text style={[styles.label, { color: theme.muted }]}>Asset Name</Text>
+      <SectionCard title={editingId ? t('Edit Tracker Credential') : t('Add Tracker Credential')}>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Asset Name')}</Text>
         <TextInput
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           value={form.asset_name}
           onChangeText={(v) => setForm((f) => ({ ...f, asset_name: v }))}
-          placeholder="HDFC Flexi Cap"
+          placeholder={t('HDFC Flexi Cap')}
           placeholderTextColor={theme.muted}
         />
 
-        <Text style={[styles.label, { color: theme.muted }]}>Website URL</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Website URL')}</Text>
         <TextInput
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           value={form.website_url}
           onChangeText={(v) => setForm((f) => ({ ...f, website_url: v }))}
-          placeholder="https://example.com/login"
+          placeholder={t('https://example.com/login')}
           autoCapitalize="none"
           placeholderTextColor={theme.muted}
         />
 
-        <Text style={[styles.label, { color: theme.muted }]}>User ID / Login</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('User ID / Login')}</Text>
         <TextInput
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           value={form.login_id}
@@ -107,38 +109,38 @@ export default function TrackersScreen({ hideSensitive = false }) {
           placeholderTextColor={theme.muted}
         />
 
-        <Text style={[styles.label, { color: theme.muted }]}>Notes (Optional)</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Notes (Optional)')}</Text>
         <TextInput
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           value={form.notes}
           onChangeText={(v) => setForm((f) => ({ ...f, notes: v }))}
-          placeholder="Broker / app details"
+          placeholder={t('Broker / app details')}
           placeholderTextColor={theme.muted}
         />
 
-        <PillButton label={editingId ? 'Update Tracker' : 'Save Tracker'} onPress={() => submit().catch((e) => setMessage(e.message))} />
+        <PillButton label={editingId ? t('Update Tracker') : t('Save Tracker')} onPress={() => submit().catch((e) => setMessage(e.message))} />
         {editingId ? (
           <View style={{ marginTop: 8 }}>
-            <PillButton label="Cancel Edit" kind="ghost" onPress={resetForm} />
+            <PillButton label={t('Cancel Edit')} kind="ghost" onPress={resetForm} />
           </View>
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Tracker Credentials">
+      <SectionCard title={t('Tracker Credentials')}>
         {items.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.name, { color: theme.text }]}>{item.asset_name}</Text>
               <Text style={[styles.sub, { color: theme.muted }]}>{item.website_url}</Text>
-              <Text style={[styles.sub, { color: theme.muted }]}>Login: {hideSensitive ? '••••••' : item.login_id}</Text>
+              <Text style={[styles.sub, { color: theme.muted }]}>{t('Login: {value}', { value: hideSensitive ? '••••••' : item.login_id })}</Text>
             </View>
             <View style={styles.actionsRow}>
-              <PillButton label="Edit" kind="ghost" onPress={() => startEdit(item)} />
-              <PillButton label="Delete" kind="ghost" onPress={() => remove(item.id).catch((e) => setMessage(e.message))} />
+              <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} />
+              <PillButton label={t('Delete')} kind="ghost" onPress={() => remove(item.id).catch((e) => setMessage(e.message))} />
             </View>
           </View>
         ))}
-        {!items.length ? <Text style={[styles.sub, { color: theme.muted }]}>No tracker credentials yet.</Text> : null}
+        {!items.length ? <Text style={[styles.sub, { color: theme.muted }]}>{t('No tracker credentials yet.')}</Text> : null}
       </SectionCard>
 
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}

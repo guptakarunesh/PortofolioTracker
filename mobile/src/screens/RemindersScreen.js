@@ -3,8 +3,10 @@ import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { api } from '../api/client';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
+import DateField from '../components/DateField';
 import { formatDate, formatAmountFromInr } from '../utils/format';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 
 const REMINDER_CATEGORY_OPTIONS = [
   'Insurance',
@@ -26,9 +28,11 @@ export default function RemindersScreen({
   preferredCurrency = 'INR',
   fxRates = { INR: 1 },
   premiumActive = false,
-  onOpenSubscription
+  onOpenSubscription,
+  onRemindersChanged = () => {}
 }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
     due_date: '2026-04-01',
@@ -52,7 +56,7 @@ export default function RemindersScreen({
 
   const submit = async () => {
     if (!form.due_date || !form.category || !form.description) {
-      setMessage('Due date, category and description are required.');
+      setMessage(t('Due date, category and description are required.'));
       return;
     }
     await api.createReminder({
@@ -64,21 +68,30 @@ export default function RemindersScreen({
     setForm((f) => ({ ...f, description: '', amount: '' }));
     setShowCategoryOptions(false);
     setShowAlertOptions(false);
-    setMessage('Reminder added.');
+    setMessage(t('Reminder added.'));
+    onRemindersChanged();
     await load();
   };
 
   const markComplete = async (id) => {
     await api.updateReminderStatus(id, 'Completed');
+    onRemindersChanged();
+    await load();
+  };
+
+  const snoozeReminder = async (id) => {
+    await api.snoozeReminder(id, 1);
+    setMessage(t('Reminder snoozed by 1 day.'));
+    onRemindersChanged();
     await load();
   };
 
   if (!premiumActive) {
     return (
       <View>
-        <SectionCard title="Reminders (Premium)">
-          <Text style={[styles.sub, { color: theme.warn }]}>Reminders are available with Premium.</Text>
-          <PillButton label="Upgrade to Premium" onPress={onOpenSubscription} />
+        <SectionCard title={t('Reminders (Premium)')}>
+          <Text style={[styles.sub, { color: theme.warn }]}>{t('Reminders are available with Premium.')}</Text>
+          <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
         </SectionCard>
       </View>
     );
@@ -86,19 +99,20 @@ export default function RemindersScreen({
 
   return (
     <View>
-      <SectionCard title="Add Reminder">
-        <Text style={[styles.label, { color: theme.muted }]}>Due Date (YYYY-MM-DD)</Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+      <SectionCard title={t('Add Reminder')}>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Due Date (YYYY-MM-DD)')}</Text>
+        <DateField
           value={form.due_date}
-          onChangeText={(v) => setForm((f) => ({ ...f, due_date: v }))}
+          onChange={(v) => setForm((f) => ({ ...f, due_date: v }))}
+          theme={theme}
+          placeholder="YYYY-MM-DD"
         />
-        <Text style={[styles.label, { color: theme.muted }]}>Category</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Category')}</Text>
         <Pressable
           style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
           onPress={() => setShowCategoryOptions((v) => !v)}
         >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{form.category || 'Select category'}</Text>
+          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.category || 'Select category')}</Text>
           <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showCategoryOptions ? '▲' : '▼'}</Text>
         </Pressable>
         {showCategoryOptions ? (
@@ -123,31 +137,31 @@ export default function RemindersScreen({
                     form.category === category && { color: theme.accent, fontWeight: '700' }
                   ]}
                 >
-                  {category}
+                  {t(category)}
                 </Text>
               </Pressable>
             ))}
           </View>
         ) : null}
-        <Text style={[styles.label, { color: theme.muted }]}>Description</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Description')}</Text>
         <TextInput
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           value={form.description}
           onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
         />
-        <Text style={[styles.label, { color: theme.muted }]}>Amount</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Amount')}</Text>
         <TextInput
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           keyboardType="numeric"
           value={form.amount}
           onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
         />
-        <Text style={[styles.label, { color: theme.muted }]}>Alert Days Before</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Alert Days Before')}</Text>
         <Pressable
           style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
           onPress={() => setShowAlertOptions((v) => !v)}
         >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{form.alert_days_before} day(s)</Text>
+          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t('{count} day(s)', { count: form.alert_days_before })}</Text>
           <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showAlertOptions ? '▲' : '▼'}</Text>
         </Pressable>
         {showAlertOptions ? (
@@ -172,27 +186,34 @@ export default function RemindersScreen({
                     form.alert_days_before === days && { color: theme.accent, fontWeight: '700' }
                   ]}
                 >
-                  {days} day(s)
+                  {t('{count} day(s)', { count: days })}
                 </Text>
               </Pressable>
             ))}
           </View>
         ) : null}
-        <PillButton label="Save Reminder" onPress={() => submit().catch((e) => setMessage(e.message))} />
+        <PillButton label={t('Save Reminder')} onPress={() => submit().catch((e) => setMessage(e.message))} />
       </SectionCard>
 
-      <SectionCard title="Upcoming Reminders">
+      <SectionCard title={t('Upcoming Reminders')}>
         {items.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.name, { color: theme.text }]}>{item.description}</Text>
-              <Text style={[styles.sub, { color: theme.muted }]}>{item.category} · {formatDate(item.due_date)}</Text>
-              <Text style={[styles.sub, { color: theme.muted }]}>Status: {item.status}</Text>
+              <Text style={[styles.sub, { color: theme.muted }]}>{t('{category} · {date}', { category: t(item.category), date: formatDate(item.due_date) })}</Text>
+              <Text style={[styles.sub, { color: theme.muted }]}>{t('Status: {value}', { value: t(item.status) })}</Text>
             </View>
             <View style={styles.right}>
               <Text style={[styles.amount, { color: theme.text }]}>{displayAmount(item.amount, hideSensitive, preferredCurrency, fxRates)}</Text>
               {item.status !== 'Completed' ? (
-                <PillButton label="Done" kind="ghost" onPress={() => markComplete(item.id).catch((e) => setMessage(e.message))} />
+                <>
+                  <PillButton
+                    label={t('Snooze +1d')}
+                    kind="ghost"
+                    onPress={() => snoozeReminder(item.id).catch((e) => setMessage(e.message))}
+                  />
+                  <PillButton label={t('Done')} kind="ghost" onPress={() => markComplete(item.id).catch((e) => setMessage(e.message))} />
+                </>
               ) : null}
             </View>
           </View>

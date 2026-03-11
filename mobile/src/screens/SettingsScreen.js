@@ -3,7 +3,9 @@ import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { api } from '../api/client';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
+import DateField from '../components/DateField';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 
 const ASSET_TARGET_CATEGORIES = [
   'Banking & Deposits',
@@ -20,6 +22,7 @@ const targetSettingKey = (category) =>
 
 export default function SettingsScreen({ premiumActive = false, onOpenSubscription, readOnly = false }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [form, setForm] = useState({});
   const [message, setMessage] = useState('');
 
@@ -31,17 +34,17 @@ export default function SettingsScreen({ premiumActive = false, onOpenSubscripti
 
   const save = async () => {
     await api.upsertSettings(form);
-    setMessage('Settings saved.');
+    setMessage(t('Settings saved.'));
   };
 
   if (!premiumActive || readOnly) {
     return (
       <View>
-      <SectionCard title="Targets (Premium)">
+      <SectionCard title={t('Targets (Premium)')}>
         <Text style={[styles.lockedText, { color: theme.warn }]}>
-          {readOnly ? 'Subscription expired. Renew to edit targets.' : 'Targets are available with Premium.'}
+          {readOnly ? t('Subscription expired. Renew to edit targets.') : t('Targets are available with Premium.')}
         </Text>
-        <PillButton label="Upgrade to Premium" onPress={onOpenSubscription} />
+        <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
       </SectionCard>
       </View>
     );
@@ -49,25 +52,24 @@ export default function SettingsScreen({ premiumActive = false, onOpenSubscripti
 
   return (
     <View>
-      <SectionCard title="Targets">
-        <Text style={[styles.label, { color: theme.muted }]}>Target Date (YYYY-MM-DD)</Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+      <SectionCard title={t('Targets')}>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Target Date (YYYY-MM-DD)')}</Text>
+        <DateField
           value={String(form.target_date ?? '')}
-          onChangeText={(v) => setForm((prev) => ({ ...prev, target_date: v }))}
+          onChange={(v) => setForm((prev) => ({ ...prev, target_date: v }))}
+          theme={theme}
           placeholder="2030-12-31"
-          placeholderTextColor={theme.muted}
         />
 
         {ASSET_TARGET_CATEGORIES.map((category) => {
           const key = targetSettingKey(category);
           return (
             <View key={key}>
-              <Text style={[styles.label, { color: theme.muted }]}>{category}</Text>
+              <Text style={[styles.label, { color: theme.muted }]}>{t(category)}</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
                 keyboardType="numeric"
-                placeholder="0"
+                placeholder={t('0')}
                 value={String(form[key] ?? '')}
                 onChangeText={(v) => setForm((prev) => ({ ...prev, [key]: v }))}
                 placeholderTextColor={theme.muted}
@@ -75,7 +77,7 @@ export default function SettingsScreen({ premiumActive = false, onOpenSubscripti
             </View>
           );
         })}
-        <PillButton label="Save Settings & Targets" onPress={() => save().catch((e) => setMessage(e.message))} />
+        <PillButton label={t('Save Settings & Targets')} onPress={() => save().catch((e) => setMessage(e.message))} />
       </SectionCard>
 
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}

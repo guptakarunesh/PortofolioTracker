@@ -4,7 +4,7 @@ import AuthScreen from '../screens/AuthScreen';
 
 jest.mock('../api/client', () => ({
   api: {
-    getLegalVersions: jest.fn(async () => ({ privacyPolicyVersion: 'v1.0', termsVersion: 'v1.0' }))
+    getLegalVersions: jest.fn(async () => ({ privacyPolicyVersion: 'v1.1', termsVersion: 'v1.1' }))
   },
   buildApiUrl: (path) => path
 }));

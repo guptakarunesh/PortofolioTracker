@@ -1,19 +1,66 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, Linking, Share } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TextInput, Linking, Share, Pressable, Animated, Modal, ScrollView } from 'react-native';
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { api, buildApiUrl } from '../api/client';
+import { getFirebaseWebConfig } from '../firebase/webConfig';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
+import { FAQ_ITEMS } from '../constants/faqs';
 
-const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
 
 function toCamelCaseWords(value = '') {
+  const raw = String(value || '').trim();
+  if (/^[A-Za-z]{1,2}$/.test(raw)) return raw.toUpperCase();
   return String(value)
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function toInitials(value = '') {
+  const raw = String(value || '').trim();
+  if (/^[A-Za-z]{1,2}$/.test(raw)) return raw.toUpperCase();
+  const parts = raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase());
+  if (parts.length) return parts.join('');
+  const letters = raw.replace(/[^A-Za-z]/g, '').toUpperCase();
+  if (letters.length >= 2) return letters.slice(0, 2);
+  return letters || 'NA';
+}
+
+function maskMobile(value = '') {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '-';
+  if (digits.length <= 4) return `${'*'.repeat(Math.max(0, digits.length - 1))}${digits.slice(-1)}`;
+  return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+}
+
+function maskEmail(value = '') {
+  const email = String(value || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) return '-';
+  const [localRaw, domainRaw] = email.split('@');
+  const local = String(localRaw || '');
+  const domain = String(domainRaw || '');
+  if (!local || !domain) return '-';
+  const domainParts = domain.split('.');
+  const domainName = domainParts.shift() || '';
+  const domainSuffix = domainParts.length ? `.${domainParts.join('.')}` : '';
+  const maskedLocal =
+    local.length <= 2 ? `${local.charAt(0)}*` : `${local.charAt(0)}${'*'.repeat(local.length - 2)}${local.slice(-1)}`;
+  const maskedDomain =
+    domainName.length <= 2
+      ? `${domainName.charAt(0)}*`
+      : `${domainName.charAt(0)}${'*'.repeat(domainName.length - 2)}${domainName.slice(-1)}`;
+  return `${maskedLocal}@${maskedDomain}${domainSuffix}`;
 }
 
 function formatPlanLabel(plan) {
@@ -24,6 +71,58 @@ function formatPlanLabel(plan) {
 function formatStatusLabel(status) {
   if (!status || status === 'expired') return 'Expired';
   return toCamelCaseWords(String(status).replace(/_/g, ' '));
+}
+
+function formatIsoDate(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '-';
+  return raw.slice(0, 10);
+}
+
+function escapeHtml(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toMoney(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+function buildReceiptHtml(receipt) {
+  const rows = [
+    ['Invoice Number', receipt?.invoice_number],
+    ['Invoice Date', receipt?.invoice_date],
+    ['Plan', receipt?.line_item?.plan],
+    ['Period', receipt?.line_item?.period],
+    ['SAC Code', receipt?.line_item?.sac_code],
+    ['Taxable Value (INR)', toMoney(receipt?.taxes?.taxable_value)],
+    ['CGST 9% (INR)', toMoney(receipt?.taxes?.cgst_amount)],
+    ['SGST 9% (INR)', toMoney(receipt?.taxes?.sgst_amount)],
+    ['Total GST (INR)', toMoney(receipt?.taxes?.gst_total)],
+    ['Total Amount (INR)', toMoney(receipt?.total_amount_inr)],
+    ['Payment Provider', receipt?.payment?.provider],
+    ['Transaction ID', receipt?.payment?.transaction_id || '-'],
+    ['Payment Status', receipt?.payment?.status]
+  ];
+  const lineRows = rows
+    .map(
+      ([k, v]) =>
+        `<tr><td style="padding:8px;border:1px solid #ddd;font-weight:600;">${escapeHtml(k)}</td><td style="padding:8px;border:1px solid #ddd;">${escapeHtml(v || '-')}</td></tr>`
+    )
+    .join('');
+  return `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Arial;padding:18px;color:#111;">
+    <h2 style="margin:0 0 8px;">Tax Invoice / GST Receipt</h2>
+    <p style="margin:0 0 12px;">${escapeHtml(receipt?.supplier?.legal_name || '')}</p>
+    <p style="margin:0 0 4px;">GSTIN: ${escapeHtml(receipt?.supplier?.gstin || 'NA')}</p>
+    <p style="margin:0 0 12px;">Address: ${escapeHtml(receipt?.supplier?.address || 'India')}</p>
+    <p style="margin:0 0 12px;">Billed To: ${escapeHtml(receipt?.customer?.initials || 'NA')}</p>
+    <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;">${lineRows}</table>
+    <p style="margin-top:16px;font-size:12px;color:#444;">This is a system-generated receipt for subscription payment.</p>
+  </body></html>`;
 }
 
 export default function AccountScreen({
@@ -37,27 +136,41 @@ export default function AccountScreen({
   subscriptionStatus,
   onOpenSubscription,
   onOpenFamily,
+  onOpenOnboarding,
   premiumActive = false,
   preferredCurrency = 'INR',
+  onRegisterOnboardingTarget,
+  onMeasureOnboardingTarget,
+  onGetOnboardingZoomStyle,
   onThemeChange,
   themeKey = 'teal'
 }) {
   const { theme } = useTheme();
-  const [privacyPinEnabled, setPrivacyPinEnabled] = useState(false);
+  const { language, setLanguage, t } = useI18n();
   const [pin, setPin] = useState('');
-  const [currency, setCurrency] = useState(preferredCurrency);
+  const [openFaqs, setOpenFaqs] = useState({});
   const [message, setMessage] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [subscription, setSubscription] = useState(subscriptionStatus || null);
+  const [subscriptionHistory, setSubscriptionHistory] = useState([]);
+  const [pinResetOtpRequested, setPinResetOtpRequested] = useState(false);
+  const [pinResetOtpCooldown, setPinResetOtpCooldown] = useState(0);
+  const [pinResetOtp, setPinResetOtp] = useState('');
+  const [pinResetNewPin, setPinResetNewPin] = useState('');
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptError, setReceiptError] = useState('');
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
+  const recaptchaVerifierRef = useRef(null);
+  const firebaseWebConfig = useMemo(() => getFirebaseWebConfig(), []);
 
   useEffect(() => {
     api
       .getSettings()
       .then((settings) => {
-        const enabled = String(settings?.privacy_pin_enabled || '').toLowerCase();
-        setPrivacyPinEnabled(enabled === '1' || enabled === 'true' || enabled === 'yes');
         setPin(String(settings?.privacy_pin || ''));
-        setCurrency(String(settings?.preferred_currency || preferredCurrency || 'INR'));
+        const storedLang = String(settings?.language || 'en').toLowerCase();
+        setLanguage(storedLang === 'hi' ? 'hi' : 'en');
       })
       .catch((e) => setMessage(e.message));
   }, []);
@@ -67,144 +180,297 @@ export default function AccountScreen({
   }, [subscriptionStatus]);
 
   useEffect(() => {
+    if (!pinResetOtpCooldown) return undefined;
+    const timer = setInterval(() => {
+      setPinResetOtpCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pinResetOtpCooldown]);
+
+  useEffect(() => {
     api
       .getSubscriptionStatus()
       .then((status) => setSubscription(status))
       .catch(() => {});
+    api
+      .getSubscriptionHistory()
+      .then((rows) => setSubscriptionHistory(Array.isArray(rows) ? rows : []))
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    setCurrency(preferredCurrency || 'INR');
-  }, [preferredCurrency]);
-
-  const savePrivacySettings = async () => {
-    if (privacyPinEnabled && !/^\d{4}$/.test(pin)) {
-      setMessage('Enter a valid 4-digit PIN to enable PIN protection.');
+  const saveSecurityPin = async () => {
+    if (!/^\d{4}$/.test(pin)) {
+      setMessage(t('Enter a valid 4-digit PIN.'));
       return;
     }
 
     await api.upsertSettings({
-      privacy_pin_enabled: privacyPinEnabled ? '1' : '0',
+      privacy_pin_enabled: '1',
       privacy_pin: pin
     });
 
-    setMessage('Privacy settings saved.');
+    setMessage(t('Security PIN saved.'));
     onPrivacyConfigChanged?.();
   };
 
-  const handleMaskedPinInput = (text) => {
-    const digits = String(text || '').replace(/\D/g, '');
-    if (!digits) {
-      if (pin.length > 0 && String(text || '').length < pin.length) {
-        setPin((prev) => prev.slice(0, -1));
-      }
-      return;
-    }
-
-    setPin((prev) => {
-      if (String(text || '').length < prev.length) return prev.slice(0, -1);
-      return `${prev}${digits}`.slice(0, 4);
-    });
+  const saveLanguage = async (next) => {
+    const normalized = next === 'hi' ? 'hi' : 'en';
+    setLanguage(normalized);
+    await api.upsertSettings({ language: normalized });
+    setMessage(
+      normalized === 'hi'
+        ? t('Language updated to Hindi.')
+        : t('Language updated to English.')
+    );
   };
 
-  const changeCurrency = async (code) => {
-    if (currency === code) return;
-    setCurrency(code);
-    setMessage(`Switching currency to ${code}...`);
-    onCurrencyChanged?.(code);
+  const handleMaskedPinInput = (text) => {
+    setPin(String(text || '').replace(/\D/g, '').slice(0, 4));
+  };
 
-    try {
-      await api.upsertSettings({ preferred_currency: code });
-      setMessage(`Currency updated to ${code}.`);
-    } catch (e) {
-      setMessage(e.message);
+  const requestSecurityPinResetOtp = async () => {
+    let firebaseRecaptchaToken = '';
+    if (!firebaseWebConfig) {
+      setMessage(t('reCAPTCHA is not configured on this build. Please reload the app.'));
+      return;
     }
+    if (firebaseWebConfig) {
+      try {
+        firebaseRecaptchaToken = await recaptchaVerifierRef.current?.verify();
+      } catch (_e) {
+        setMessage(t('Could not verify reCAPTCHA. Please try again.'));
+        return;
+      }
+      if (!firebaseRecaptchaToken) {
+        setMessage(t('Could not verify reCAPTCHA. Please try again.'));
+        return;
+      }
+    }
+    const response = await api.requestSecurityPinResetOtp({
+      ...(firebaseRecaptchaToken ? { firebase_recaptcha_token: firebaseRecaptchaToken } : {})
+    });
+    setPinResetOtpRequested(true);
+    setPinResetOtpCooldown(Number(response?.retry_after_seconds || 30));
+    setMessage(t('OTP sent to your mobile number.'));
+  };
+
+  const confirmSecurityPinReset = async () => {
+    if (!pinResetOtp.trim() || !/^\d{4}$/.test(pinResetNewPin)) {
+      setMessage(t('OTP and new 4-digit PIN are required.'));
+      return;
+    }
+    await api.confirmSecurityPinReset({
+      otp: pinResetOtp.trim(),
+      new_pin: pinResetNewPin
+    });
+    setPin(pinResetNewPin);
+    setPinResetOtpRequested(false);
+    setPinResetOtpCooldown(0);
+    setPinResetOtp('');
+    setPinResetNewPin('');
+    setMessage(t('Security PIN reset successful.'));
+    onPrivacyConfigChanged?.();
   };
 
   const exportData = async () => {
     const payload = await api.exportUserData();
     const text = JSON.stringify(payload, null, 2);
     await Share.share({ message: text });
-    setMessage('Data export prepared.');
+    setMessage(t('Data export prepared.'));
   };
 
   const deleteAccount = async () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
-      setMessage('Tap Delete Account again to confirm permanent deletion.');
+      setMessage(t('Tap Delete Account again to confirm permanent deletion.'));
       return;
     }
     await api.deleteAccount('user_requested_from_mobile');
-    setMessage('Account deleted.');
+    setMessage(t('Account deleted.'));
     onLogout?.();
+  };
+
+  const toggleFaq = (question) => {
+    setOpenFaqs((prev) => ({ ...prev, [question]: !prev[question] }));
+  };
+
+  const viewReceipt = async (paymentId) => {
+    setReceiptError('');
+    setReceiptLoading(true);
+    try {
+      const receipt = await api.getSubscriptionReceipt(paymentId);
+      setReceiptData(receipt);
+      setReceiptModalVisible(true);
+    } catch (e) {
+      setReceiptError(e?.message || t('Could not load receipt.'));
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
+
+  const downloadReceiptPdf = async () => {
+    if (!receiptData) return;
+    try {
+      const html = buildReceiptHtml(receiptData);
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false
+      });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: t('Download GST Receipt'),
+          UTI: 'com.adobe.pdf'
+        });
+      } else {
+        setMessage(t('PDF created at: {value}', { value: uri }));
+      }
+    } catch (e) {
+      setMessage(e?.message || t('Could not create PDF receipt.'));
+    }
   };
 
   return (
     <View>
-      <SectionCard title="Profile">
-        <Text style={[styles.label, { color: theme.muted }]}>Name</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{toCamelCaseWords(user?.full_name || '-')}</Text>
-        <Text style={[styles.label, { color: theme.muted }]}>Mobile</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{user?.mobile || '-'}</Text>
-        <Text style={[styles.label, { color: theme.muted }]}>Email</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{String(user?.email || '-').toLowerCase()}</Text>
+      <Modal visible={receiptModalVisible} animationType="slide" transparent onRequestClose={() => setReceiptModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.planTitle, { color: theme.text }]}>{t('GST Receipt')}</Text>
+            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollBody}>
+              <Text style={[styles.subText, { color: theme.muted }]}>{t('Invoice: {value}', { value: String(receiptData?.invoice_number || '-') })}</Text>
+              <Text style={[styles.subText, { color: theme.muted }]}>{t('Date: {value}', { value: String(receiptData?.invoice_date || '-') })}</Text>
+              <Text style={[styles.subText, { color: theme.muted }]}>
+                {t('Supplier GSTIN: {value}', { value: String(receiptData?.supplier?.gstin || 'NA') })}
+              </Text>
+              <Text style={[styles.subText, { color: theme.muted }]}>
+                {t('Service: {value}', { value: String(receiptData?.line_item?.description || '-') })}
+              </Text>
+              <Text style={[styles.subText, { color: theme.muted }]}>
+                {t('Taxable: INR {value}', { value: toMoney(receiptData?.taxes?.taxable_value) })}
+              </Text>
+              <Text style={[styles.subText, { color: theme.muted }]}>
+                {t('CGST (9%): INR {value}', { value: toMoney(receiptData?.taxes?.cgst_amount) })}
+              </Text>
+              <Text style={[styles.subText, { color: theme.muted }]}>
+                {t('SGST (9%): INR {value}', { value: toMoney(receiptData?.taxes?.sgst_amount) })}
+              </Text>
+              <Text style={[styles.subText, { color: theme.muted }]}>
+                {t('Total GST: INR {value}', { value: toMoney(receiptData?.taxes?.gst_total) })}
+              </Text>
+              <Text style={[styles.subText, { color: theme.text, fontWeight: '800' }]}>
+                {t('Total Paid: INR {value}', { value: toMoney(receiptData?.total_amount_inr) })}
+              </Text>
+              <Text style={[styles.subText, { color: theme.muted }]}>
+                {t('Txn ID: {value}', { value: String(receiptData?.payment?.transaction_id || '-') })}
+              </Text>
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <PillButton kind="ghost" label={t('Close')} onPress={() => setReceiptModalVisible(false)} />
+              <PillButton label={t('Download PDF')} onPress={() => downloadReceiptPdf().catch((e) => setMessage(e.message))} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {firebaseWebConfig ? (
+        <FirebaseRecaptchaVerifierModal
+          ref={recaptchaVerifierRef}
+          firebaseConfig={firebaseWebConfig}
+        />
+      ) : null}
+      <SectionCard title={t('Profile')}>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Name')}</Text>
+        <Text style={[styles.value, { color: theme.text }]}>{toInitials(user?.full_name || '-')}</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile')}</Text>
+        <Text style={[styles.value, { color: theme.text }]}>{maskMobile(user?.mobile || '')}</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Email')}</Text>
+        <Text style={[styles.value, { color: theme.text }]}>{maskEmail(user?.email || '')}</Text>
       </SectionCard>
 
-      <SectionCard title="Privacy & Security">
+      <SectionCard title={t('Privacy & Security')}>
         <Text style={[styles.helper, { color: theme.muted }]}>
-          Enable PIN protection if you want a 4-digit PIN prompt when Privacy mode is turned ON.
+          {t('Security PIN is required to reveal full identifiers, contacts, and family notes. Amount privacy toggle does not require PIN.')}
         </Text>
-        <View style={styles.row}>
-          <PillButton
-            label={privacyPinEnabled ? 'PIN Enabled' : 'Enable PIN'}
-            kind={privacyPinEnabled ? 'primary' : 'ghost'}
-            onPress={() => setPrivacyPinEnabled(true)}
-          />
-          <PillButton
-            label={!privacyPinEnabled ? 'PIN Disabled' : 'Disable PIN'}
-            kind={!privacyPinEnabled ? 'primary' : 'ghost'}
-            onPress={() => setPrivacyPinEnabled(false)}
-          />
-        </View>
-        {privacyPinEnabled ? (
-          <>
-            <Text style={[styles.label, { color: theme.muted }]}>4-digit Privacy PIN</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
-              value={'*'.repeat(pin.length)}
-              onChangeText={handleMaskedPinInput}
-              keyboardType="number-pad"
-              secureTextEntry={false}
-              maxLength={4}
-            />
-          </>
-        ) : null}
-        <PillButton label="Save Privacy Settings" onPress={() => savePrivacySettings().catch((e) => setMessage(e.message))} />
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Security PIN (4 digits)')}</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+          value={pin}
+          onChangeText={handleMaskedPinInput}
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={4}
+        />
+        <PillButton label={t('Save Security PIN')} onPress={() => saveSecurityPin().catch((e) => setMessage(e.message))} />
 
         <View style={[styles.securityDivider, { backgroundColor: theme.border }]} />
-        <Text style={[styles.label, { color: theme.muted }]}>Biometric Login</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Forgot Security PIN')}</Text>
+        <Text style={[styles.helper, { color: theme.muted }]}>
+          {t('Reset requires OTP verification and sends security alerts to family/admin users.')}
+        </Text>
+        {pinResetOtpRequested ? (
+          <>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('OTP (6 digits)')}</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+              value={pinResetOtp}
+              onChangeText={(v) => setPinResetOtp(String(v || '').replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              maxLength={6}
+            />
+            <Text style={[styles.label, { color: theme.muted }]}>{t('New Security PIN (4 digits)')}</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+              value={pinResetNewPin}
+              onChangeText={(v) => setPinResetNewPin(String(v || '').replace(/\D/g, '').slice(0, 4))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={4}
+            />
+            <View style={styles.row}>
+              <PillButton
+                label={pinResetOtpCooldown > 0 ? t('Resend OTP ({seconds}s)', { seconds: pinResetOtpCooldown }) : t('Resend OTP')}
+                kind="ghost"
+                disabled={pinResetOtpCooldown > 0}
+                onPress={() => requestSecurityPinResetOtp().catch((e) => setMessage(e.message))}
+              />
+              <PillButton
+                label={t('Confirm Reset')}
+                onPress={() => confirmSecurityPinReset().catch((e) => setMessage(e.message))}
+              />
+            </View>
+          </>
+        ) : (
+          <PillButton
+            label={t('Reset Security PIN via OTP')}
+            kind="ghost"
+            onPress={() => requestSecurityPinResetOtp().catch((e) => setMessage(e.message))}
+          />
+        )}
+
+        <View style={[styles.securityDivider, { backgroundColor: theme.border }]} />
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Biometric Login')}</Text>
         <Text style={[styles.helper, { color: theme.muted }]}>
           {biometricEnrolled
-            ? 'Face ID is enabled for quick login on this device.'
-            : 'Enroll Face ID to login faster without typing MPIN each time.'}
+            ? t('Face ID is enabled for quick login on this device.')
+            : t('Enroll Face ID to login faster without typing MPIN each time.')}
         </Text>
         <View style={styles.row}>
           <PillButton
-            label={biometricEnrolled ? 'Face ID Enrolled' : 'Enroll Face ID'}
+            label={biometricEnrolled ? t('Face ID Enrolled') : t('Enroll Face ID')}
             kind={biometricEnrolled ? 'primary' : 'ghost'}
             onPress={() =>
               Promise.resolve(onEnrollBiometric?.())
-                .then(() => setMessage('Biometric login enrolled for this device.'))
+                .then(() => setMessage(t('Biometric login enrolled for this device.')))
                 .catch((e) => setMessage(e.message))
             }
           />
           {biometricEnrolled ? (
             <PillButton
-              label="Disable Face ID"
+              label={t('Disable Face ID')}
               kind="ghost"
               onPress={() =>
                 Promise.resolve(onDisableBiometric?.())
-                  .then(() => setMessage('Biometric login disabled for this device.'))
+                  .then(() => setMessage(t('Biometric login disabled for this device.')))
                   .catch((e) => setMessage(e.message))
               }
             />
@@ -212,34 +478,8 @@ export default function AccountScreen({
         </View>
       </SectionCard>
 
-      <SectionCard title="Display Currency">
-        <View style={styles.row}>
-          {CURRENCIES.map((code) => (
-            <Pressable
-              key={code}
-              style={[
-                styles.currencyChip,
-                { borderColor: theme.border, backgroundColor: theme.card },
-                currency === code && { borderColor: theme.accent, backgroundColor: theme.accentSoft }
-              ]}
-              onPress={() => changeCurrency(code).catch((e) => setMessage(e.message))}
-            >
-              <Text
-                style={[
-                  styles.currencyChipText,
-                  { color: theme.text },
-                  currency === code && { color: theme.accent }
-                ]}
-              >
-                {code}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </SectionCard>
-
-      <SectionCard title="Theme">
-        <Text style={[styles.helper, { color: theme.muted }]}>Choose the app color scheme.</Text>
+      <SectionCard title={t('Theme')}>
+        <Text style={[styles.helper, { color: theme.muted }]}>{t('Choose the app color scheme.')}</Text>
         <View style={styles.row}>
           {[
             { key: 'teal', label: 'Teal' },
@@ -249,7 +489,7 @@ export default function AccountScreen({
           ].map((opt) => (
             <PillButton
               key={opt.key}
-              label={opt.label}
+              label={t(opt.label)}
               kind={themeKey === opt.key ? 'primary' : 'ghost'}
               onPress={() => onThemeChange?.(opt.key)}
             />
@@ -257,75 +497,152 @@ export default function AccountScreen({
         </View>
       </SectionCard>
 
-      <SectionCard title="Family Access">
+      <SectionCard title={t('Language')}>
         <Text style={[styles.helper, { color: theme.muted }]}>
-          Share access with family members and control read/write/admin permissions.
+          {t('Choose your preferred language. Hindi labels will appear where available.')}
         </Text>
-        {!premiumActive ? (
-          <Text style={[styles.lockedText, { color: theme.warn }]}>Premium required to manage family access.</Text>
-        ) : null}
         <View style={styles.row}>
           <PillButton
-            label="Manage Family"
-            kind={premiumActive ? 'primary' : 'ghost'}
-            onPress={premiumActive ? onOpenFamily : onOpenSubscription}
+            label={t('English')}
+            kind={language === 'en' ? 'primary' : 'ghost'}
+            onPress={() => saveLanguage('en').catch((e) => setMessage(e.message))}
+          />
+          <PillButton
+            label={t('हिंदी')}
+            kind={language === 'hi' ? 'primary' : 'ghost'}
+            onPress={() => saveLanguage('hi').catch((e) => setMessage(e.message))}
           />
         </View>
       </SectionCard>
 
-      <SectionCard title="Subscription">
+      <Animated.View
+        ref={(node) => onRegisterOnboardingTarget?.('account_family_access', node)}
+        collapsable={false}
+        onLayout={() => onMeasureOnboardingTarget?.('account_family_access')}
+        style={onGetOnboardingZoomStyle?.('account_family_access')}
+      >
+        <SectionCard title={t('Family Access')}>
+          <Text style={[styles.helper, { color: theme.muted }]}>
+            {t('Share access with family members and control read/write/admin permissions.')}
+          </Text>
+          {!premiumActive ? (
+            <Text style={[styles.lockedText, { color: theme.warn }]}>{t('Premium required to manage family access.')}</Text>
+          ) : null}
+          <View style={styles.row}>
+            <PillButton
+              label={t('Manage Family')}
+              kind={premiumActive ? 'primary' : 'ghost'}
+              onPress={premiumActive ? onOpenFamily : onOpenSubscription}
+            />
+          </View>
+        </SectionCard>
+      </Animated.View>
+
+      <SectionCard title={t('Subscription')}>
         <Text style={[styles.subText, { color: theme.muted }]}>
-          Plan: <Text style={[styles.valueInline, { color: theme.text }]}>{formatPlanLabel(subscription?.plan)}</Text>
+          {t('Plan: {value}', { value: t(formatPlanLabel(subscription?.plan)) })}
         </Text>
         <Text style={[styles.subText, { color: theme.muted }]}>
-          Status: <Text style={[styles.valueInline, { color: theme.text }]}>{formatStatusLabel(subscription?.status)}</Text>
+          {t('Status: {value}', { value: t(formatStatusLabel(subscription?.status)) })}
         </Text>
-        {subscription?.trial_start ? (
+        {subscription?.started_at ? (
           <Text style={[styles.subText, { color: theme.muted }]}>
-            Free premium started: <Text style={[styles.valueInline, { color: theme.text }]}>{subscription.trial_start.slice(0, 10)}</Text>
+            {t('Started: {date}', { date: formatIsoDate(subscription.started_at) })}
           </Text>
         ) : null}
-        {subscription?.trial_end ? (
+        {subscription?.current_period_end ? (
           <Text style={[styles.subText, { color: theme.muted }]}>
-            Free premium ends: <Text style={[styles.valueInline, { color: theme.text }]}>{subscription.trial_end.slice(0, 10)}</Text>
+            {subscription?.plan === 'trial_premium'
+              ? t('Trial ends: {date}', { date: formatIsoDate(subscription.current_period_end) })
+              : t('Current period ends: {date}', { date: formatIsoDate(subscription.current_period_end) })}
           </Text>
         ) : null}
-        <PillButton label="Buy Subscription" kind="ghost" onPress={onOpenSubscription} />
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Purchase History')}</Text>
+        {subscriptionHistory.length ? (
+          <View style={styles.historyWrap}>
+            {subscriptionHistory.slice(0, 8).map((row) => (
+              <View key={row.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
+                <Text style={[styles.historyPrimary, { color: theme.text }]}>
+                  {`${formatPlanLabel(row.plan)} • INR ${Number(row.amount_inr || 0)}`}
+                </Text>
+                <View style={styles.historyMetaRow}>
+                  <Pressable
+                    style={[styles.receiptIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+                    onPress={() => viewReceipt(row.id).catch((e) => setReceiptError(e.message))}
+                    disabled={receiptLoading}
+                  >
+                    <Text style={styles.receiptIcon}>🧾</Text>
+                  </Pressable>
+                  <Text style={[styles.historyMeta, { color: theme.muted }]}>
+                    {`${formatStatusLabel(row.status)} • ${String(row.provider || '-')} • ${String(row.purchased_at || '').slice(0, 10)}`}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={[styles.subText, { color: theme.muted }]}>{t('No purchases yet.')}</Text>
+        )}
+        {!!receiptError ? <Text style={[styles.message, { color: theme.danger }]}>{receiptError}</Text> : null}
+        <PillButton label={t('Buy Subscription')} kind="ghost" onPress={onOpenSubscription} />
       </SectionCard>
 
-      <SectionCard title="Legal">
+      <SectionCard title={t('FAQs')}>
+        {FAQ_ITEMS.map((item) => (
+          <View key={item.q} style={styles.faqItem}>
+            <Pressable style={styles.faqHeader} onPress={() => toggleFaq(item.q)}>
+              <Text style={[styles.faqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
+              <Text style={[styles.faqChevron, { color: theme.muted }]}>
+                {openFaqs[item.q] ? '−' : '+'}
+              </Text>
+            </Pressable>
+            {openFaqs[item.q] ? (
+              <Text style={[styles.faqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
+            ) : null}
+          </View>
+        ))}
+      </SectionCard>
+
+      <SectionCard title={t('Quick Tour')}>
+        <Text style={[styles.helper, { color: theme.muted }]}>
+          {t('Take a quick walkthrough of main features and usage.')}
+        </Text>
+        <PillButton label={t('Start Tour')} kind="ghost" onPress={onOpenOnboarding} />
+      </SectionCard>
+
+      <SectionCard title={t('Legal')}>
         <View style={styles.row}>
           <PillButton
-            label="Privacy Policy"
+            label={t('Privacy Policy')}
             kind="ghost"
             onPress={() => Linking.openURL(buildApiUrl('/legal/privacy')).catch((e) => setMessage(e.message))}
           />
           <PillButton
-            label="Terms"
+            label={t('Terms')}
             kind="ghost"
             onPress={() => Linking.openURL(buildApiUrl('/legal/terms')).catch((e) => setMessage(e.message))}
           />
           <PillButton
-            label="Contact Grievance Officer"
+            label={t('Contact Grievance Officer')}
             kind="ghost"
             onPress={() => Linking.openURL('mailto:grievance@[yourdomain].com').catch((e) => setMessage(e.message))}
           />
         </View>
       </SectionCard>
 
-      <SectionCard title="Data Rights">
+      <SectionCard title={t('Data Rights')}>
         <View style={styles.row}>
-          <PillButton label="Export My Data" kind="ghost" onPress={() => exportData().catch((e) => setMessage(e.message))} />
+          <PillButton label={t('Export My Data')} kind="ghost" onPress={() => exportData().catch((e) => setMessage(e.message))} />
           <PillButton
-            label={confirmDelete ? 'Confirm Delete Account' : 'Delete Account'}
+            label={confirmDelete ? t('Confirm Delete Account') : t('Delete Account')}
             kind="ghost"
             onPress={() => deleteAccount().catch((e) => setMessage(e.message))}
           />
         </View>
       </SectionCard>
 
-      <SectionCard title="Session">
-        <PillButton label="Logout" kind="ghost" onPress={onLogout} />
+      <SectionCard title={t('Session')}>
+        <PillButton label={t('Logout')} kind="ghost" onPress={onLogout} />
       </SectionCard>
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>
@@ -364,6 +681,65 @@ const styles = StyleSheet.create({
     color: '#607d99',
     marginBottom: 6
   },
+  historyWrap: {
+    marginTop: 4,
+    marginBottom: 8
+  },
+  historyRow: {
+    paddingVertical: 6,
+    borderBottomWidth: 1
+  },
+  historyPrimary: {
+    fontWeight: '700'
+  },
+  historyMetaRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  historyMeta: {
+    fontSize: 12,
+    flex: 1
+  },
+  receiptIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  receiptIcon: {
+    fontSize: 15
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 14
+  },
+  modalCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    maxHeight: '80%'
+  },
+  modalScroll: {
+    marginTop: 8
+  },
+  modalScrollBody: {
+    paddingBottom: 8
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10
+  },
+  planTitle: {
+    fontSize: 17,
+    fontWeight: '800'
+  },
   valueInline: {
     color: '#0f3557',
     fontWeight: '700'
@@ -374,26 +750,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginBottom: 8
   },
-  currencyChip: {
-    borderWidth: 1,
-    borderColor: '#c6d8eb',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: '#fff'
-  },
-  currencyChipActive: {
-    borderColor: '#0f766e',
-    backgroundColor: '#ebf8f6'
-  },
-  currencyChipText: {
-    color: '#35526e',
-    fontWeight: '800',
-    fontSize: 12
-  },
-  currencyChipTextActive: {
-    color: '#0f766e'
-  },
   input: {
     borderWidth: 1,
     borderColor: '#c6d8eb',
@@ -402,6 +758,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12
+  },
+  faqItem: {
+    marginBottom: 10
+  },
+  faqHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  faqQuestion: {
+    flex: 1,
+    fontWeight: '800',
+    fontSize: 13,
+    marginBottom: 4
+  },
+  faqChevron: {
+    width: 18,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: -2
+  },
+  faqAnswer: {
+    fontSize: 12,
+    lineHeight: 18
   },
   message: {
     color: '#0f3557',

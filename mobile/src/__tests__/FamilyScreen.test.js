@@ -41,10 +41,10 @@ describe('FamilyScreen', () => {
     );
 
     await waitFor(() => getByText('Members'));
-    expect(getByText('Member')).toBeTruthy();
+    expect(getByText('M')).toBeTruthy();
 
     fireEvent.press(getByText('Pending'));
-    expect(getByText('7777777777')).toBeTruthy();
+    expect(getByText('******7777')).toBeTruthy();
 
     expect(getByText('Audit Log')).toBeTruthy();
     expect(getByText('invite created')).toBeTruthy();

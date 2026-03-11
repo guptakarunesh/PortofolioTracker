@@ -1,6 +1,7 @@
 import { db } from '../lib/db.js';
 import { hashToken } from '../lib/auth.js';
 import { decryptString } from '../lib/crypto.js';
+import { extractDeviceContext, logAuthEvent, touchDeviceForUser, touchSession } from '../lib/deviceSecurity.js';
 
 export default function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization || '';
@@ -14,8 +15,9 @@ export default function requireAuth(req, res, next) {
   }
 
   const tokenHash = hashToken(token);
+  const context = extractDeviceContext(req, null);
   const session = db.prepare(`
-    SELECT s.user_id, s.expires_at, u.full_name, u.mobile, u.email
+    SELECT s.user_id, s.expires_at, s.device_id, s.auth_method, u.full_name, u.mobile, u.email
     FROM sessions s
     JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ?
@@ -30,6 +32,38 @@ export default function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Session expired' });
   }
 
+  const sessionDeviceId = String(session.device_id || '').trim();
+  const requestDeviceId = String(context.device_id || '').trim();
+
+  if (sessionDeviceId && !requestDeviceId) {
+    logAuthEvent({
+      userId: session.user_id,
+      mobileHash: '',
+      eventType: 'session_rejected_missing_device',
+      authMethod: session.auth_method || '',
+      status: 'failed',
+      reason: 'missing_device_id',
+      context,
+      req
+    });
+    return res.status(401).json({ error: 'device_id_required', message: 'Device identifier is required.' });
+  }
+
+  if (sessionDeviceId && requestDeviceId && sessionDeviceId !== requestDeviceId) {
+    logAuthEvent({
+      userId: session.user_id,
+      mobileHash: '',
+      eventType: 'session_rejected_device_mismatch',
+      authMethod: session.auth_method || '',
+      status: 'failed',
+      reason: 'device_mismatch',
+      context,
+      req,
+      meta: { expected_device_id: sessionDeviceId }
+    });
+    return res.status(401).json({ error: 'device_mismatch', message: 'Session is bound to another device.' });
+  }
+
   req.userId = session.user_id;
   req.user = {
     id: session.user_id,
@@ -38,6 +72,12 @@ export default function requireAuth(req, res, next) {
     email: decryptString(session.email || '')
   };
   req.sessionTokenHash = tokenHash;
+  req.deviceContext = context;
+
+  touchSession(tokenHash, req);
+  if (requestDeviceId) {
+    touchDeviceForUser(session.user_id, context, req);
+  }
 
   return next();
 }

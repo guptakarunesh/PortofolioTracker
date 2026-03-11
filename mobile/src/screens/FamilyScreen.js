@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { api } from '../api/client';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 
 const ROLE_OPTIONS = [
   { key: 'read', label: 'Read' },
@@ -18,6 +19,28 @@ const INVITE_FILTERS = [
   { key: 'expired', label: 'Expired' },
   { key: 'canceled', label: 'Canceled' }
 ];
+const MAX_FAMILY_MEMBERS = 2;
+
+function toInitials(value = '') {
+  const raw = String(value || '').trim();
+  if (/^[A-Za-z]{1,2}$/.test(raw)) return raw.toUpperCase();
+  const parts = raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase());
+  if (parts.length) return parts.join('');
+  const letters = raw.replace(/[^A-Za-z]/g, '').toUpperCase();
+  if (letters.length >= 2) return letters.slice(0, 2);
+  return letters || 'NA';
+}
+
+function maskMobile(value = '') {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '-';
+  if (digits.length <= 4) return `${'*'.repeat(Math.max(0, digits.length - 1))}${digits.slice(-1)}`;
+  return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+}
 
 export default function FamilyScreen({
   premiumActive = false,
@@ -27,6 +50,7 @@ export default function FamilyScreen({
   onClose
 }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [audit, setAudit] = useState([]);
@@ -36,6 +60,10 @@ export default function FamilyScreen({
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [inviteFilter, setInviteFilter] = useState('pending');
+  const pendingInvitesCount = invites.filter((row) => row.status === 'pending').length;
+  const totalUsed = members.length + pendingInvitesCount;
+  const slotsLeft = Math.max(0, MAX_FAMILY_MEMBERS - totalUsed);
+  const addDisabled = loading || slotsLeft === 0;
 
   const loadMembers = async () => {
     if (!premiumActive) return;
@@ -74,8 +102,12 @@ export default function FamilyScreen({
   }, [premiumActive]);
 
   const handleAdd = async () => {
+    if (slotsLeft === 0) {
+      setMessage(t('Family limit reached. You can add up to {count} members.', { count: MAX_FAMILY_MEMBERS }));
+      return;
+    }
     if (!mobile.trim()) {
-      setMessage('Mobile number is required.');
+      setMessage(t('Mobile number is required.'));
       return;
     }
     try {
@@ -87,7 +119,7 @@ export default function FamilyScreen({
         setInvites((prev) => [result.invite, ...prev]);
       }
       setMobile('');
-      setMessage(result?.invite ? 'Invite sent.' : 'Family member added.');
+      setMessage(result?.invite ? t('Invite sent.') : t('Family member added.'));
     } catch (e) {
       setMessage(e.message);
     } finally {
@@ -100,7 +132,7 @@ export default function FamilyScreen({
       setLoading(true);
       const updated = await api.updateFamilyMember(id, { role: nextRole });
       setMembers((prev) => prev.map((row) => (row.id === id ? updated : row)));
-      setMessage('Role updated.');
+      setMessage(t('Role updated.'));
     } catch (e) {
       setMessage(e.message);
     } finally {
@@ -113,7 +145,7 @@ export default function FamilyScreen({
       setLoading(true);
       await api.removeFamilyMember(id);
       setMembers((prev) => prev.filter((row) => row.id !== id));
-      setMessage('Family member removed.');
+      setMessage(t('Family member removed.'));
     } catch (e) {
       setMessage(e.message);
     } finally {
@@ -126,7 +158,7 @@ export default function FamilyScreen({
       setLoading(true);
       await api.cancelFamilyInvite(id);
       setInvites((prev) => prev.filter((row) => row.id !== id));
-      setMessage('Invite canceled.');
+      setMessage(t('Invite canceled.'));
     } catch (e) {
       setMessage(e.message);
     } finally {
@@ -143,7 +175,7 @@ export default function FamilyScreen({
           row.id === id ? { ...row, expires_at: result?.expires_at || row.expires_at } : row
         )
       );
-      setMessage('Invite resent.');
+      setMessage(t('Invite resent.'));
     } catch (e) {
       setMessage(e.message);
     } finally {
@@ -155,39 +187,49 @@ export default function FamilyScreen({
     inviteFilter === 'all' ? invites : invites.filter((row) => row.status === inviteFilter);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <SectionCard title="Family Access">
+    <View style={styles.container}>
+      <SectionCard title={t('Family Access')}>
         <Text style={[styles.helper, { color: theme.muted }]}>
-          Add family members and set their access level. Admins can manage access.
+          {t('Add family members and set their access level. Admins can manage access.')}
         </Text>
 
         {!premiumActive ? (
           <>
             <Text style={[styles.lockedText, { color: theme.warn }]}>
-              Premium required to enable family access.
+              {t('Premium required to enable family access.')}
             </Text>
-            <PillButton label="Upgrade to Premium" kind="primary" onPress={onOpenSubscription} />
+            <PillButton label={t('Upgrade to Premium')} kind="primary" onPress={onOpenSubscription} />
           </>
         ) : !isAccountOwner && accessRole !== 'admin' ? (
           <Text style={[styles.lockedText, { color: theme.warn }]}>
-            Admin access required to manage family members.
+            {t('Admin access required to manage family members.')}
           </Text>
         ) : (
           <>
             {owner ? (
               <View style={styles.ownerCard}>
-                <Text style={[styles.ownerLabel, { color: theme.muted }]}>Owner</Text>
-                <Text style={[styles.ownerName, { color: theme.text }]}>{owner.full_name}</Text>
-                <Text style={[styles.ownerMeta, { color: theme.muted }]}>{owner.mobile}</Text>
+                <Text style={[styles.ownerLabel, { color: theme.muted }]}>{t('Owner')}</Text>
+                <Text style={[styles.ownerName, { color: theme.text }]}>{toInitials(owner.full_name)}</Text>
+                <Text style={[styles.ownerMeta, { color: theme.muted }]}>{maskMobile(owner.mobile)}</Text>
               </View>
             ) : null}
 
-            <Text style={[styles.label, { color: theme.muted }]}>Add Family Member</Text>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Add Family Member')}</Text>
+            <View style={styles.limitRow}>
+              <Text style={[styles.limitText, { color: theme.muted }]}>
+                {t('{used}/{total} used · {left} left', { used: totalUsed, total: MAX_FAMILY_MEMBERS, left: slotsLeft })}
+              </Text>
+              {slotsLeft === 0 ? (
+                <Text style={[styles.limitBadge, { backgroundColor: theme.accentSoft, color: theme.accent }]}>
+                  {t('Limit reached')}
+                </Text>
+              ) : null}
+            </View>
             <TextInput
               style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
               value={mobile}
               onChangeText={(text) => setMobile(String(text || '').replace(/\D/g, '').slice(0, 10))}
-              placeholder="10-digit mobile number"
+              placeholder={t('10-digit mobile number')}
               placeholderTextColor={theme.muted}
               keyboardType="number-pad"
             />
@@ -195,22 +237,27 @@ export default function FamilyScreen({
               {ROLE_OPTIONS.map((opt) => (
                 <PillButton
                   key={opt.key}
-                  label={opt.label}
+                  label={t(opt.label)}
                   kind={role === opt.key ? 'primary' : 'ghost'}
                   onPress={() => setRole(opt.key)}
                 />
               ))}
             </View>
-            <PillButton label={loading ? 'Please wait...' : 'Add Member'} kind="primary" onPress={handleAdd} />
+            <PillButton
+              label={loading ? t('Please wait...') : t('Add Member')}
+              kind="primary"
+              onPress={handleAdd}
+              disabled={addDisabled}
+            />
 
-            <Text style={[styles.label, { color: theme.muted }]}>Members</Text>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Members')}</Text>
             {members.length ? (
               members.map((row) => (
                 <View key={row.id} style={[styles.memberCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
                   <View style={styles.memberHeader}>
                     <View>
-                      <Text style={[styles.memberName, { color: theme.text }]}>{row.member.full_name}</Text>
-                      <Text style={[styles.memberMeta, { color: theme.muted }]}>{row.member.mobile}</Text>
+                      <Text style={[styles.memberName, { color: theme.text }]}>{toInitials(row.member.full_name)}</Text>
+                      <Text style={[styles.memberMeta, { color: theme.muted }]}>{maskMobile(row.member.mobile)}</Text>
                     </View>
                     <Text style={[styles.memberRole, { color: theme.accent }]}>{row.role.toUpperCase()}</Text>
                   </View>
@@ -218,7 +265,7 @@ export default function FamilyScreen({
                     {ROLE_OPTIONS.map((opt) => (
                       <PillButton
                         key={`${row.id}-${opt.key}`}
-                        label={opt.label}
+                        label={t(opt.label)}
                         kind={row.role === opt.key ? 'primary' : 'ghost'}
                         onPress={() => handleRoleChange(row.id, opt.key)}
                       />
@@ -226,21 +273,21 @@ export default function FamilyScreen({
                   </View>
                   <View style={styles.actionsRow}>
                     <Pressable onPress={() => handleRemove(row.id)}>
-                      <Text style={[styles.removeText, { color: theme.danger }]}>Remove</Text>
+                      <Text style={[styles.removeText, { color: theme.danger }]}>{t('Remove')}</Text>
                     </Pressable>
                   </View>
                 </View>
               ))
             ) : (
-              <Text style={[styles.helper, { color: theme.muted }]}>No family members yet.</Text>
+              <Text style={[styles.helper, { color: theme.muted }]}>{t('No family members yet.')}</Text>
             )}
 
-            <Text style={[styles.label, { color: theme.muted }]}>Pending Invites</Text>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Pending Invites')}</Text>
             <View style={styles.roleRow}>
               {INVITE_FILTERS.map((opt) => (
                 <PillButton
                   key={opt.key}
-                  label={opt.label}
+                  label={t(opt.label)}
                   kind={inviteFilter === opt.key ? 'primary' : 'ghost'}
                   onPress={() => setInviteFilter(opt.key)}
                 />
@@ -251,9 +298,9 @@ export default function FamilyScreen({
                 <View key={row.id} style={[styles.inviteCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
                   <View style={styles.memberHeader}>
                     <View>
-                      <Text style={[styles.memberName, { color: theme.text }]}>{row.mobile}</Text>
+                      <Text style={[styles.memberName, { color: theme.text }]}>{maskMobile(row.mobile)}</Text>
                       <Text style={[styles.memberMeta, { color: theme.muted }]}>
-                        Status: {row.status.toUpperCase()} · Expires: {String(row.expires_at || '').slice(0, 10)}
+                        {t('Status: {value}', { value: t(row.status.toUpperCase()) })} · {t('Expires: {date}', { date: String(row.expires_at || '').slice(0, 10) })}
                       </Text>
                     </View>
                     <Text style={[styles.memberRole, { color: theme.accent }]}>{row.role.toUpperCase()}</Text>
@@ -262,10 +309,10 @@ export default function FamilyScreen({
                     {row.status === 'pending' ? (
                       <>
                         <Pressable onPress={() => handleResendInvite(row.id)}>
-                          <Text style={[styles.actionText, { color: theme.accent }]}>Resend</Text>
+                          <Text style={[styles.actionText, { color: theme.accent }]}>{t('Resend')}</Text>
                         </Pressable>
                         <Pressable onPress={() => handleCancelInvite(row.id)}>
-                          <Text style={[styles.removeText, { color: theme.danger }]}>Cancel</Text>
+                          <Text style={[styles.removeText, { color: theme.danger }]}>{t('Cancel')}</Text>
                         </Pressable>
                       </>
                     ) : null}
@@ -273,21 +320,21 @@ export default function FamilyScreen({
                 </View>
               ))
             ) : (
-              <Text style={[styles.helper, { color: theme.muted }]}>No invites found.</Text>
+              <Text style={[styles.helper, { color: theme.muted }]}>{t('No invites found.')}</Text>
             )}
 
-            <Text style={[styles.label, { color: theme.muted }]}>Audit Log</Text>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Audit Log')}</Text>
             {audit.length ? (
               audit.map((row) => (
                 <View key={row.id} style={styles.auditRow}>
-                  <Text style={[styles.auditAction, { color: theme.text }]}>{row.action.replace(/_/g, ' ')}</Text>
+                  <Text style={[styles.auditAction, { color: theme.text }]}>{t(row.action.replace(/_/g, ' '))}</Text>
                   <Text style={[styles.auditMeta, { color: theme.muted }]}>
-                    {row.actor?.full_name || 'System'} · {String(row.created_at || '').replace('T', ' ').slice(0, 19)}
+                    {row.actor ? toInitials(row.actor.full_name) : t('System')} · {String(row.created_at || '').replace('T', ' ').slice(0, 19)}
                   </Text>
                 </View>
               ))
             ) : (
-              <Text style={[styles.helper, { color: theme.muted }]}>No audit events yet.</Text>
+              <Text style={[styles.helper, { color: theme.muted }]}>{t('No audit events yet.')}</Text>
             )}
           </>
         )}
@@ -296,9 +343,9 @@ export default function FamilyScreen({
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
 
       <View style={styles.footerRow}>
-        <PillButton label="Back" kind="ghost" onPress={onClose} />
+        <PillButton label={t('Back')} kind="ghost" onPress={onClose} />
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -331,6 +378,24 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 10,
     marginBottom: 10
+  },
+  limitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8
+  },
+  limitText: {
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  limitBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: '800',
+    overflow: 'hidden'
   },
   memberCard: {
     borderWidth: 1,

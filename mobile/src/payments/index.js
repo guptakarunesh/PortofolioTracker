@@ -1,62 +1,55 @@
 import { api } from '../api/client';
+import Constants from 'expo-constants';
 
-let RazorpayCheckout = null;
-try {
-  // eslint-disable-next-line global-require
-  const mod = require('react-native-razorpay');
-  RazorpayCheckout = mod?.default || mod;
-} catch (_e) {
-  RazorpayCheckout = null;
-}
+function getAppReturnUrl() {
+  const linkingUri = String(Constants?.linkingUri || '').trim();
+  if (linkingUri) {
+    if (linkingUri.endsWith('/')) {
+      return `${linkingUri}subscription-return`;
+    }
+    return `${linkingUri}/subscription-return`;
+  }
 
-function isRazorpayUnavailable(error) {
-  return String(error?.message || '').includes('razorpay_not_configured');
+  const hostUri =
+    Constants?.expoConfig?.hostUri ||
+    Constants?.manifest2?.extra?.expoClient?.hostUri ||
+    Constants?.manifest?.debuggerHost ||
+    '';
+  const host = String(hostUri || '').split(':')[0];
+  if (host) {
+    return `exp://${host}:8081/--/subscription-return`;
+  }
+  return 'networthmanager://subscription-return';
 }
 
 export async function startCheckout(plan, { user, fallback } = {}) {
-  if (!RazorpayCheckout) {
-    const err = new Error('Razorpay checkout requires a development build (Expo Go does not support native modules).');
-    err.code = 'razorpay_unavailable';
-    if (fallback) {
-      await fallback();
-      return { mode: 'fallback' };
-    }
-    throw err;
-  }
+  void user;
 
   try {
-    const order = await api.createRazorpayOrder({ plan });
-    const result = await RazorpayCheckout.open({
-      key: order.key_id,
-      amount: String(order.amount),
-      currency: order.currency || 'INR',
-      name: 'Networth Manager',
-      description: `Subscription: ${plan}`,
-      order_id: order.order_id,
-      prefill: {
-        name: user?.full_name || '',
-        email: user?.email || '',
-        contact: user?.mobile || ''
-      },
-      notes: {
-        plan
-      },
-      theme: { color: '#0f766e' }
-    });
-
-    await api.verifyRazorpayPayment({
-      plan,
-      razorpay_order_id: result.razorpay_order_id,
-      razorpay_payment_id: result.razorpay_payment_id,
-      razorpay_signature: result.razorpay_signature
-    });
-
-    return { mode: 'razorpay', result };
+    const appReturnUrl = getAppReturnUrl();
+    const order = await api.createCashfreeOrder({ plan, app_return_url: appReturnUrl });
+    const checkoutUrl = String(order?.checkout_url || '').trim();
+    if (!checkoutUrl) {
+      const err = new Error('Cashfree checkout link is not available from server.');
+      err.code = 'cashfree_checkout_url_missing';
+      throw err;
+    }
+    return { mode: 'cashfree', orderId: order.order_id, plan, checkoutUrl };
   } catch (e) {
-    if (fallback && isRazorpayUnavailable(e)) {
+    const code = String(e?.code || '');
+    if (fallback && (code === 'cashfree_not_configured' || code === 'payment_not_configured')) {
       await fallback();
       return { mode: 'fallback' };
     }
     throw e;
   }
+}
+
+export async function verifyCheckout(plan, orderId) {
+  if (!plan || !orderId) {
+    const err = new Error('plan and orderId are required for payment verification.');
+    err.code = 'cashfree_verify_missing_fields';
+    throw err;
+  }
+  return api.verifyCashfreePayment({ plan, order_id: orderId });
 }

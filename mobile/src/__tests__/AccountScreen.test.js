@@ -6,6 +6,7 @@ jest.mock('../api/client', () => ({
   api: {
     getSettings: jest.fn(async () => ({})),
     getSubscriptionStatus: jest.fn(async () => ({})),
+    getSubscriptionHistory: jest.fn(async () => []),
     upsertSettings: jest.fn(async () => ({})),
     exportUserData: jest.fn(async () => ({})),
     deleteAccount: jest.fn(async () => ({}))

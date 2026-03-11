@@ -5,6 +5,7 @@ import PillButton from '../components/PillButton';
 import { api } from '../api/client';
 import { formatAmountFromInr } from '../utils/format';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 
 const ASSETS_COLOR = '#0f766e';
 const LIABILITIES_COLOR = '#f97316';
@@ -24,6 +25,7 @@ export default function PerformanceScreen({
   onOpenSubscription
 }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [rows, setRows] = useState([]);
   const [message, setMessage] = useState('');
 
@@ -51,9 +53,9 @@ export default function PerformanceScreen({
   if (!premiumActive) {
     return (
       <View>
-        <SectionCard title="Performance (Premium)">
-          <Text style={[styles.sub, { color: theme.warn }]}>Performance insights are available with Premium.</Text>
-          <PillButton label="Upgrade to Premium" onPress={onOpenSubscription} />
+        <SectionCard title={t('Performance (Premium)')}>
+          <Text style={[styles.sub, { color: theme.warn }]}>{t('Performance insights are available with Premium.')}</Text>
+          <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
         </SectionCard>
       </View>
     );
@@ -61,12 +63,12 @@ export default function PerformanceScreen({
 
   return (
     <View>
-      <SectionCard title="Performance (Last 6 Months)">
-        <Text style={[styles.sub, { color: theme.muted }]}>Monthly trend of assets, liabilities, and net worth.</Text>
+      <SectionCard title={t('Performance (Last 6 Months)')}>
+        <Text style={[styles.sub, { color: theme.muted }]}>{t('Monthly trend of assets, liabilities, and net worth.')}</Text>
         <View style={styles.legendRow}>
-          <Text style={[styles.legendItem, styles.assetsLegend]}>Assets</Text>
-          <Text style={[styles.legendItem, styles.liabilitiesLegend]}>Liabilities</Text>
-          <Text style={[styles.legendItem, styles.netWorthLegend]}>Net Worth</Text>
+          <Text style={[styles.legendItem, styles.assetsLegend]}>{t('Assets')}</Text>
+          <Text style={[styles.legendItem, styles.liabilitiesLegend]}>{t('Liabilities')}</Text>
+          <Text style={[styles.legendItem, styles.netWorthLegend]}>{t('Net Worth')}</Text>
         </View>
 
         <View style={styles.chartCol}>
@@ -82,7 +84,7 @@ export default function PerformanceScreen({
                 <Text style={[styles.axisLabel, { color: theme.text }]}>{formatMonthLabel(row.quarterStart)}</Text>
 
                 <View style={styles.metricRow}>
-                  <Text style={[styles.metricKey, styles.assetsLegend]}>Assets</Text>
+                  <Text style={[styles.metricKey, styles.assetsLegend]}>{t('Assets')}</Text>
                   <View style={[styles.track, { backgroundColor: theme.border }]}>
                     <View style={[styles.fill, styles.assetsBar, { width: barWidth(assets, maxY) }]} />
                   </View>
@@ -92,7 +94,7 @@ export default function PerformanceScreen({
                 </View>
 
                 <View style={styles.metricRow}>
-                  <Text style={[styles.metricKey, styles.liabilitiesLegend]}>Liabilities</Text>
+                  <Text style={[styles.metricKey, styles.liabilitiesLegend]}>{t('Liabilities')}</Text>
                   <View style={[styles.track, { backgroundColor: theme.border }]}>
                     <View style={[styles.fill, styles.liabilitiesBar, { width: barWidth(liabilities, maxY) }]} />
                   </View>
@@ -102,7 +104,7 @@ export default function PerformanceScreen({
                 </View>
 
                 <View style={styles.metricRow}>
-                  <Text style={[styles.metricKey, styles.netWorthLegend]}>Net Worth</Text>
+                  <Text style={[styles.metricKey, styles.netWorthLegend]}>{t('Net Worth')}</Text>
                   <View style={[styles.track, { backgroundColor: theme.border }]}>
                     <View style={[styles.fill, styles.netWorthBar, { width: barWidth(netWorth, maxY) }]} />
                   </View>
@@ -115,7 +117,7 @@ export default function PerformanceScreen({
           })}
         </View>
 
-        {!rows.length ? <Text style={[styles.sub, { color: theme.muted }]}>No performance snapshots available yet.</Text> : null}
+        {!rows.length ? <Text style={[styles.sub, { color: theme.muted }]}>{t('No performance snapshots available yet.')}</Text> : null}
       </SectionCard>
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>

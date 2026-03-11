@@ -9,6 +9,20 @@ const router = Router();
 const VALID_ROLES = new Set(['read', 'write', 'admin']);
 const INVITE_TTL_DAYS = 7;
 
+function initialsFromName(name = '') {
+  const compact = String(name || '').replace(/\s+/g, '').toUpperCase();
+  if (/^[A-Z]{1,2}$/.test(compact)) return compact;
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return 'NA';
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+}
+
 function requireFamilyPremium(req, res, next) {
   const subscription = ensureSubscriptionForUser(req.accountOwnerId || req.accountUserId || req.userId);
   if (!isPremiumActive(subscription)) {
@@ -27,7 +41,7 @@ function memberRow(row) {
     updated_at: row.updated_at,
     member: {
       id: row.member_id,
-      full_name: decryptString(row.full_name),
+      full_name: initialsFromName(decryptString(row.full_name)),
       mobile: decryptString(row.mobile),
       email: decryptString(row.email || '')
     }
@@ -93,7 +107,7 @@ router.get('/', requireFamilyPremium, requireAccountAdmin, (req, res) => {
     owner: owner
       ? {
           id: owner.id,
-          full_name: decryptString(owner.full_name),
+          full_name: initialsFromName(decryptString(owner.full_name)),
           mobile: decryptString(owner.mobile),
           email: decryptString(owner.email || '')
         }
@@ -112,7 +126,7 @@ router.get('/access', (req, res) => {
     owner: owner
       ? {
           id: owner.id,
-          full_name: decryptString(owner.full_name),
+          full_name: initialsFromName(decryptString(owner.full_name)),
           mobile: decryptString(owner.mobile),
           email: decryptString(owner.email || '')
         }
@@ -306,7 +320,7 @@ router.get('/audit', requireFamilyPremium, requireAccountAdmin, (req, res) => {
       actor: row.actor_id
         ? {
             id: row.actor_id,
-            full_name: decryptString(row.full_name),
+            full_name: initialsFromName(decryptString(row.full_name)),
             mobile: decryptString(row.mobile),
             email: decryptString(row.email || '')
           }

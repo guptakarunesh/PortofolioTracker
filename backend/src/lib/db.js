@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decryptString, encryptString, hashLookup } from './crypto.js';
+import { hashPin } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +38,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   token_hash TEXT NOT NULL UNIQUE,
+  device_id TEXT,
+  auth_method TEXT,
+  created_ip TEXT,
+  created_user_agent TEXT,
+  last_seen_at TEXT,
+  last_seen_ip TEXT,
+  last_seen_user_agent TEXT,
   expires_at TEXT NOT NULL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -84,6 +92,7 @@ CREATE TABLE IF NOT EXISTS family_audit (
 CREATE TABLE IF NOT EXISTS otp_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   mobile_hash TEXT NOT NULL,
+  purpose TEXT NOT NULL DEFAULT 'login',
   provider TEXT NOT NULL,
   provider_ref TEXT,
   otp_hash TEXT,
@@ -100,6 +109,9 @@ CREATE TABLE IF NOT EXISTS assets (
   sub_category TEXT,
   name TEXT NOT NULL,
   institution TEXT,
+  holder_type TEXT DEFAULT 'Self',
+  reach_via TEXT DEFAULT 'Branch',
+  relationship_mobile TEXT,
   account_ref TEXT,
   quantity REAL DEFAULT 0,
   invested_amount REAL DEFAULT 0,
@@ -107,6 +119,7 @@ CREATE TABLE IF NOT EXISTS assets (
   notes TEXT,
   metadata TEXT,
   tracking_url TEXT,
+  updated_by_initials TEXT,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -116,6 +129,9 @@ CREATE TABLE IF NOT EXISTS liabilities (
   user_id INTEGER,
   loan_type TEXT NOT NULL,
   lender TEXT NOT NULL,
+  holder_type TEXT DEFAULT 'Self',
+  reach_via TEXT DEFAULT 'Branch',
+  relationship_mobile TEXT,
   account_ref TEXT,
   original_amount REAL DEFAULT 0,
   outstanding_amount REAL DEFAULT 0,
@@ -125,6 +141,7 @@ CREATE TABLE IF NOT EXISTS liabilities (
   tenure_remaining TEXT,
   end_date TEXT,
   notes TEXT,
+  updated_by_initials TEXT,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -253,6 +270,186 @@ CREATE TABLE IF NOT EXISTS payment_history (
   status TEXT NOT NULL DEFAULT 'succeeded',
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS payment_checkout_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  order_id TEXT NOT NULL UNIQUE,
+  plan TEXT NOT NULL,
+  amount_inr INTEGER NOT NULL DEFAULT 0,
+  period TEXT NOT NULL,
+  starts_at TEXT,
+  valid_until TEXT,
+  mode TEXT NOT NULL DEFAULT 'standard',
+  status TEXT NOT NULL DEFAULT 'created',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS app_notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  payload TEXT,
+  read_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS sensitive_access_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_user_id INTEGER NOT NULL,
+  actor_user_id INTEGER NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  ip_address TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS security_event_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  actor_user_id INTEGER,
+  mobile_hash TEXT,
+  event_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ok',
+  ip_address TEXT,
+  meta TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS device_push_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  platform TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reminder_notification_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  reminder_id INTEGER NOT NULL,
+  recipient_user_id INTEGER NOT NULL,
+  notify_date TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(reminder_id, recipient_user_id, notify_date, phase),
+  FOREIGN KEY (reminder_id) REFERENCES reminders(id) ON DELETE CASCADE,
+  FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS user_devices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  device_id TEXT NOT NULL,
+  platform TEXT,
+  os_version TEXT,
+  app_version TEXT,
+  app_build TEXT,
+  device_name TEXT,
+  device_model TEXT,
+  timezone TEXT,
+  locale TEXT,
+  last_lat REAL,
+  last_lng REAL,
+  last_accuracy_m REAL,
+  first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_seen_ip TEXT,
+  last_seen_user_agent TEXT,
+  trusted INTEGER NOT NULL DEFAULT 1,
+  revoked_at TEXT,
+  UNIQUE(user_id, device_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS auth_login_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  mobile_hash TEXT,
+  event_type TEXT NOT NULL,
+  auth_method TEXT,
+  status TEXT NOT NULL DEFAULT 'ok',
+  reason TEXT,
+  device_id TEXT,
+  platform TEXT,
+  os_version TEXT,
+  app_version TEXT,
+  app_build TEXT,
+  device_name TEXT,
+  device_model TEXT,
+  timezone TEXT,
+  locale TEXT,
+  geo_lat REAL,
+  geo_lng REAL,
+  geo_accuracy_m REAL,
+  ip_address TEXT,
+  user_agent TEXT,
+  meta TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS support_action_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_user_id INTEGER,
+  status TEXT NOT NULL DEFAULT 'ok',
+  reason TEXT,
+  meta TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS support_users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  must_reset_password INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS support_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  support_user_id INTEGER NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (support_user_id) REFERENCES support_users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS support_password_resets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  support_user_id INTEGER NOT NULL,
+  code_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  consumed_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (support_user_id) REFERENCES support_users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS support_chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 `);
 
 function hasColumn(table, column) {
@@ -271,7 +468,23 @@ ensureColumn('liabilities', 'user_id', 'INTEGER');
 ensureColumn('transactions', 'user_id', 'INTEGER');
 ensureColumn('reminders', 'user_id', 'INTEGER');
 ensureColumn('assets', 'tracking_url', 'TEXT');
+ensureColumn('assets', 'holder_type', "TEXT DEFAULT 'Self'");
+ensureColumn('assets', 'reach_via', "TEXT DEFAULT 'Branch'");
+ensureColumn('assets', 'relationship_mobile', 'TEXT');
+ensureColumn('assets', 'updated_by_initials', 'TEXT');
+ensureColumn('liabilities', 'holder_type', "TEXT DEFAULT 'Self'");
+ensureColumn('liabilities', 'reach_via', "TEXT DEFAULT 'Branch'");
+ensureColumn('liabilities', 'relationship_mobile', 'TEXT');
+ensureColumn('liabilities', 'updated_by_initials', 'TEXT');
 ensureColumn('users', 'mobile_hash', 'TEXT');
+ensureColumn('otp_requests', 'purpose', "TEXT DEFAULT 'login'");
+ensureColumn('sessions', 'device_id', 'TEXT');
+ensureColumn('sessions', 'auth_method', 'TEXT');
+ensureColumn('sessions', 'created_ip', 'TEXT');
+ensureColumn('sessions', 'created_user_agent', 'TEXT');
+ensureColumn('sessions', 'last_seen_at', 'TEXT');
+ensureColumn('sessions', 'last_seen_ip', 'TEXT');
+ensureColumn('sessions', 'last_seen_user_agent', 'TEXT');
 
 db.exec(`
 CREATE INDEX IF NOT EXISTS idx_assets_user_id ON assets(user_id);
@@ -289,14 +502,45 @@ CREATE INDEX IF NOT EXISTS idx_users_mobile_hash ON users(mobile_hash);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_payment_history_user_id ON payment_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_payment_history_time ON payment_history(purchased_at);
+CREATE INDEX IF NOT EXISTS idx_checkout_sessions_user_id ON payment_checkout_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_checkout_sessions_order_id ON payment_checkout_sessions(order_id);
 CREATE INDEX IF NOT EXISTS idx_family_owner_user_id ON family_members(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_family_member_user_id ON family_members(member_user_id);
 CREATE INDEX IF NOT EXISTS idx_family_invites_owner_user_id ON family_invites(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_family_invites_mobile_hash ON family_invites(mobile_hash);
 CREATE INDEX IF NOT EXISTS idx_family_invites_status ON family_invites(status);
 CREATE INDEX IF NOT EXISTS idx_family_audit_owner_user_id ON family_audit(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_app_notifications_user_id ON app_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_app_notifications_read_at ON app_notifications(read_at);
+CREATE INDEX IF NOT EXISTS idx_sensitive_access_owner ON sensitive_access_log(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_sensitive_access_actor ON sensitive_access_log(actor_user_id);
 CREATE INDEX IF NOT EXISTS idx_otp_requests_mobile_hash ON otp_requests(mobile_hash);
+CREATE INDEX IF NOT EXISTS idx_otp_requests_purpose ON otp_requests(purpose);
 CREATE INDEX IF NOT EXISTS idx_otp_requests_expires_at ON otp_requests(expires_at);
+CREATE INDEX IF NOT EXISTS idx_security_event_user ON security_event_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_security_event_mobile_hash ON security_event_log(mobile_hash);
+CREATE INDEX IF NOT EXISTS idx_security_event_type ON security_event_log(event_type);
+CREATE INDEX IF NOT EXISTS idx_device_push_tokens_user_id ON device_push_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_device_push_tokens_token ON device_push_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_reminder_notification_log_lookup
+  ON reminder_notification_log(reminder_id, recipient_user_id, notify_date, phase);
+CREATE INDEX IF NOT EXISTS idx_user_devices_user_id ON user_devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_devices_device_id ON user_devices(device_id);
+CREATE INDEX IF NOT EXISTS idx_user_devices_seen ON user_devices(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_auth_login_log_user_id ON auth_login_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_login_log_mobile_hash ON auth_login_log(mobile_hash);
+CREATE INDEX IF NOT EXISTS idx_auth_login_log_event_type ON auth_login_log(event_type);
+CREATE INDEX IF NOT EXISTS idx_auth_login_log_created_at ON auth_login_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_support_action_log_actor ON support_action_log(actor);
+CREATE INDEX IF NOT EXISTS idx_support_action_log_target_user ON support_action_log(target_user_id);
+CREATE INDEX IF NOT EXISTS idx_support_action_log_created_at ON support_action_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_support_users_username ON support_users(username);
+CREATE INDEX IF NOT EXISTS idx_support_sessions_user ON support_sessions(support_user_id);
+CREATE INDEX IF NOT EXISTS idx_support_sessions_expires ON support_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_support_password_resets_user ON support_password_resets(support_user_id);
+CREATE INDEX IF NOT EXISTS idx_support_password_resets_expires ON support_password_resets(expires_at);
+CREATE INDEX IF NOT EXISTS idx_support_chat_messages_user ON support_chat_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_chat_messages_created ON support_chat_messages(created_at);
 `);
 
 function maybeEncrypt(value) {
@@ -335,10 +579,12 @@ function migrateUsersPii() {
 
   const tx = db.transaction(() => {
     rows.forEach((row) => {
+      const plainName = decryptString(row.full_name || '');
       const plainMobile = decryptString(row.mobile || '');
+      const initials = initialsFromName(plainName);
       stmt.run({
         id: row.id,
-        full_name: maybeEncrypt(row.full_name),
+        full_name: maybeEncrypt(initials || 'NA'),
         mobile: maybeEncrypt(row.mobile),
         email: maybeEncrypt(row.email),
         mobile_hash: hashLookup(plainMobile)
@@ -349,11 +595,76 @@ function migrateUsersPii() {
   tx();
 }
 
+function initialsFromName(name = '') {
+  const compact = String(name || '').replace(/\s+/g, '').toUpperCase();
+  if (/^[A-Z]{1,2}$/.test(compact)) return compact;
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return 'NA';
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+}
+
+function backfillUpdatedByInitials() {
+  const users = db.prepare('SELECT id, full_name FROM users').all();
+  const updateAssets = db.prepare(`
+    UPDATE assets
+    SET updated_by_initials = @initials
+    WHERE user_id = @user_id
+      AND (updated_by_initials IS NULL OR TRIM(updated_by_initials) = '' OR UPPER(updated_by_initials) = 'NA')
+  `);
+  const updateLiabilities = db.prepare(`
+    UPDATE liabilities
+    SET updated_by_initials = @initials
+    WHERE user_id = @user_id
+      AND (updated_by_initials IS NULL OR TRIM(updated_by_initials) = '' OR UPPER(updated_by_initials) = 'NA')
+  `);
+
+  const tx = db.transaction(() => {
+    users.forEach((row) => {
+      const initials = initialsFromName(decryptString(row.full_name || ''));
+      if (!initials || initials === 'NA') return;
+      updateAssets.run({ initials, user_id: row.id });
+      updateLiabilities.run({ initials, user_id: row.id });
+    });
+  });
+  tx();
+}
+
+function seedSupportUsers() {
+  const defaults = [
+    { username: 'Admin1', password: 'Pass1' },
+    { username: 'Admin2', password: 'Pass2' },
+    { username: 'Admin3', password: 'Pass3' }
+  ];
+  const selectStmt = db.prepare('SELECT id FROM support_users WHERE LOWER(username) = LOWER(?) LIMIT 1');
+  const insertStmt = db.prepare(`
+    INSERT INTO support_users (username, password_hash, must_reset_password, created_at, updated_at)
+    VALUES (?, ?, 1, ?, ?)
+  `);
+  const now = new Date().toISOString();
+  const tx = db.transaction(() => {
+    defaults.forEach((item) => {
+      const exists = selectStmt.get(item.username);
+      if (exists) return;
+      insertStmt.run(item.username, hashPin(item.password), now, now);
+    });
+  });
+  tx();
+}
+
 migrateUsersPii();
 migrateEncryptedColumns('assets', 'id', ['name', 'institution', 'account_ref', 'notes']);
-migrateEncryptedColumns('liabilities', 'id', ['lender', 'account_ref', 'notes']);
+migrateEncryptedColumns('assets', 'id', ['relationship_mobile']);
+migrateEncryptedColumns('liabilities', 'id', ['lender', 'account_ref', 'notes', 'relationship_mobile']);
 migrateEncryptedColumns('transactions', 'id', ['asset_name', 'account_ref', 'remarks']);
 migrateEncryptedColumns('reminders', 'id', ['description']);
 migrateEncryptedColumns('asset_trackers', 'id', ['asset_name', 'login_id', 'login_password', 'notes']);
+backfillUpdatedByInitials();
+seedSupportUsers();
 
 export const nowIso = () => new Date().toISOString();

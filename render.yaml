@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: networth-manager-backend-preprod
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+      - key: DB_PATH
+        value: /tmp/portfolio.db
+      - key: OTP_PROVIDER
+        value: firebase
+      - key: FIREBASE_AUTH_BASE_URL
+        value: https://identitytoolkit.googleapis.com/v1
+      - key: PAYMENT_PROVIDER
+        value: cashfree
+      - key: CASHFREE_ENV
+        value: sandbox
+      - key: CASHFREE_API_VERSION
+        value: 2023-08-01

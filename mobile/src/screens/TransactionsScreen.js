@@ -3,8 +3,10 @@ import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { api } from '../api/client';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
+import DateField from '../components/DateField';
 import { formatDate, formatINR } from '../utils/format';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 
 const TRANSACTION_CATEGORY_OPTIONS = [
   'Banking & Deposits',
@@ -33,6 +35,7 @@ const displayAmount = (value, hideSensitive) => (hideSensitive ? '••••�
 
 export default function TransactionsScreen({ hideSensitive = false, readOnly = false }) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
     tx_date: '2026-02-16',
@@ -56,11 +59,11 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
 
   const submit = async () => {
     if (readOnly) {
-      setMessage('Subscription expired. Renew to edit transactions.');
+      setMessage(t('Subscription expired. Renew to edit transactions.'));
       return;
     }
     if (!form.tx_date || !form.category || !form.tx_type || !form.amount) {
-      setMessage('Date, category, type and amount are required.');
+      setMessage(t('Date, category, type and amount are required.'));
       return;
     }
     await api.createTransaction({
@@ -70,32 +73,29 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
     setForm((f) => ({ ...f, asset_name: '', amount: '' }));
     setShowCategoryOptions(false);
     setShowTypeOptions(false);
-    setMessage('Transaction added.');
+    setMessage(t('Transaction added.'));
     await load();
   };
 
   return (
     <View>
-      <SectionCard title="Add Transaction">
-        {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>Subscription expired. View-only mode.</Text> : null}
-        <Text style={[styles.label, { color: theme.muted }]}>Date (YYYY-MM-DD)</Text>
-        <TextInput
-          style={[
-            styles.input,
-            { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
-          ]}
+      <SectionCard title={t('Add Transaction')}>
+        {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{t('Subscription expired. View-only mode.')}</Text> : null}
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Date (YYYY-MM-DD)')}</Text>
+        <DateField
           value={form.tx_date}
-          onChangeText={(v) => setForm((f) => ({ ...f, tx_date: v }))}
-          editable={!readOnly}
+          onChange={(v) => setForm((f) => ({ ...f, tx_date: v }))}
+          theme={theme}
+          placeholder="YYYY-MM-DD"
+          disabled={readOnly}
         />
-        <Text style={[styles.label, { color: theme.muted }]}>Category</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Category')}</Text>
         <Pressable
           style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
           disabled={readOnly}
           onPress={() => setShowCategoryOptions((v) => !v)}
         >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{form.category || 'Select category'}</Text>
+          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.category || 'Select category')}</Text>
           <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showCategoryOptions ? '▲' : '▼'}</Text>
         </Pressable>
         {showCategoryOptions ? (
@@ -120,19 +120,19 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
                     form.category === category && { color: theme.accent, fontWeight: '700' }
                   ]}
                 >
-                  {category}
+                  {t(category)}
                 </Text>
               </Pressable>
             ))}
           </View>
         ) : null}
-        <Text style={[styles.label, { color: theme.muted }]}>Type (Buy/Sell/Deposit...)</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Type (Buy/Sell/Deposit...)')}</Text>
         <Pressable
           style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
           disabled={readOnly}
           onPress={() => setShowTypeOptions((v) => !v)}
         >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{form.tx_type || 'Select transaction type'}</Text>
+          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.tx_type || 'Select transaction type')}</Text>
           <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showTypeOptions ? '▲' : '▼'}</Text>
         </Pressable>
         {showTypeOptions ? (
@@ -157,13 +157,13 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
                     form.tx_type === txType && { color: theme.accent, fontWeight: '700' }
                   ]}
                 >
-                  {txType}
+                  {t(txType)}
                 </Text>
               </Pressable>
             ))}
           </View>
         ) : null}
-        <Text style={[styles.label, { color: theme.muted }]}>Asset Name</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Asset Name')}</Text>
         <TextInput
           style={[
             styles.input,
@@ -174,7 +174,7 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
           onChangeText={(v) => setForm((f) => ({ ...f, asset_name: v }))}
           editable={!readOnly}
         />
-        <Text style={[styles.label, { color: theme.muted }]}>Amount (INR)</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Amount (INR)')}</Text>
         <TextInput
           style={[
             styles.input,
@@ -186,15 +186,15 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
           onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
           editable={!readOnly}
         />
-        <PillButton label="Save Transaction" onPress={() => submit().catch((e) => setMessage(e.message))} disabled={readOnly} />
+        <PillButton label={t('Save Transaction')} onPress={() => submit().catch((e) => setMessage(e.message))} disabled={readOnly} />
       </SectionCard>
 
-      <SectionCard title="Recent Transactions">
+      <SectionCard title={t('Recent Transactions')}>
         {items.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.name, { color: theme.text }]}>{item.category} · {item.tx_type}</Text>
-              <Text style={[styles.sub, { color: theme.muted }]}>{item.asset_name || '-'} · {formatDate(item.tx_date)}</Text>
+              <Text style={[styles.name, { color: theme.text }]}>{t('{category} · {type}', { category: t(item.category), type: t(item.tx_type) })}</Text>
+              <Text style={[styles.sub, { color: theme.muted }]}>{t('{name} · {date}', { name: item.asset_name || '-', date: formatDate(item.tx_date) })}</Text>
             </View>
             <Text style={[styles.amount, { color: theme.text }]}>{displayAmount(item.amount, hideSensitive)}</Text>
           </View>

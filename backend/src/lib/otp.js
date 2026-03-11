@@ -10,6 +10,10 @@ const GUPSHUP_API_KEY = process.env.GUPSHUP_API_KEY || '';
 const GUPSHUP_USER_ID = process.env.GUPSHUP_USER_ID || '';
 const GUPSHUP_TEMPLATE_ID = process.env.GUPSHUP_TEMPLATE_ID || '';
 const GUPSHUP_SENDER_ID = process.env.GUPSHUP_SENDER_ID || '';
+const FIREBASE_AUTH_BASE_URL = process.env.FIREBASE_AUTH_BASE_URL || 'https://identitytoolkit.googleapis.com/v1';
+const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || process.env.FIREBASE_API_KEY || '';
+const FIREBASE_TENANT_ID = process.env.FIREBASE_TENANT_ID || '';
+const OTP_STRICT_PROVIDER = String(process.env.OTP_STRICT_PROVIDER || '0') === '1';
 
 export const OTP_CONFIG = {
   provider: PROVIDER,
@@ -20,8 +24,18 @@ export const OTP_CONFIG = {
   countryCode: String(process.env.OTP_COUNTRY_CODE || '91')
 };
 
+export class OtpServiceError extends Error {
+  constructor(message, status = 500, code = 'otp_service_error') {
+    super(message);
+    this.name = 'OtpServiceError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export function normalizeProvider(input = PROVIDER) {
   const value = String(input || '').toLowerCase();
+  if (value === 'firebase' || value === 'firebase_auth') return 'firebase';
   if (value === 'msg91' || value === 'msg91_v5') return 'msg91_v5';
   if (value === 'msg91_legacy') return 'msg91_legacy';
   if (value === 'gupshup' || value === 'gupshup_template') return 'gupshup_template';
@@ -43,6 +57,114 @@ export function generateOtp(length = OTP_CONFIG.length) {
 
 export function hashOtp(otp) {
   return crypto.createHash('sha256').update(String(otp)).digest('hex');
+}
+
+function toFirebasePhoneNumber(mobile) {
+  const e164WithoutPlus = buildMobileE164(mobile);
+  return `+${String(e164WithoutPlus || '').replace(/[^\d]/g, '')}`;
+}
+
+function formatFirebaseError(payload, fallback = 'Firebase OTP request failed') {
+  const rawCode = String(payload?.error?.message || '').trim() || 'UNKNOWN';
+  const code = rawCode.toUpperCase();
+  if (code === 'INVALID_VERIFICATION_CODE' || code === 'INVALID_CODE') {
+    return { message: 'Invalid OTP', status: 401, code };
+  }
+  if (code === 'SESSION_EXPIRED' || code === 'CODE_EXPIRED') {
+    return { message: 'OTP expired or not requested', status: 400, code };
+  }
+  if (
+    code === 'MISSING_APP_CREDENTIAL' ||
+    code === 'INVALID_APP_CREDENTIAL' ||
+    code === 'MISSING_RECAPTCHA_TOKEN' ||
+    code === 'INVALID_RECAPTCHA_TOKEN' ||
+    code === 'CAPTCHA_CHECK_FAILED'
+  ) {
+    return {
+      message: 'Firebase app verification failed. Pass firebase_recaptcha_token and retry.',
+      status: 400,
+      code
+    };
+  }
+  if (code === 'TOO_MANY_ATTEMPTS_TRY_LATER' || code === 'QUOTA_EXCEEDED') {
+    return { message: 'Too many OTP attempts. Please try again later.', status: 429, code };
+  }
+  if (code === 'OPERATION_NOT_ALLOWED' || code === 'API_KEY_INVALID' || code === 'PROJECT_NOT_FOUND') {
+    return { message: 'Firebase OTP provider is not configured correctly.', status: 500, code };
+  }
+  return { message: `${fallback}: ${rawCode}`, status: 502, code };
+}
+
+async function callFirebase(path, payload) {
+  if (!FIREBASE_WEB_API_KEY) {
+    throw new OtpServiceError('Firebase API key is required for OTP provider.', 500, 'firebase_api_key_missing');
+  }
+  const url = `${FIREBASE_AUTH_BASE_URL}${path}?key=${encodeURIComponent(FIREBASE_WEB_API_KEY)}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.error?.message) {
+    const info = formatFirebaseError(data);
+    throw new OtpServiceError(info.message, info.status, info.code);
+  }
+  return data;
+}
+
+async function sendFirebaseOtp(mobile, options = {}) {
+  const recaptchaToken = String(
+    options?.firebase_recaptcha_token || options?.recaptcha_token || options?.recaptchaToken || ''
+  ).trim();
+  const iosReceipt = String(options?.firebase_ios_receipt || options?.iosReceipt || '').trim();
+  const iosSecret = String(options?.firebase_ios_secret || options?.iosSecret || '').trim();
+
+  if (!recaptchaToken && !(iosReceipt && iosSecret)) {
+    throw new OtpServiceError(
+      'Firebase OTP requires firebase_recaptcha_token (or ios receipt/secret).',
+      400,
+      'firebase_app_verification_missing'
+    );
+  }
+
+  const payload = {
+    phoneNumber: toFirebasePhoneNumber(mobile)
+  };
+  if (recaptchaToken) payload.recaptchaToken = recaptchaToken;
+  if (iosReceipt && iosSecret) {
+    payload.iosReceipt = iosReceipt;
+    payload.iosSecret = iosSecret;
+  }
+  if (FIREBASE_TENANT_ID) payload.tenantId = FIREBASE_TENANT_ID;
+
+  const data = await callFirebase('/accounts:sendVerificationCode', payload);
+  if (!data?.sessionInfo) {
+    throw new OtpServiceError('Firebase OTP send succeeded but sessionInfo is missing.', 502, 'firebase_session_missing');
+  }
+  return { providerRef: String(data.sessionInfo) };
+}
+
+async function verifyFirebaseOtp(_mobile, otp, providerRef) {
+  if (!providerRef) {
+    throw new OtpServiceError('OTP session is missing. Request OTP again.', 400, 'firebase_session_missing');
+  }
+
+  const payload = {
+    sessionInfo: String(providerRef),
+    code: String(otp)
+  };
+  if (FIREBASE_TENANT_ID) payload.tenantId = FIREBASE_TENANT_ID;
+
+  try {
+    await callFirebase('/accounts:signInWithPhoneNumber', payload);
+    return true;
+  } catch (error) {
+    const code = String(error?.code || '').toUpperCase();
+    if (code === 'INVALID_VERIFICATION_CODE' || code === 'INVALID_CODE') return false;
+    if (code === 'SESSION_EXPIRED' || code === 'CODE_EXPIRED') return false;
+    throw error;
+  }
 }
 
 async function sendMsg91V5Otp(mobile) {
@@ -204,6 +326,10 @@ async function sendGupshupTemplateOtp(mobile, otp) {
 }
 
 const PROVIDERS = {
+  firebase: {
+    send: sendFirebaseOtp,
+    verify: verifyFirebaseOtp
+  },
   msg91_v5: {
     send: sendMsg91V5Otp,
     verify: verifyMsg91V5Otp
@@ -226,14 +352,25 @@ const PROVIDERS = {
   }
 };
 
+function isProviderConfigured(providerKey) {
+  if (providerKey === 'firebase') return Boolean(FIREBASE_WEB_API_KEY);
+  if (providerKey === 'msg91_v5') return Boolean(MSG91_AUTH_KEY && MSG91_TEMPLATE_ID);
+  if (providerKey === 'msg91_legacy') return Boolean(MSG91_AUTH_KEY);
+  if (providerKey === 'gupshup_template') {
+    return Boolean(GUPSHUP_API_KEY && GUPSHUP_USER_ID && GUPSHUP_TEMPLATE_ID && GUPSHUP_SENDER_ID);
+  }
+  return true;
+}
+
 export function getOtpProvider(providerOverride) {
-  const providerKey = normalizeProvider(providerOverride);
+  const requested = normalizeProvider(providerOverride);
+  const providerKey = !OTP_STRICT_PROVIDER && !isProviderConfigured(requested) ? 'mock' : requested;
   return { key: providerKey, handler: PROVIDERS[providerKey] || PROVIDERS.mock };
 }
 
-export async function sendOtp(mobile, providerOverride) {
+export async function sendOtp(mobile, providerOverride, providerOptions = {}) {
   const { key, handler } = getOtpProvider(providerOverride);
-  const payload = await handler.send(mobile);
+  const payload = await handler.send(mobile, providerOptions);
   return { provider: key, ...payload };
 }
 

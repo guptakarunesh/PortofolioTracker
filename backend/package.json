@@ -14,11 +14,13 @@
     "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "dayjs": "^1.11.13",
+    "dotenv": "^16.4.5",
     "express": "^4.21.2",
+    "localtunnel": "^2.0.2",
     "morgan": "^1.10.0"
   },
   "devDependencies": {
-    "supertest": "^6.3.4",
-    "node-mocks-http": "^1.11.0"
+    "node-mocks-http": "^1.11.0",
+    "supertest": "^6.3.4"
   }
 }

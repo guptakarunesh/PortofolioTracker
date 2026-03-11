@@ -10,14 +10,16 @@ test('auth + family sharing + access roles', async (t) => {
   const app = await loadApp();
 
   const ownerPayload = {
-    full_name: 'Owner User',
+    full_name: 'OU',
     mobile: '9999999999',
     email: 'owner@example.com',
+    country: 'India',
     mpin: '1234',
     consent_privacy: true,
     consent_terms: true,
-    privacy_policy_version: 'v1.0',
-    terms_version: 'v1.0'
+    privacy_policy_version: 'v1.1',
+    terms_version: 'v1.1',
+    device_context: { device_id: 'test-device' }
   };
 
   const ownerRegister = await appRequest(app, {
@@ -67,14 +69,16 @@ test('auth + family sharing + access roles', async (t) => {
     method: 'POST',
     path: '/api/auth/register',
     body: {
-      full_name: 'Member User',
+      full_name: 'MU',
       mobile: '8888888888',
       email: 'member@example.com',
+      country: 'India',
       mpin: '1111',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.0',
-      terms_version: 'v1.0'
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'test-device' }
     }
   });
   assert.equal(memberRegister.status, 201);
@@ -145,14 +149,16 @@ test('otp login flow (mock)', async (t) => {
     method: 'POST',
     path: '/api/auth/register',
     body: {
-      full_name: 'Otp User',
+      full_name: 'OU',
       mobile: '7777777777',
       email: 'otp@example.com',
+      country: 'India',
       mpin: '1234',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.0',
-      terms_version: 'v1.0'
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'test-device' }
     }
   });
 
@@ -167,7 +173,11 @@ test('otp login flow (mock)', async (t) => {
   const verify = await appRequest(app, {
     method: 'POST',
     path: '/api/auth/otp/verify',
-    body: { mobile: '7777777777', otp: send.body.otp }
+    body: {
+      mobile: '7777777777',
+      otp: send.body.otp,
+      device_context: { device_id: 'test-device' }
+    }
   });
   assert.equal(verify.status, 200);
   assert.ok(verify.body.token);

@@ -2,16 +2,27 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ResizeMode, Video } from 'expo-av';
 
-export default function LaunchScreen({ dark }) {
+export default function LaunchScreen({ dark, onDone = () => {} }) {
+  const doneRef = React.useRef(false);
+
+  const handlePlaybackStatus = (status) => {
+    if (doneRef.current) return;
+    if (status?.didJustFinish) {
+      doneRef.current = true;
+      onDone();
+    }
+  };
+
   return (
     <View style={[styles.root, dark && styles.rootDark]}>
       <Video
-        source={require('../assets/NetworthManagerLoading2.mp4')}
+        source={require('../assets/networth_manager_premium_launch.mp4')}
         style={styles.video}
-        resizeMode={ResizeMode.CONTAIN}
+        resizeMode={ResizeMode.COVER}
         shouldPlay
-        isLooping
+        isLooping={false}
         isMuted
+        onPlaybackStatusUpdate={handlePlaybackStatus}
       />
     </View>
   );

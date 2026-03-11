@@ -17,6 +17,7 @@ export async function appRequest(app, { method = 'GET', path, body, token, heade
     url: path,
     headers: {
       'content-type': 'application/json',
+      'x-device-id': 'test-device',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...headers
     },

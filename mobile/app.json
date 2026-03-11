@@ -2,12 +2,13 @@
   "expo": {
     "name": "Networth Manager",
     "slug": "indian-portfolio-tracker",
+    "scheme": "networthmanager",
     "version": "1.0.0",
+    "icon": "./src/assets/app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#031a52"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -18,15 +19,41 @@
         {
           "faceIDPermission": "Allow Networth Manager to use Face ID for secure login."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-notifications"
     ],
     "ios": {
+      "icon": "./src/assets/app-icon.png",
+      "bundleIdentifier": "com.networthmanager.app",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.networthmanager.app",
+      "googleServicesFile": "./google-services.json",
+      "icon": "./src/assets/app-icon.png",
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "backgroundColor": "#031a52"
+      },
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3c237618-49f6-47e7-b951-abe8f408c5ba"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3c237618-49f6-47e7-b951-abe8f408c5ba"
     }
   }
 }

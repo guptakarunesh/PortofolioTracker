@@ -48,6 +48,19 @@ function formatStatusLabel(status) {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+function formatProviderLabel(provider) {
+  const value = String(provider || '').trim().toLowerCase();
+  if (!value || value === '-') return '-';
+  if (value === 'cashfree') return 'Cashfree';
+  if (value === 'razorpay') return 'Razorpay';
+  if (value === 'trial') return 'Trial';
+  if (value === 'manual') return 'Manual';
+  return String(value)
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
 function getDiscountPercent(monthly, yearly) {
   if (!monthly || !yearly) return 0;
   const annual = monthly * 12;
@@ -368,7 +381,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
             {t('Order ID: {value}', { value: pendingOrder.orderId })}
           </Text>
           <Text style={[styles.subtle, { color: theme.muted }]}>
-            {t('Plan: {value}', { value: formatPlanLabel(pendingOrder.plan) })}
+            {t('Plan: {value}', { value: t(formatPlanLabel(pendingOrder.plan)) })}
           </Text>
           <View style={styles.pendingActions}>
             {manualVerifyVisible ? (
@@ -385,7 +398,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
             {t('Order ID: {value}', { value: receipt.orderId })}
           </Text>
           <Text style={[styles.subtle, { color: theme.muted }]}>
-            {t('Plan: {value}', { value: formatPlanLabel(receipt.plan) })}
+            {t('Plan: {value}', { value: t(formatPlanLabel(receipt.plan)) })}
           </Text>
           <Text style={[styles.subtle, { color: theme.muted }]}>
             {t('Status: {value}', { value: t(formatStatusLabel(receipt.status)) })}
@@ -396,7 +409,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
             </Text>
           ) : null}
           <Text style={[styles.subtle, { color: theme.muted }]}>
-            {t('Provider: {value}', { value: String(receipt.provider || 'cashfree') })}
+            {t('Provider: {value}', { value: t(formatProviderLabel(receipt.provider || 'cashfree')) })}
           </Text>
         </SectionCard>
       ) : null}
@@ -433,7 +446,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
 
       <SectionCard title={t('Choose a Plan')}>
         <Text style={[styles.subtle, { color: theme.muted }]}>
-          {t('Current active plan: {value}', { value: formatPlanLabel(status?.plan) })}
+          {t('Current active plan: {value}', { value: t(formatPlanLabel(status?.plan)) })}
         </Text>
         <View style={styles.planGrid}>
           <View style={[styles.planCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
@@ -443,7 +456,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 {t('Active variant: {value}', { value: t(resolveTierVariant(status, 'basic')) })}
               </Text>
             ) : null}
-            <Text style={[styles.planPrice, { color: theme.accent }]}>{PLANS.basic_monthly.price}</Text>
+            <Text style={[styles.planPrice, { color: theme.accent }]}>{t(PLANS.basic_monthly.price)}</Text>
             <Text style={[styles.planNote, { color: theme.muted }]}>{t('Best for tracking essentials.')}</Text>
             <PillButton
               kind={basicMonthlyActive ? 'status' : 'ghost'}
@@ -451,7 +464,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
               label={basicMonthlyActive ? t('Active - Monthly') : t('Buy Monthly')}
               onPress={() => purchase('basic_monthly').catch((e) => setMessage(e.message))}
             />
-            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{PLANS.basic_yearly.price}</Text>
+            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{t(PLANS.basic_yearly.price)}</Text>
             <View style={styles.discountRow}>
               <Text style={[styles.discountBadge, { backgroundColor: theme.accentSoft, color: theme.accent }]}>
                 {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.basic.monthly, PLAN_META.basic.yearly) })}
@@ -471,7 +484,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 {t('Active variant: {value}', { value: t(resolveTierVariant(status, 'premium')) })}
               </Text>
             ) : null}
-            <Text style={[styles.planPrice, { color: theme.accent }]}>{PLANS.premium_monthly.price}</Text>
+            <Text style={[styles.planPrice, { color: theme.accent }]}>{t(PLANS.premium_monthly.price)}</Text>
             <Text style={[styles.planNote, { color: theme.muted }]}>{t('Unlock targets, reminders, and performance.')}</Text>
             <PillButton
               kind={premiumMonthlyActive ? 'status' : 'ghost'}
@@ -479,7 +492,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
               label={premiumMonthlyActive ? t('Active - Monthly') : t('Buy Monthly')}
               onPress={() => purchase('premium_monthly').catch((e) => setMessage(e.message))}
             />
-            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{PLANS.premium_yearly.price}</Text>
+            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{t(PLANS.premium_yearly.price)}</Text>
             <View style={styles.discountRow}>
               <Text style={[styles.discountBadge, { backgroundColor: theme.accentSoft, color: theme.accent }]}>
                 {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.premium.monthly, PLAN_META.premium.yearly) })}

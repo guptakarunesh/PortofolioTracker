@@ -71,6 +71,16 @@ function formatStatusLabel(status) {
   return toCamelCaseWords(String(status).replace(/_/g, ' '));
 }
 
+function formatProviderLabel(provider) {
+  const value = String(provider || '').trim().toLowerCase();
+  if (!value || value === '-') return '-';
+  if (value === 'cashfree') return 'Cashfree';
+  if (value === 'razorpay') return 'Razorpay';
+  if (value === 'trial') return 'Trial';
+  if (value === 'manual') return 'Manual';
+  return toCamelCaseWords(value.replace(/_/g, ' '));
+}
+
 function formatIsoDate(value) {
   const raw = String(value || '').trim();
   if (!raw) return '-';
@@ -90,21 +100,21 @@ function toMoney(value) {
   return Number(value || 0).toFixed(2);
 }
 
-function buildReceiptHtml(receipt) {
+function buildReceiptHtml(receipt, t) {
   const rows = [
-    ['Invoice Number', receipt?.invoice_number],
-    ['Invoice Date', receipt?.invoice_date],
-    ['Plan', receipt?.line_item?.plan],
-    ['Period', receipt?.line_item?.period],
-    ['SAC Code', receipt?.line_item?.sac_code],
-    ['Taxable Value (INR)', toMoney(receipt?.taxes?.taxable_value)],
-    ['CGST 9% (INR)', toMoney(receipt?.taxes?.cgst_amount)],
-    ['SGST 9% (INR)', toMoney(receipt?.taxes?.sgst_amount)],
-    ['Total GST (INR)', toMoney(receipt?.taxes?.gst_total)],
-    ['Total Amount (INR)', toMoney(receipt?.total_amount_inr)],
-    ['Payment Provider', receipt?.payment?.provider],
-    ['Transaction ID', receipt?.payment?.transaction_id || '-'],
-    ['Payment Status', receipt?.payment?.status]
+    [t('Invoice Number'), receipt?.invoice_number],
+    [t('Invoice Date'), receipt?.invoice_date],
+    [t('Plan'), t(formatPlanLabel(receipt?.line_item?.plan))],
+    [t('Period'), t(toCamelCaseWords(String(receipt?.line_item?.period || '')))],
+    [t('SAC Code'), receipt?.line_item?.sac_code],
+    [t('Taxable Value (INR)'), toMoney(receipt?.taxes?.taxable_value)],
+    [t('CGST 9% (INR)'), toMoney(receipt?.taxes?.cgst_amount)],
+    [t('SGST 9% (INR)'), toMoney(receipt?.taxes?.sgst_amount)],
+    [t('Total GST (INR)'), toMoney(receipt?.taxes?.gst_total)],
+    [t('Total Amount (INR)'), toMoney(receipt?.total_amount_inr)],
+    [t('Payment Provider'), t(formatProviderLabel(receipt?.payment?.provider))],
+    [t('Transaction ID'), receipt?.payment?.transaction_id || '-'],
+    [t('Payment Status'), t(formatStatusLabel(receipt?.payment?.status))]
   ];
   const lineRows = rows
     .map(
@@ -113,13 +123,15 @@ function buildReceiptHtml(receipt) {
     )
     .join('');
   return `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Arial;padding:18px;color:#111;">
-    <h2 style="margin:0 0 8px;">Tax Invoice / GST Receipt</h2>
+    <h2 style="margin:0 0 8px;">${escapeHtml(t('Tax Invoice / GST Receipt'))}</h2>
     <p style="margin:0 0 12px;">${escapeHtml(receipt?.supplier?.legal_name || '')}</p>
-    <p style="margin:0 0 4px;">GSTIN: ${escapeHtml(receipt?.supplier?.gstin || 'NA')}</p>
-    <p style="margin:0 0 12px;">Address: ${escapeHtml(receipt?.supplier?.address || 'India')}</p>
-    <p style="margin:0 0 12px;">Billed To: ${escapeHtml(receipt?.customer?.initials || 'NA')}</p>
+    <p style="margin:0 0 4px;">${escapeHtml(t('GSTIN'))}: ${escapeHtml(receipt?.supplier?.gstin || 'NA')}</p>
+    <p style="margin:0 0 12px;">${escapeHtml(t('Address'))}: ${escapeHtml(receipt?.supplier?.address || 'India')}</p>
+    <p style="margin:0 0 12px;">${escapeHtml(t('Billed To'))}: ${escapeHtml(receipt?.customer?.initials || 'NA')}</p>
     <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;">${lineRows}</table>
-    <p style="margin-top:16px;font-size:12px;color:#444;">This is a system-generated receipt for subscription payment.</p>
+    <p style="margin-top:16px;font-size:12px;color:#444;">${escapeHtml(
+      t('This is a system-generated receipt for subscription payment.')
+    )}</p>
   </body></html>`;
 }
 
@@ -288,7 +300,7 @@ export default function AccountScreen({
   const downloadReceiptPdf = async () => {
     if (!receiptData) return;
     try {
-      const html = buildReceiptHtml(receiptData);
+      const html = buildReceiptHtml(receiptData, t);
       const { uri } = await Print.printToFileAsync({
         html,
         base64: false
@@ -534,7 +546,7 @@ export default function AccountScreen({
             {subscriptionHistory.slice(0, 8).map((row) => (
               <View key={row.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
                 <Text style={[styles.historyPrimary, { color: theme.text }]}>
-                  {`${formatPlanLabel(row.plan)} • INR ${Number(row.amount_inr || 0)}`}
+                  {`${t(formatPlanLabel(row.plan))} • INR ${Number(row.amount_inr || 0)}`}
                 </Text>
                 <View style={styles.historyMetaRow}>
                   <Pressable
@@ -545,7 +557,7 @@ export default function AccountScreen({
                     <Text style={styles.receiptIcon}>🧾</Text>
                   </Pressable>
                   <Text style={[styles.historyMeta, { color: theme.muted }]}>
-                    {`${formatStatusLabel(row.status)} • ${String(row.provider || '-')} • ${String(row.purchased_at || '').slice(0, 10)}`}
+                    {`${t(formatStatusLabel(row.status))} • ${t(formatProviderLabel(row.provider))} • ${String(row.purchased_at || '').slice(0, 10)}`}
                   </Text>
                 </View>
               </View>

@@ -1,12 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, Linking, Share, Pressable, Animated, Modal, ScrollView } from 'react-native';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { api, buildApiUrl } from '../api/client';
-import { getFirebaseWebConfig } from '../firebase/webConfig';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 import { FAQ_ITEMS } from '../constants/faqs';
@@ -161,8 +159,6 @@ export default function AccountScreen({
   const [receiptError, setReceiptError] = useState('');
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
-  const recaptchaVerifierRef = useRef(null);
-  const firebaseWebConfig = useMemo(() => getFirebaseWebConfig(), []);
 
   useEffect(() => {
     api
@@ -229,26 +225,7 @@ export default function AccountScreen({
   };
 
   const requestSecurityPinResetOtp = async () => {
-    let firebaseRecaptchaToken = '';
-    if (!firebaseWebConfig) {
-      setMessage(t('reCAPTCHA is not configured on this build. Please reload the app.'));
-      return;
-    }
-    if (firebaseWebConfig) {
-      try {
-        firebaseRecaptchaToken = await recaptchaVerifierRef.current?.verify();
-      } catch (_e) {
-        setMessage(t('Could not verify reCAPTCHA. Please try again.'));
-        return;
-      }
-      if (!firebaseRecaptchaToken) {
-        setMessage(t('Could not verify reCAPTCHA. Please try again.'));
-        return;
-      }
-    }
-    const response = await api.requestSecurityPinResetOtp({
-      ...(firebaseRecaptchaToken ? { firebase_recaptcha_token: firebaseRecaptchaToken } : {})
-    });
+    const response = await api.requestSecurityPinResetOtp({});
     setPinResetOtpRequested(true);
     setPinResetOtpCooldown(Number(response?.retry_after_seconds || 30));
     setMessage(t('OTP sent to your mobile number.'));
@@ -372,12 +349,6 @@ export default function AccountScreen({
           </View>
         </View>
       </Modal>
-      {firebaseWebConfig ? (
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaVerifierRef}
-          firebaseConfig={firebaseWebConfig}
-        />
-      ) : null}
       <SectionCard title={t('Profile')}>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Name')}</Text>
         <Text style={[styles.value, { color: theme.text }]}>{toInitials(user?.full_name || '-')}</Text>

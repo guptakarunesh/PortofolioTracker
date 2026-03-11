@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, Linking } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { api, buildApiUrl } from '../api/client';
-import { getFirebaseWebConfig } from '../firebase/webConfig';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -80,8 +78,6 @@ export default function AuthScreen({
   const [resetOtpCooldown, setResetOtpCooldown] = useState(0);
   const [resetOtp, setResetOtp] = useState('');
   const [newMpin, setNewMpin] = useState('');
-  const recaptchaVerifierRef = useRef(null);
-  const firebaseWebConfig = useMemo(() => getFirebaseWebConfig(), []);
 
   useEffect(() => {
     api
@@ -192,28 +188,7 @@ export default function AuthScreen({
     }
     if (typeof onRequestOtp !== 'function') return;
 
-    let firebaseRecaptchaToken = '';
-    if (!firebaseWebConfig) {
-      setMessage(t('reCAPTCHA is not configured on this build. Please reload the app.'));
-      return;
-    }
-    if (firebaseWebConfig) {
-      try {
-        firebaseRecaptchaToken = await recaptchaVerifierRef.current?.verify();
-      } catch (_e) {
-        setMessage(t('Could not verify reCAPTCHA. Please try again.'));
-        return;
-      }
-      if (!firebaseRecaptchaToken) {
-        setMessage(t('Could not verify reCAPTCHA. Please try again.'));
-        return;
-      }
-    }
-
-    const result = await onRequestOtp({
-      mobile: mobile.trim(),
-      ...(firebaseRecaptchaToken ? { firebase_recaptcha_token: firebaseRecaptchaToken } : {})
-    });
+    const result = await onRequestOtp({ mobile: mobile.trim() });
     setOtpRequested(true);
     setOtpCooldown(Number(result?.retry_after_seconds || 30));
     setBiometricMessage(t('OTP sent to your mobile number.'));
@@ -236,27 +211,7 @@ export default function AuthScreen({
       return;
     }
     if (typeof onRequestMpinResetOtp !== 'function') return;
-    let firebaseRecaptchaToken = '';
-    if (!firebaseWebConfig) {
-      setMessage(t('reCAPTCHA is not configured on this build. Please reload the app.'));
-      return;
-    }
-    if (firebaseWebConfig) {
-      try {
-        firebaseRecaptchaToken = await recaptchaVerifierRef.current?.verify();
-      } catch (_e) {
-        setMessage(t('Could not verify reCAPTCHA. Please try again.'));
-        return;
-      }
-      if (!firebaseRecaptchaToken) {
-        setMessage(t('Could not verify reCAPTCHA. Please try again.'));
-        return;
-      }
-    }
-    const result = await onRequestMpinResetOtp({
-      mobile: mobile.trim(),
-      ...(firebaseRecaptchaToken ? { firebase_recaptcha_token: firebaseRecaptchaToken } : {})
-    });
+    const result = await onRequestMpinResetOtp({ mobile: mobile.trim() });
     setResetOtpRequested(true);
     setResetOtpCooldown(Number(result?.retry_after_seconds || 30));
     setMessage(t('OTP sent to your mobile number.'));
@@ -289,12 +244,6 @@ export default function AuthScreen({
 
   return (
     <View>
-      {firebaseWebConfig ? (
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaVerifierRef}
-          firebaseConfig={firebaseWebConfig}
-        />
-      ) : null}
       <SectionCard title={t('Account Access')}>
         <View style={styles.modeRow}>
           <PillButton label={t('Login')} kind={mode === 'login' ? 'primary' : 'ghost'} onPress={() => setMode('login')} />

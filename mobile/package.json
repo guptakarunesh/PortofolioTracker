@@ -25,7 +25,6 @@
     "expo-av": "~16.0.7",
     "expo-blur": "~15.0.8",
     "expo-constants": "~18.0.9",
-    "expo-firebase-recaptcha": "^2.3.1",
     "expo-local-authentication": "~17.0.8",
     "expo-notifications": "~0.32.16",
     "expo-print": "~15.0.8",

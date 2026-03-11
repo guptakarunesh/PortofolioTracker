@@ -1,28 +1,31 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { ResizeMode, Video } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 export default function LaunchScreen({ dark, onDone = () => {} }) {
   const doneRef = React.useRef(false);
+  const player = useVideoPlayer(require('../assets/networth_manager_premium_launch.mp4'), (instance) => {
+    instance.loop = false;
+    instance.muted = true;
+    instance.play();
+  });
 
-  const handlePlaybackStatus = (status) => {
-    if (doneRef.current) return;
-    if (status?.didJustFinish) {
+  React.useEffect(() => {
+    const sub = player.addListener('playToEnd', () => {
+      if (doneRef.current) return;
       doneRef.current = true;
       onDone();
-    }
-  };
+    });
+    return () => sub.remove();
+  }, [onDone, player]);
 
   return (
     <View style={[styles.root, dark && styles.rootDark]}>
-      <Video
-        source={require('../assets/networth_manager_premium_launch.mp4')}
+      <VideoView
+        player={player}
         style={styles.video}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay
-        isLooping={false}
-        isMuted
-        onPlaybackStatusUpdate={handlePlaybackStatus}
+        contentFit="cover"
+        nativeControls={false}
       />
     </View>
   );

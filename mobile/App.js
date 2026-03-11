@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -15,6 +14,7 @@ import {
   Alert,
   Platform
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
@@ -1725,9 +1725,10 @@ export default function App() {
   );
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
-      <ThemeContext.Provider value={{ theme, themeKey, setThemeKey }}>
-        <View style={{ flex: 1 }}>
+    <SafeAreaProvider>
+      <LanguageContext.Provider value={{ language, setLanguage, t }}>
+        <ThemeContext.Provider value={{ theme, themeKey, setThemeKey }}>
+          <View style={{ flex: 1 }}>
           <Animated.View style={{ flex: 1, opacity: appOpacity }}>{mainContent}</Animated.View>
           <Modal visible={aiVisible} transparent animationType="fade">
           <View style={styles.modalBackdrop}>
@@ -1956,9 +1957,10 @@ export default function App() {
               <LaunchScreen dark={isDarkTheme} onDone={finishLaunchTransition} />
             </Animated.View>
           ) : null}
-        </View>
-      </ThemeContext.Provider>
-    </LanguageContext.Provider>
+          </View>
+        </ThemeContext.Provider>
+      </LanguageContext.Provider>
+    </SafeAreaProvider>
   );
 }
 

@@ -14,6 +14,8 @@ const __dirname = path.dirname(__filename);
 const dataDir = path.resolve(__dirname, '../../data');
 const databaseUrl = String(process.env.DATABASE_URL || '').trim();
 const usePostgres = Boolean(databaseUrl);
+let postgresReady = !usePostgres;
+let postgresBootstrapping = false;
 
 if (!usePostgres && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -92,18 +94,19 @@ function createPostgresCompatDb(connectionString) {
   );
   console.log(`[db] DNS probe ${dbHost}:`, dnsProbe);
   console.log(`[db] TCP probe ${dbHost}:${dbPort}:`, tcpProbe);
-  // Force eager authentication at startup so failures are explicit.
-  waitForCallback(
-    (cb) =>
-      pool.query('SELECT 1', (err, result) => {
-        if (err) {
-          console.error('[db] connect probe error:', err.code || '', err.message || String(err));
-        }
-        cb(err, result);
-      }),
-    connectTimeoutMs + 5000,
-    'database connect'
-  );
+
+  const connectProbe = () => {
+    pool.query('SELECT 1', (err) => {
+      if (err) {
+        console.error('[db] connect probe error:', err.code || '', err.message || String(err));
+        return;
+      }
+      if (!postgresReady) {
+        console.log('[db] postgres connectivity confirmed');
+      }
+    });
+  };
+  connectProbe();
 
   const convertPositionalParams = (sql, values) => {
     let idx = 0;
@@ -134,14 +137,18 @@ function createPostgresCompatDb(connectionString) {
   };
 
   const querySync = (sql, values = []) =>
-    waitForCallback(
-      (cb) =>
-        pool.query(sql, values, (err, result) => {
-          cb(err, result);
-        }),
-      queryTimeoutMs + 2000,
-      'database query'
-    );
+    postgresReady || postgresBootstrapping
+      ? waitForCallback(
+          (cb) =>
+            pool.query(sql, values, (err, result) => {
+              cb(err, result);
+            }),
+          queryTimeoutMs + 2000,
+          'database query'
+        )
+      : (() => {
+          throw new Error('database is initializing, please retry');
+        })();
 
   const pgDb = {
     pragma() {
@@ -662,7 +669,8 @@ CREATE TABLE IF NOT EXISTS support_chat_messages (
 );
 `;
 
-db.exec(usePostgres ? normalizeSchemaForPostgres(schemaSql) : schemaSql);
+function initializeDatabase() {
+  db.exec(usePostgres ? normalizeSchemaForPostgres(schemaSql) : schemaSql);
 
 function ensureColumn(table, column, typeDef) {
   if (usePostgres) {
@@ -876,5 +884,41 @@ migrateEncryptedColumns('reminders', 'id', ['description']);
 migrateEncryptedColumns('asset_trackers', 'id', ['asset_name', 'login_id', 'login_password', 'notes']);
 backfillUpdatedByInitials();
 seedSupportUsers();
+}
+
+function startPostgresBootstrap() {
+  const maxAttempts = Math.max(1, Number.parseInt(process.env.DB_BOOTSTRAP_MAX_ATTEMPTS || '20', 10));
+  const retryDelayMs = Math.max(1000, Number.parseInt(process.env.DB_BOOTSTRAP_RETRY_MS || '5000', 10));
+  let attempts = 0;
+
+  const attempt = () => {
+    attempts += 1;
+    postgresBootstrapping = true;
+    try {
+      initializeDatabase();
+      postgresReady = true;
+      postgresBootstrapping = false;
+      console.log(`[db] postgres bootstrap ready (attempt ${attempts}/${maxAttempts})`);
+    } catch (error) {
+      postgresReady = false;
+      postgresBootstrapping = false;
+      const message = String(error?.message || error);
+      console.error(`[db] postgres bootstrap failed (attempt ${attempts}/${maxAttempts}): ${message}`);
+      if (attempts < maxAttempts) {
+        setTimeout(attempt, retryDelayMs);
+      } else {
+        console.error('[db] postgres bootstrap exhausted retries; service stays up and will return temporary DB errors');
+      }
+    }
+  };
+
+  attempt();
+}
+
+if (usePostgres) {
+  startPostgresBootstrap();
+} else {
+  initializeDatabase();
+}
 
 export const nowIso = () => new Date().toISOString();

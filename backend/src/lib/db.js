@@ -17,10 +17,11 @@ if (!usePostgres && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-function waitFor(promise) {
+function waitFor(promise, timeoutMs = 15000) {
   let done = false;
   let value;
   let error;
+  const startedAt = Date.now();
   promise
     .then((result) => {
       value = result;
@@ -30,17 +31,28 @@ function waitFor(promise) {
       error = err;
       done = true;
     });
-  deasync.loopWhile(() => !done);
+  deasync.loopWhile(() => {
+    if (done) return false;
+    if (Date.now() - startedAt > timeoutMs) {
+      error = new Error(`Database operation timed out after ${timeoutMs}ms`);
+      done = true;
+      return false;
+    }
+    return true;
+  });
   if (error) throw error;
   return value;
 }
 
 function createPostgresCompatDb(connectionString) {
+  const connectTimeoutMs = Number.parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '10000', 10);
   const client = new Client({
     connectionString,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: connectTimeoutMs,
+    query_timeout: Math.max(5000, connectTimeoutMs)
   });
-  waitFor(client.connect());
+  waitFor(client.connect(), connectTimeoutMs + 5000);
 
   const convertPositionalParams = (sql, values) => {
     let idx = 0;

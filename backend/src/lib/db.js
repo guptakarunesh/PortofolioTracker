@@ -45,16 +45,23 @@ function waitForCallback(register, timeoutMs = 15000, context = 'database operat
 function createPostgresCompatDb(connectionString) {
   const connectTimeoutMs = Number.parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '10000', 10);
   const queryTimeoutMs = Math.max(5000, Number.parseInt(process.env.DB_QUERY_TIMEOUT_MS || '15000', 10));
-  const { Pool } = pkg;
-  const pool = new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: connectTimeoutMs,
-    family: 4
-  });
   const url = new URL(connectionString);
   const dbHost = url.hostname;
   const dbPort = Number(url.port || 5432);
+  const sslMode = String(url.searchParams.get('sslmode') || '').toLowerCase();
+  const sslOverride = String(process.env.DB_SSL || '').trim().toLowerCase();
+  const disableSslByHost = dbHost.startsWith('dpg-') && !sslMode;
+  const useSsl = sslOverride
+    ? !['0', 'false', 'off', 'disable', 'disabled', 'no'].includes(sslOverride)
+    : !disableSslByHost && sslMode !== 'disable';
+  const { Pool } = pkg;
+  const pool = new Pool({
+    connectionString,
+    ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+    connectionTimeoutMillis: connectTimeoutMs,
+    family: 4
+  });
+  console.log(`[db] postgres ssl ${useSsl ? 'enabled' : 'disabled'} host=${dbHost} sslmode=${sslMode || 'none'}`);
   const dnsProbe = waitForCallback(
     (cb) =>
       dns.lookup(dbHost, { all: true }, (err, addresses) => {
@@ -86,7 +93,17 @@ function createPostgresCompatDb(connectionString) {
   console.log(`[db] DNS probe ${dbHost}:`, dnsProbe);
   console.log(`[db] TCP probe ${dbHost}:${dbPort}:`, tcpProbe);
   // Force eager authentication at startup so failures are explicit.
-  waitForCallback((cb) => pool.query('SELECT 1', (err, result) => cb(err, result)), connectTimeoutMs + 5000, 'database connect');
+  waitForCallback(
+    (cb) =>
+      pool.query('SELECT 1', (err, result) => {
+        if (err) {
+          console.error('[db] connect probe error:', err.code || '', err.message || String(err));
+        }
+        cb(err, result);
+      }),
+    connectTimeoutMs + 5000,
+    'database connect'
+  );
 
   const convertPositionalParams = (sql, values) => {
     let idx = 0;

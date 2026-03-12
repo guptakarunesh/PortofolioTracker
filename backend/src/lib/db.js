@@ -2,6 +2,8 @@ import Database from 'better-sqlite3';
 import pkg from 'pg';
 import deasync from 'deasync';
 import fs from 'node:fs';
+import dns from 'node:dns';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decryptString, encryptString, hashLookup } from './crypto.js';
@@ -50,6 +52,39 @@ function createPostgresCompatDb(connectionString) {
     connectionTimeoutMillis: connectTimeoutMs,
     family: 4
   });
+  const url = new URL(connectionString);
+  const dbHost = url.hostname;
+  const dbPort = Number(url.port || 5432);
+  const dnsProbe = waitForCallback(
+    (cb) =>
+      dns.lookup(dbHost, { all: true }, (err, addresses) => {
+        cb(err, addresses || []);
+      }),
+    7000,
+    'database DNS probe'
+  );
+  const tcpProbe = waitForCallback(
+    (cb) => {
+      const socket = net.createConnection({ host: dbHost, port: dbPort });
+      socket.setTimeout(7000);
+      socket.on('connect', () => {
+        socket.destroy();
+        cb(null, 'ok');
+      });
+      socket.on('timeout', () => {
+        socket.destroy();
+        cb(new Error('tcp timeout'));
+      });
+      socket.on('error', (err) => {
+        socket.destroy();
+        cb(err);
+      });
+    },
+    9000,
+    'database TCP probe'
+  );
+  console.log(`[db] DNS probe ${dbHost}:`, dnsProbe);
+  console.log(`[db] TCP probe ${dbHost}:${dbPort}:`, tcpProbe);
   // Force eager authentication at startup so failures are explicit.
   waitForCallback((cb) => pool.query('SELECT 1', (err, result) => cb(err, result)), connectTimeoutMs + 5000, 'database connect');
 

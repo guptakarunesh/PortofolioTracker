@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { Client } from 'pg';
+import pkg from 'pg';
 import deasync from 'deasync';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,20 +43,14 @@ function waitForCallback(register, timeoutMs = 15000, context = 'database operat
 function createPostgresCompatDb(connectionString) {
   const connectTimeoutMs = Number.parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '10000', 10);
   const queryTimeoutMs = Math.max(5000, Number.parseInt(process.env.DB_QUERY_TIMEOUT_MS || '15000', 10));
-  const client = new Client({
+  const { Pool } = pkg;
+  const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: connectTimeoutMs,
-    query_timeout: queryTimeoutMs
+    connectionTimeoutMillis: connectTimeoutMs
   });
-  waitForCallback(
-    (cb) =>
-      client.connect((err) => {
-        cb(err, true);
-      }),
-    connectTimeoutMs + 5000,
-    'database connect'
-  );
+  // Force eager authentication at startup so failures are explicit.
+  waitForCallback((cb) => pool.query('SELECT 1', (err, result) => cb(err, result)), connectTimeoutMs + 5000, 'database connect');
 
   const convertPositionalParams = (sql, values) => {
     let idx = 0;
@@ -89,7 +83,7 @@ function createPostgresCompatDb(connectionString) {
   const querySync = (sql, values = []) =>
     waitForCallback(
       (cb) =>
-        client.query(sql, values, (err, result) => {
+        pool.query(sql, values, (err, result) => {
           cb(err, result);
         }),
       queryTimeoutMs + 2000,

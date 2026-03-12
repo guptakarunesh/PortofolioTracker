@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import { Client } from 'pg';
+import deasync from 'deasync';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,21 +10,158 @@ import { hashPin } from './auth.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataDir = path.resolve(__dirname, '../../data');
+const databaseUrl = String(process.env.DATABASE_URL || '').trim();
+const usePostgres = Boolean(databaseUrl);
 
-if (!fs.existsSync(dataDir)) {
+if (!usePostgres && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(dataDir, 'portfolio.db');
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+function waitFor(promise) {
+  let done = false;
+  let value;
+  let error;
+  promise
+    .then((result) => {
+      value = result;
+      done = true;
+    })
+    .catch((err) => {
+      error = err;
+      done = true;
+    });
+  deasync.loopWhile(() => !done);
+  if (error) throw error;
+  return value;
 }
-export const db = new Database(dbPath);
 
-db.pragma('journal_mode = WAL');
+function createPostgresCompatDb(connectionString) {
+  const client = new Client({
+    connectionString,
+    ssl: { rejectUnauthorized: false }
+  });
+  waitFor(client.connect());
 
-db.exec(`
+  const convertPositionalParams = (sql, values) => {
+    let idx = 0;
+    const text = String(sql).replace(/\?/g, () => {
+      idx += 1;
+      return `$${idx}`;
+    });
+    return { text, values };
+  };
+
+  const convertNamedParams = (sql, payload) => {
+    const names = [];
+    const text = String(sql).replace(/@([a-zA-Z_][a-zA-Z0-9_]*)/g, (_m, name) => {
+      const existing = names.indexOf(name);
+      if (existing >= 0) return `$${existing + 1}`;
+      names.push(name);
+      return `$${names.length}`;
+    });
+    const values = names.map((name) => payload[name]);
+    return { text, values };
+  };
+
+  const toPgQuery = (sql, args) => {
+    if (args.length === 1 && args[0] && typeof args[0] === 'object' && !Array.isArray(args[0])) {
+      return convertNamedParams(sql, args[0]);
+    }
+    return convertPositionalParams(sql, args);
+  };
+
+  const querySync = (sql, values = []) => waitFor(client.query(sql, values));
+
+  const pgDb = {
+    pragma() {
+      // no-op for PostgreSQL compatibility with SQLite call sites
+    },
+    exec(sql) {
+      querySync(sql);
+    },
+    prepare(sql) {
+      const baseSql = String(sql);
+      return {
+        get: (...args) => {
+          const q = toPgQuery(baseSql, args);
+          const result = querySync(q.text, q.values);
+          return result.rows[0];
+        },
+        all: (...args) => {
+          const q = toPgQuery(baseSql, args);
+          const result = querySync(q.text, q.values);
+          return result.rows;
+        },
+        run: (...args) => {
+          const q = toPgQuery(baseSql, args);
+          const isInsert = /^\s*insert\s+/i.test(q.text);
+          const result = querySync(q.text, q.values);
+          let lastInsertRowid = null;
+          if (isInsert) {
+            const tableMatch = q.text.match(/^\s*insert\s+into\s+([^\s(]+)/i);
+            const tableName = tableMatch?.[1]?.replace(/"/g, '') || null;
+            if (tableName) {
+              try {
+                const seq = querySync(`SELECT pg_get_serial_sequence($1, 'id') AS seq`, [tableName])?.rows?.[0]?.seq;
+                if (seq) {
+                  const last = querySync('SELECT currval($1::regclass) AS id', [seq])?.rows?.[0]?.id;
+                  if (last != null) lastInsertRowid = Number(last);
+                }
+              } catch {
+                lastInsertRowid = null;
+              }
+            }
+          }
+          return {
+            changes: Number(result.rowCount || 0),
+            lastInsertRowid
+          };
+        }
+      };
+    },
+    transaction(fn) {
+      return (...args) => {
+        querySync('BEGIN');
+        try {
+          const out = fn(...args);
+          querySync('COMMIT');
+          return out;
+        } catch (err) {
+          querySync('ROLLBACK');
+          throw err;
+        }
+      };
+    }
+  };
+
+  return pgDb;
+}
+
+const sqliteDb = (() => {
+  if (usePostgres) return null;
+  const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(dataDir, 'portfolio.db');
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  const instance = new Database(dbPath);
+  instance.pragma('journal_mode = WAL');
+  return instance;
+})();
+
+export const db = usePostgres ? createPostgresCompatDb(databaseUrl) : sqliteDb;
+console.log(`[db] using ${usePostgres ? 'postgres' : 'sqlite'} backend`);
+
+function normalizeSchemaForPostgres(sql) {
+  return String(sql)
+    .replace(/\bINTEGER PRIMARY KEY AUTOINCREMENT\b/g, 'INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY')
+    .replace(
+      /CREATE TABLE IF NOT EXISTS legal_documents \(\s*id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,\s*id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,/m,
+      'CREATE TABLE IF NOT EXISTS legal_documents (\n  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,'
+    );
+}
+
+const schemaSql = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   full_name TEXT NOT NULL,
@@ -450,17 +589,17 @@ CREATE TABLE IF NOT EXISTS support_chat_messages (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-`);
+`;
 
-function hasColumn(table, column) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
-  return cols.some((c) => c.name === column);
-}
+db.exec(usePostgres ? normalizeSchemaForPostgres(schemaSql) : schemaSql);
 
 function ensureColumn(table, column, typeDef) {
-  if (!hasColumn(table, column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeDef}`);
+  if (usePostgres) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${typeDef}`);
+    return;
   }
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeDef}`);
 }
 
 ensureColumn('assets', 'user_id', 'INTEGER');

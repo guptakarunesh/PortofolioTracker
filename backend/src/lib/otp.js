@@ -13,7 +13,9 @@ const GUPSHUP_SENDER_ID = process.env.GUPSHUP_SENDER_ID || '';
 const FIREBASE_AUTH_BASE_URL = process.env.FIREBASE_AUTH_BASE_URL || 'https://identitytoolkit.googleapis.com/v1';
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || process.env.FIREBASE_API_KEY || '';
 const FIREBASE_TENANT_ID = process.env.FIREBASE_TENANT_ID || '';
-const OTP_STRICT_PROVIDER = String(process.env.OTP_STRICT_PROVIDER || '0') === '1';
+const OTP_STRICT_PROVIDER = String(
+  process.env.OTP_STRICT_PROVIDER || (process.env.NODE_ENV === 'production' ? '1' : '0')
+) === '1';
 
 export const OTP_CONFIG = {
   provider: PROVIDER,

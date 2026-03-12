@@ -47,7 +47,8 @@ function createPostgresCompatDb(connectionString) {
   const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: connectTimeoutMs
+    connectionTimeoutMillis: connectTimeoutMs,
+    family: 4
   });
   // Force eager authentication at startup so failures are explicit.
   waitForCallback((cb) => pool.query('SELECT 1', (err, result) => cb(err, result)), connectTimeoutMs + 5000, 'database connect');

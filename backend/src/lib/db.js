@@ -17,42 +17,46 @@ if (!usePostgres && !fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-function waitFor(promise, timeoutMs = 15000) {
+function waitForCallback(register, timeoutMs = 15000, context = 'database operation') {
   let done = false;
   let value;
   let error;
   const startedAt = Date.now();
-  promise
-    .then((result) => {
-      value = result;
-      done = true;
-    })
-    .catch((err) => {
-      error = err;
-      done = true;
-    });
+  register((err, result) => {
+    if (err) error = err;
+    else value = result;
+    done = true;
+  });
   deasync.loopWhile(() => {
     if (done) return false;
     if (Date.now() - startedAt > timeoutMs) {
-      error = new Error(`Database operation timed out after ${timeoutMs}ms`);
+      error = new Error(`${context} timed out after ${timeoutMs}ms`);
       done = true;
       return false;
     }
     return true;
   });
-  if (error) throw error;
+  if (error) throw new Error(`${context} failed: ${String(error?.message || error)}`);
   return value;
 }
 
 function createPostgresCompatDb(connectionString) {
   const connectTimeoutMs = Number.parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '10000', 10);
+  const queryTimeoutMs = Math.max(5000, Number.parseInt(process.env.DB_QUERY_TIMEOUT_MS || '15000', 10));
   const client = new Client({
     connectionString,
     ssl: { rejectUnauthorized: false },
     connectionTimeoutMillis: connectTimeoutMs,
-    query_timeout: Math.max(5000, connectTimeoutMs)
+    query_timeout: queryTimeoutMs
   });
-  waitFor(client.connect(), connectTimeoutMs + 5000);
+  waitForCallback(
+    (cb) =>
+      client.connect((err) => {
+        cb(err, true);
+      }),
+    connectTimeoutMs + 5000,
+    'database connect'
+  );
 
   const convertPositionalParams = (sql, values) => {
     let idx = 0;
@@ -82,7 +86,15 @@ function createPostgresCompatDb(connectionString) {
     return convertPositionalParams(sql, args);
   };
 
-  const querySync = (sql, values = []) => waitFor(client.query(sql, values));
+  const querySync = (sql, values = []) =>
+    waitForCallback(
+      (cb) =>
+        client.query(sql, values, (err, result) => {
+          cb(err, result);
+        }),
+      queryTimeoutMs + 2000,
+      'database query'
+    );
 
   const pgDb = {
     pragma() {

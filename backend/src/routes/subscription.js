@@ -170,6 +170,18 @@ function buildCashfreeOrderId(userId) {
   return `nwm_${userId}_${stamp}`;
 }
 
+function publicHost(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  const protocol =
+    forwardedProto === 'https' || process.env.NODE_ENV === 'production'
+      ? 'https'
+      : req.protocol || 'http';
+  return `${protocol}://${req.get('host')}`;
+}
+
 function toDateOnly(value) {
   const raw = String(value || '').trim();
   return raw ? raw.slice(0, 10) : '';
@@ -360,7 +372,7 @@ router.post('/cashfree/order', requireOwner, async (req, res) => {
 
   const userId = req.accountUserId || req.userId;
   const orderId = buildCashfreeOrderId(userId);
-  const host = `${req.protocol}://${req.get('host')}`;
+  const host = publicHost(req);
   const fallbackAppReturnUrl = process.env.CASHFREE_APP_RETURN_URL || 'networthmanager://subscription-return';
   let returnUrl = process.env.CASHFREE_RETURN_URL || `${host}/cashfree/return?order_id={order_id}`;
   const appReturnUrl = String(appReturnUrlRaw || '').trim();

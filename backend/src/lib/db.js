@@ -183,10 +183,24 @@ function createPostgresCompatDb(connectionString) {
             const tableName = tableMatch?.[1]?.replace(/"/g, '') || null;
             if (tableName) {
               try {
-                const seq = querySync(`SELECT pg_get_serial_sequence($1, 'id') AS seq`, [tableName])?.rows?.[0]?.seq;
-                if (seq) {
-                  const last = querySync('SELECT currval($1::regclass) AS id', [seq])?.rows?.[0]?.id;
-                  if (last != null) lastInsertRowid = Number(last);
+                const hasId = querySync(
+                  `
+                    SELECT EXISTS (
+                      SELECT 1
+                      FROM information_schema.columns
+                      WHERE table_schema = current_schema()
+                        AND table_name = $1
+                        AND column_name = 'id'
+                    ) AS has_id
+                  `,
+                  [tableName]
+                )?.rows?.[0]?.has_id;
+                if (hasId) {
+                  const seq = querySync(`SELECT pg_get_serial_sequence($1, 'id') AS seq`, [tableName])?.rows?.[0]?.seq;
+                  if (seq) {
+                    const last = querySync('SELECT currval($1::regclass) AS id', [seq])?.rows?.[0]?.id;
+                    if (last != null) lastInsertRowid = Number(last);
+                  }
                 }
               } catch {
                 lastInsertRowid = null;

@@ -107,6 +107,7 @@ function createPostgresCompatDb(connectionString) {
     });
   };
   connectProbe();
+  const transactionClients = [];
 
   const convertPositionalParams = (sql, values) => {
     let idx = 0;
@@ -136,11 +137,13 @@ function createPostgresCompatDb(connectionString) {
     return convertPositionalParams(sql, args);
   };
 
+  const activeExecutor = () => transactionClients[transactionClients.length - 1] || pool;
+
   const querySync = (sql, values = []) =>
     postgresReady || postgresBootstrapping
       ? waitForCallback(
           (cb) =>
-            pool.query(sql, values, (err, result) => {
+            activeExecutor().query(sql, values, (err, result) => {
               cb(err, result);
             }),
           queryTimeoutMs + 2000,
@@ -199,14 +202,37 @@ function createPostgresCompatDb(connectionString) {
     },
     transaction(fn) {
       return (...args) => {
-        querySync('BEGIN');
+        const client = waitForCallback(
+          (cb) =>
+            pool.connect((err, connectedClient, release) => {
+              if (err) {
+                cb(err);
+                return;
+              }
+              connectedClient.__release = release;
+              cb(null, connectedClient);
+            }),
+          connectTimeoutMs + 5000,
+          'database transaction connect'
+        );
+        transactionClients.push(client);
         try {
+          querySync('BEGIN');
           const out = fn(...args);
           querySync('COMMIT');
           return out;
         } catch (err) {
-          querySync('ROLLBACK');
+          try {
+            querySync('ROLLBACK');
+          } catch (_rollbackErr) {
+            // Preserve the original error.
+          }
           throw err;
+        } finally {
+          transactionClients.pop();
+          if (typeof client.__release === 'function') {
+            client.__release();
+          }
         }
       };
     }

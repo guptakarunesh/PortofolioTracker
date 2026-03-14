@@ -567,137 +567,154 @@ router.post('/register', (req, res) => {
 
   const token = createSessionToken();
   let user = null;
-  const tx = db.transaction(() => {
-    const result = db.prepare(`
-      INSERT INTO users (full_name, mobile, mobile_hash, email, mpin_hash, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      encryptString(initials),
-      encryptString(cleanMobile),
-      mobileHash,
-      encryptString(String(email || '').trim()),
-      hashPin(String(mpin)),
-      nowIso()
-    );
+  let registerStage = 'init';
+  try {
+    const tx = db.transaction(() => {
+      registerStage = 'insert_user';
+      const result = db.prepare(`
+        INSERT INTO users (full_name, mobile, mobile_hash, email, mpin_hash, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        encryptString(initials),
+        encryptString(cleanMobile),
+        mobileHash,
+        encryptString(String(email || '').trim()),
+        hashPin(String(mpin)),
+        nowIso()
+      );
 
-    const insertedUserId = result.lastInsertRowid || db.prepare('SELECT id FROM users WHERE mobile_hash = ?').get(mobileHash)?.id;
-    if (!insertedUserId) {
-      throw new Error('register_insert_lookup_failed');
-    }
-    user = db.prepare('SELECT * FROM users WHERE id = ?').get(insertedUserId);
-    if (!user) {
-      throw new Error('register_user_load_failed');
-    }
-    const settingsUpsert = db.prepare(`
-      INSERT INTO user_settings (user_id, key, value, updated_at)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(user_id, key) DO UPDATE SET
-        value=excluded.value,
-        updated_at=excluded.updated_at
-    `);
-    const cleanedCountry = String(country).trim();
-    settingsUpsert.run(user.id, 'country', cleanedCountry, nowIso());
-    settingsUpsert.run(user.id, 'preferred_currency', currencyFromCountry(cleanedCountry), nowIso());
+      registerStage = 'load_user';
+      const insertedUserId = result.lastInsertRowid || db.prepare('SELECT id FROM users WHERE mobile_hash = ?').get(mobileHash)?.id;
+      if (!insertedUserId) {
+        throw new Error('register_insert_lookup_failed');
+      }
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(insertedUserId);
+      if (!user) {
+        throw new Error('register_user_load_failed');
+      }
+      const settingsUpsert = db.prepare(`
+        INSERT INTO user_settings (user_id, key, value, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, key) DO UPDATE SET
+          value=excluded.value,
+          updated_at=excluded.updated_at
+      `);
+      const cleanedCountry = String(country).trim();
+      registerStage = 'user_settings';
+      settingsUpsert.run(user.id, 'country', cleanedCountry, nowIso());
+      settingsUpsert.run(user.id, 'preferred_currency', currencyFromCountry(cleanedCountry), nowIso());
 
-    const pendingInvite = db
-      .prepare(
+      registerStage = 'pending_invite_lookup';
+      const pendingInvite = db
+        .prepare(
+          `
+          SELECT * FROM family_invites
+          WHERE mobile_hash = ? AND status = 'pending' AND expires_at > ?
+          ORDER BY created_at DESC
+          LIMIT 1
         `
-        SELECT * FROM family_invites
-        WHERE mobile_hash = ? AND status = 'pending' AND expires_at > ?
-        ORDER BY created_at DESC
-        LIMIT 1
-      `
-      )
-      .get(mobileHash, nowIso());
+        )
+        .get(mobileHash, nowIso());
 
-    if (pendingInvite) {
-      const ownerSubscription = ensureSubscriptionForUser(pendingInvite.owner_user_id);
-      if (!isPremiumActive(ownerSubscription)) {
-        db.prepare(`
-          UPDATE family_invites
-          SET status = 'expired', updated_at = ?
-          WHERE id = ?
-        `).run(nowIso(), pendingInvite.id);
-      } else {
-      const alreadyMember = db
-        .prepare('SELECT id FROM family_members WHERE member_user_id = ?')
-        .get(user.id);
-      if (!alreadyMember) {
-        db.prepare(`
-          INSERT INTO family_members (owner_user_id, member_user_id, role, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(pendingInvite.owner_user_id, user.id, pendingInvite.role, nowIso(), nowIso());
+      if (pendingInvite) {
+        registerStage = 'pending_invite_apply';
+        const ownerSubscription = ensureSubscriptionForUser(pendingInvite.owner_user_id);
+        if (!isPremiumActive(ownerSubscription)) {
+          db.prepare(`
+            UPDATE family_invites
+            SET status = 'expired', updated_at = ?
+            WHERE id = ?
+          `).run(nowIso(), pendingInvite.id);
+        } else {
+          const alreadyMember = db
+            .prepare('SELECT id FROM family_members WHERE member_user_id = ?')
+            .get(user.id);
+          if (!alreadyMember) {
+            db.prepare(`
+              INSERT INTO family_members (owner_user_id, member_user_id, role, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?)
+            `).run(pendingInvite.owner_user_id, user.id, pendingInvite.role, nowIso(), nowIso());
 
-        db.prepare(`
-          UPDATE family_invites
-          SET status = 'accepted', accepted_user_id = ?, updated_at = ?
-          WHERE id = ?
-        `).run(user.id, nowIso(), pendingInvite.id);
+            db.prepare(`
+              UPDATE family_invites
+              SET status = 'accepted', accepted_user_id = ?, updated_at = ?
+              WHERE id = ?
+            `).run(user.id, nowIso(), pendingInvite.id);
 
-        db.prepare(`
-          UPDATE family_invites
-          SET status = 'canceled', updated_at = ?
-          WHERE mobile_hash = ? AND status = 'pending' AND id != ?
-        `).run(nowIso(), mobileHash, pendingInvite.id);
+            db.prepare(`
+              UPDATE family_invites
+              SET status = 'canceled', updated_at = ?
+              WHERE mobile_hash = ? AND status = 'pending' AND id != ?
+            `).run(nowIso(), mobileHash, pendingInvite.id);
 
-        logFamilyAudit(pendingInvite.owner_user_id, user.id, 'invite_accepted', {
-          invite_id: pendingInvite.id,
-          role: pendingInvite.role
-        });
+            logFamilyAudit(pendingInvite.owner_user_id, user.id, 'invite_accepted', {
+              invite_id: pendingInvite.id,
+              role: pendingInvite.role
+            });
+          }
+        }
       }
-      }
-    }
 
-    createBoundSession({
-      userId: user.id,
-      token,
-      authMethod: 'register_mpin',
-      context,
-      req,
-      createdAt: nowIso()
+      registerStage = 'create_session';
+      createBoundSession({
+        userId: user.id,
+        token,
+        authMethod: 'register_mpin',
+        context,
+        req,
+        createdAt: nowIso()
+      });
+
+      registerStage = 'upsert_device';
+      upsertUserDevice(user.id, context, req);
+
+      registerStage = 'consent_log';
+      db.prepare(`
+        INSERT INTO consent_log (
+          user_id, privacy_policy_version, terms_version, consented_at, ip_address, user_agent, consent_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        user.id,
+        PRIVACY_POLICY_VERSION,
+        TERMS_VERSION,
+        nowIso(),
+        String(req.ip || ''),
+        String(req.headers['user-agent'] || ''),
+        'mobile_register'
+      );
+
+      const trialStart = nowIso();
+      const trialEnd = new Date(trialStart);
+      trialEnd.setDate(trialEnd.getDate() + 30);
+      const trialEndIso = trialEnd.toISOString();
+
+      registerStage = 'subscription_upsert';
+      db.prepare(`
+        INSERT INTO subscriptions (user_id, plan, status, started_at, current_period_end, provider, updated_at)
+        VALUES (?, 'trial_premium', 'active', ?, ?, 'trial', ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          plan=excluded.plan,
+          status=excluded.status,
+          started_at=excluded.started_at,
+          current_period_end=excluded.current_period_end,
+          provider=excluded.provider,
+          updated_at=excluded.updated_at
+      `).run(user.id, trialStart, trialEndIso, nowIso());
+
+      registerStage = 'payment_history_insert';
+      db.prepare(`
+        INSERT INTO payment_history (
+          user_id, plan, amount_inr, period, provider, provider_txn_id,
+          purchased_at, valid_until, status
+        ) VALUES (?, 'trial_premium', 0, 'trial', 'trial', null, ?, ?, 'succeeded')
+      `).run(user.id, trialStart, trialEndIso);
     });
-    upsertUserDevice(user.id, context, req);
 
-    db.prepare(`
-      INSERT INTO consent_log (
-        user_id, privacy_policy_version, terms_version, consented_at, ip_address, user_agent, consent_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      user.id,
-      PRIVACY_POLICY_VERSION,
-      TERMS_VERSION,
-      nowIso(),
-      String(req.ip || ''),
-      String(req.headers['user-agent'] || ''),
-      'mobile_register'
-    );
-
-    const trialStart = nowIso();
-    const trialEnd = new Date(trialStart);
-    trialEnd.setDate(trialEnd.getDate() + 30);
-    const trialEndIso = trialEnd.toISOString();
-
-    db.prepare(`
-      INSERT INTO subscriptions (user_id, plan, status, started_at, current_period_end, provider, updated_at)
-      VALUES (?, 'trial_premium', 'active', ?, ?, 'trial', ?)
-      ON CONFLICT(user_id) DO UPDATE SET
-        plan=excluded.plan,
-        status=excluded.status,
-        started_at=excluded.started_at,
-        current_period_end=excluded.current_period_end,
-        provider=excluded.provider,
-        updated_at=excluded.updated_at
-    `).run(user.id, trialStart, trialEndIso, nowIso());
-
-    db.prepare(`
-      INSERT INTO payment_history (
-        user_id, plan, amount_inr, period, provider, provider_txn_id,
-        purchased_at, valid_until, status
-      ) VALUES (?, 'trial_premium', 0, 'trial', 'trial', null, ?, ?, 'succeeded')
-    `).run(user.id, trialStart, trialEndIso);
-  });
-
-  tx();
+    tx();
+  } catch (error) {
+    console.error('[auth/register] failed stage=%s mobile=%s message=%s', registerStage, cleanMobile, error?.message || error);
+    throw error;
+  }
   logAuthEvent({
     userId: user?.id || null,
     mobileHash,

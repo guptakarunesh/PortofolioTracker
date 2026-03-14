@@ -34,6 +34,12 @@ import FamilyScreen from './src/screens/FamilyScreen';
 import OnboardingModal from './src/components/OnboardingModal';
 import PillButton from './src/components/PillButton';
 import { api, setAuthToken } from './src/api/client';
+import {
+  canUseNativePhoneAuth,
+  clearNativePhoneOtp,
+  completeNativePhoneOtp,
+  startNativePhoneOtp
+} from './src/firebase/nativePhoneAuth';
 import { FAQ_ITEMS } from './src/constants/faqs';
 import { ThemeContext, THEMES } from './src/theme';
 import { LanguageContext, translate } from './src/i18n';
@@ -945,6 +951,9 @@ export default function App() {
     try {
       setAuthLoading(true);
       setAuthError('');
+      if (canUseNativePhoneAuth()) {
+        return await startNativePhoneOtp(payload?.mobile);
+      }
       return await api.sendLoginOtp(payload);
     } catch (e) {
       setAuthError(e.message);
@@ -958,7 +967,15 @@ export default function App() {
     try {
       setAuthLoading(true);
       setAuthError('');
-      const result = await api.verifyLoginOtp(payload);
+      const result = canUseNativePhoneAuth()
+        ? await (async () => {
+            const verified = await completeNativePhoneOtp(payload?.otp);
+            return api.verifyLoginOtp({
+              mobile: payload?.mobile,
+              firebase_id_token: verified.firebase_id_token
+            });
+          })()
+        : await api.verifyLoginOtp(payload);
       handleAuthSuccess(result);
       return result;
     } catch (e) {
@@ -973,6 +990,9 @@ export default function App() {
     try {
       setAuthLoading(true);
       setAuthError('');
+      if (canUseNativePhoneAuth()) {
+        return await startNativePhoneOtp(payload?.mobile);
+      }
       return await api.requestMpinResetOtp(payload);
     } catch (e) {
       setAuthError(e.message);
@@ -986,7 +1006,16 @@ export default function App() {
     try {
       setAuthLoading(true);
       setAuthError('');
-      return await api.confirmMpinReset(payload);
+      return canUseNativePhoneAuth()
+        ? await (async () => {
+            const verified = await completeNativePhoneOtp(payload?.otp);
+            return api.confirmMpinReset({
+              mobile: payload?.mobile,
+              new_mpin: payload?.new_mpin,
+              firebase_id_token: verified.firebase_id_token
+            });
+          })()
+        : await api.confirmMpinReset(payload);
     } catch (e) {
       setAuthError(e.message);
       throw e;
@@ -1016,6 +1045,7 @@ export default function App() {
     setAccessRole('admin');
     setAccountOwner(null);
     setIsAccountOwner(true);
+    clearNativePhoneOtp();
   };
 
   const ensureBiometricReady = async () => {

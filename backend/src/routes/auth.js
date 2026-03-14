@@ -11,7 +11,15 @@ import {
 } from '../lib/auth.js';
 import { decryptString, encryptString, hashLookup } from '../lib/crypto.js';
 import { PRIVACY_POLICY_VERSION, TERMS_VERSION } from '../lib/legal.js';
-import { OTP_CONFIG, OtpServiceError, hashOtp, normalizeProvider, sendOtp, verifyOtp } from '../lib/otp.js';
+import {
+  OTP_CONFIG,
+  OtpServiceError,
+  hashOtp,
+  normalizeProvider,
+  sendOtp,
+  verifyFirebaseIdToken,
+  verifyOtp
+} from '../lib/otp.js';
 import { ensureSubscriptionForUser, isPremiumActive } from '../lib/subscription.js';
 import { logSecurityEvent, notifyOwnerAndFamily } from '../lib/securityEvents.js';
 import {
@@ -844,7 +852,7 @@ router.post('/otp/send', async (req, res) => {
 });
 
 router.post('/otp/verify', async (req, res) => {
-  const { mobile, otp } = req.body || {};
+  const { mobile, otp, firebase_id_token: firebaseIdToken } = req.body || {};
   const context = extractDeviceContext(req, req.body?.device_context);
   const cleanMobile = normalizeMobile(mobile);
   const mobileHash = hashLookup(cleanMobile);
@@ -853,18 +861,18 @@ router.post('/otp/verify', async (req, res) => {
     return res.status(400).json({ error: 'device_id_required', message: 'Device identifier is required.' });
   }
 
-  if (!isValidIndianMobile(cleanMobile) || !otp) {
+  if (!isValidIndianMobile(cleanMobile) || (!otp && !firebaseIdToken)) {
     logAuthEvent({
       userId: null,
       mobileHash,
       eventType: 'otp_login_failed_validation',
       authMethod: 'otp',
       status: 'failed',
-      reason: 'missing_mobile_or_otp',
+      reason: 'missing_mobile_or_otp_or_firebase_token',
       context,
       req
     });
-    return res.status(400).json({ error: 'mobile and otp are required' });
+    return res.status(400).json({ error: 'mobile and otp (or firebase_id_token) are required' });
   }
 
   const user = db.prepare('SELECT * FROM users WHERE mobile_hash = ?').get(mobileHash);
@@ -881,7 +889,17 @@ router.post('/otp/verify', async (req, res) => {
     });
     return res.status(404).json({ error: 'Account not found for this mobile number' });
   }
-  const verified = await verifyOtpForPurpose(cleanMobile, mobileHash, otp, OTP_PURPOSE_LOGIN);
+  const verified = firebaseIdToken
+    ? await (async () => {
+        try {
+          await verifyFirebaseIdToken(cleanMobile, firebaseIdToken);
+          return { ok: true, status: 200 };
+        } catch (e) {
+          const status = Number(e?.status) || 401;
+          return { ok: false, status, error: e?.message || 'Firebase verification failed' };
+        }
+      })()
+    : await verifyOtpForPurpose(cleanMobile, mobileHash, otp, OTP_PURPOSE_LOGIN);
   if (!verified.ok) {
     logAuthEvent({
       userId: user.id,
@@ -948,9 +966,10 @@ router.post('/mpin/reset/request', async (req, res) => {
 router.post('/mpin/reset/confirm', async (req, res) => {
   const cleanMobile = normalizeMobile(req.body?.mobile);
   const otp = String(req.body?.otp || '');
+  const firebaseIdToken = String(req.body?.firebase_id_token || '');
   const newMpin = String(req.body?.new_mpin || '');
-  if (!isValidIndianMobile(cleanMobile) || !otp || !/^\d{4,6}$/.test(newMpin)) {
-    return res.status(400).json({ error: 'mobile, otp and new_mpin (4-6 digits) are required' });
+  if (!isValidIndianMobile(cleanMobile) || (!otp && !firebaseIdToken) || !/^\d{4,6}$/.test(newMpin)) {
+    return res.status(400).json({ error: 'mobile, otp (or firebase_id_token) and new_mpin (4-6 digits) are required' });
   }
 
   const mobileHash = hashLookup(cleanMobile);
@@ -960,7 +979,17 @@ router.post('/mpin/reset/confirm', async (req, res) => {
   }
   if (requireUnlockedReset(res, user.id, 'mpin_reset')) return;
 
-  const verified = await verifyOtpForPurpose(cleanMobile, mobileHash, otp, OTP_PURPOSE_MPIN_RESET);
+  const verified = firebaseIdToken
+    ? await (async () => {
+        try {
+          await verifyFirebaseIdToken(cleanMobile, firebaseIdToken);
+          return { ok: true, status: 200 };
+        } catch (e) {
+          const status = Number(e?.status) || 401;
+          return { ok: false, status, error: e?.message || 'Firebase verification failed' };
+        }
+      })()
+    : await verifyOtpForPurpose(cleanMobile, mobileHash, otp, OTP_PURPOSE_MPIN_RESET);
   if (!verified.ok) {
     if (verified.status === 401) {
       const lockState = registerResetFailure(user.id, 'mpin_reset');
@@ -1032,15 +1061,26 @@ router.post('/security-pin/reset/request', requireAuth, async (req, res) => {
 router.post('/security-pin/reset/confirm', requireAuth, async (req, res) => {
   const userId = req.userId;
   const otp = String(req.body?.otp || '');
+  const firebaseIdToken = String(req.body?.firebase_id_token || '');
   const newPin = String(req.body?.new_pin || '');
-  if (!otp || !/^\d{4}$/.test(newPin)) {
-    return res.status(400).json({ error: 'otp and new_pin (4 digits) are required' });
+  if ((!otp && !firebaseIdToken) || !/^\d{4}$/.test(newPin)) {
+    return res.status(400).json({ error: 'otp (or firebase_id_token) and new_pin (4 digits) are required' });
   }
   if (requireUnlockedReset(res, userId, 'security_pin_reset')) return;
 
   const cleanMobile = normalizeMobile(req.user?.mobile);
   const mobileHash = hashLookup(cleanMobile);
-  const verified = await verifyOtpForPurpose(cleanMobile, mobileHash, otp, OTP_PURPOSE_SECURITY_PIN_RESET);
+  const verified = firebaseIdToken
+    ? await (async () => {
+        try {
+          await verifyFirebaseIdToken(cleanMobile, firebaseIdToken);
+          return { ok: true, status: 200 };
+        } catch (e) {
+          const status = Number(e?.status) || 401;
+          return { ok: false, status, error: e?.message || 'Firebase verification failed' };
+        }
+      })()
+    : await verifyOtpForPurpose(cleanMobile, mobileHash, otp, OTP_PURPOSE_SECURITY_PIN_RESET);
   if (!verified.ok) {
     if (verified.status === 401) {
       const lockState = registerResetFailure(userId, 'security_pin_reset');

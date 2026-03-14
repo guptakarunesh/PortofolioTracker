@@ -169,6 +169,28 @@ async function verifyFirebaseOtp(_mobile, otp, providerRef) {
   }
 }
 
+export async function verifyFirebaseIdToken(mobile, idToken) {
+  const token = String(idToken || '').trim();
+  if (!token) {
+    throw new OtpServiceError('Firebase ID token is required.', 400, 'firebase_id_token_missing');
+  }
+
+  const payload = { idToken: token };
+  if (FIREBASE_TENANT_ID) payload.tenantId = FIREBASE_TENANT_ID;
+  const data = await callFirebase('/accounts:lookup', payload);
+  const user = Array.isArray(data?.users) ? data.users[0] : null;
+  const verifiedPhone = String(user?.phoneNumber || '').trim();
+  if (!verifiedPhone) {
+    throw new OtpServiceError('Firebase phone verification lookup returned no phone number.', 401, 'firebase_phone_missing');
+  }
+
+  if (verifiedPhone !== toFirebasePhoneNumber(mobile)) {
+    throw new OtpServiceError('Verified Firebase phone number does not match the requested mobile number.', 401, 'firebase_phone_mismatch');
+  }
+
+  return true;
+}
+
 async function sendMsg91V5Otp(mobile) {
   if (!MSG91_AUTH_KEY || !MSG91_TEMPLATE_ID) {
     throw new Error('MSG91 auth key and template id are required for OTP');

@@ -5,6 +5,11 @@ import * as Sharing from 'expo-sharing';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { api, buildApiUrl } from '../api/client';
+import {
+  canUseNativePhoneAuth,
+  completeNativePhoneOtp,
+  startNativePhoneOtp
+} from '../firebase/nativePhoneAuth';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 import { FAQ_ITEMS } from '../constants/faqs';
@@ -237,7 +242,9 @@ export default function AccountScreen({
   };
 
   const requestSecurityPinResetOtp = async () => {
-    const response = await api.requestSecurityPinResetOtp({});
+    const response = canUseNativePhoneAuth()
+      ? await startNativePhoneOtp(user?.mobile)
+      : await api.requestSecurityPinResetOtp({});
     setPinResetOtpRequested(true);
     setPinResetOtpCooldown(Number(response?.retry_after_seconds || 30));
     setMessage(t('OTP sent to your mobile number.'));
@@ -248,10 +255,18 @@ export default function AccountScreen({
       setMessage(t('OTP and new 4-digit PIN are required.'));
       return;
     }
-    await api.confirmSecurityPinReset({
-      otp: pinResetOtp.trim(),
-      new_pin: pinResetNewPin
-    });
+    if (canUseNativePhoneAuth()) {
+      const verified = await completeNativePhoneOtp(pinResetOtp.trim());
+      await api.confirmSecurityPinReset({
+        new_pin: pinResetNewPin,
+        firebase_id_token: verified.firebase_id_token
+      });
+    } else {
+      await api.confirmSecurityPinReset({
+        otp: pinResetOtp.trim(),
+        new_pin: pinResetNewPin
+      });
+    }
     setPin(pinResetNewPin);
     setPinResetOtpRequested(false);
     setPinResetOtpCooldown(0);

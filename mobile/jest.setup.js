@@ -35,4 +35,22 @@ jest.mock('expo-firebase-recaptcha', () => {
     return React.createElement(View, { testID: 'firebase-recaptcha-modal' });
   });
   return { FirebaseRecaptchaVerifierModal };
+}, { virtual: true });
+
+jest.mock('@react-native-firebase/auth', () => {
+  const signInWithPhoneNumber = jest.fn(async () => ({
+    confirm: jest.fn(async () => ({
+      user: {
+        getIdToken: jest.fn(async () => 'test-firebase-id-token')
+      }
+    }))
+  }));
+  const signOut = jest.fn(async () => {});
+  const auth = () => ({
+    signInWithPhoneNumber,
+    signOut
+  });
+  auth.signInWithPhoneNumber = signInWithPhoneNumber;
+  auth.signOut = signOut;
+  return auth;
 });

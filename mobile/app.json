@@ -27,7 +27,10 @@
         {
           "supportsPictureInPicture": true
         }
-      ]
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
+      "expo-build-properties"
     ],
     "ios": {
       "icon": "./src/assets/app-icon.png",
@@ -58,9 +61,7 @@
         "projectId": "3c237618-49f6-47e7-b951-abe8f408c5ba"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/3c237618-49f6-47e7-b951-abe8f408c5ba"
     }

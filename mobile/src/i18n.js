@@ -25,7 +25,7 @@ const translations = {
       'On the login screen, switch to OTP Login, request OTP, and verify it. OTP expires, so use it quickly.',
     'faq_biometric_q': 'How do I enable fingerprint/Face ID login?',
     'faq_biometric_a':
-      'First login once with mobile and MPIN, then enable biometric login from Account > Privacy & Security.',
+      'First login once with OTP, then enable biometric login from Account > Privacy & Security.',
     'faq_subscription_expired_q': 'What happens when my subscription expires?',
     'faq_subscription_expired_a':
       'The app switches to view-only behavior for premium editing features. Renew from Subscription to restore full access.',
@@ -111,13 +111,13 @@ const translations = {
     '4-digit Privacy PIN': '4-अंकों का प्राइवेसी पिन',
     'Save Privacy Settings': 'प्राइवेसी सेटिंग्स सेव करें',
     'Biometric Login': 'बायोमेट्रिक लॉगिन',
-    'Face ID is enabled for quick login on this device.':
-      'इस डिवाइस पर तेज़ लॉगिन के लिए फेस आईडी सक्षम है।',
-    'Enroll Face ID to login faster without typing MPIN each time.':
-      'हर बार एमपिन टाइप किए बिना तेज़ लॉगिन के लिए फेस आईडी एनरोल करें।',
-    'Face ID Enrolled': 'फेस आईडी एनरोल्ड',
-    'Enroll Face ID': 'फेस आईडी एनरोल करें',
-    'Disable Face ID': 'फेस आईडी अक्षम करें',
+    'Biometric login is enabled for fast access on this device.':
+      'इस डिवाइस पर तेज़ एक्सेस के लिए बायोमेट्रिक लॉगिन सक्षम है।',
+    'Enroll Biometric Login to use fingerprint or face unlock on this device.':
+      'इस डिवाइस पर फिंगरप्रिंट या फेस अनलॉक के लिए बायोमेट्रिक लॉगिन एनरोल करें।',
+    'Biometric Login Enrolled': 'बायोमेट्रिक लॉगिन एनरोल्ड',
+    'Enroll Biometric Login': 'बायोमेट्रिक लॉगिन एनरोल करें',
+    'Disable Biometric Login': 'बायोमेट्रिक लॉगिन अक्षम करें',
     'Theme': 'थीम',
     'Choose the app color scheme.': 'ऐप की रंग योजना चुनें।',
     'Language': 'भाषा',
@@ -159,26 +159,31 @@ const translations = {
     ,
     'Insights': 'इनसाइट्स',
     'Networth Manager': 'नेटवर्थ मैनेजर',
-    'Create account or login with mobile + MPIN or OTP':
-      'मोबाइल + एमपिन या ओटीपी से अकाउंट बनाएं या लॉगिन करें',
+    'Create account or login using OTP. Biometric login can be enabled after setup.':
+      'ओटीपी का उपयोग करके अकाउंट बनाएं या लॉगिन करें। सेटअप के बाद बायोमेट्रिक लॉगिन सक्षम किया जा सकता है।',
     'Welcome, {name}': 'स्वागत है, {name}',
     'Role: {role}': 'भूमिका: {role}',
     'Owner: {name}': 'मालिक: {name}',
     'Privacy {state}': 'प्राइवेसी {state}',
     'Biometric hardware not available on this device.':
       'इस डिवाइस पर बायोमेट्रिक हार्डवेयर उपलब्ध नहीं है।',
-    'No Face ID / biometric profile is enrolled on this device.':
-      'इस डिवाइस पर फेस आईडी/बायोमेट्रिक प्रोफाइल एनरोल नहीं है।',
-    'Login once with mobile + MPIN before enrolling Face ID.':
-      'फेस आईडी एनरोल करने से पहले मोबाइल + एमपिन से एक बार लॉगिन करें।',
-    'Confirm Face ID enrollment': 'फेस आईडी एनरोलमेंट की पुष्टि करें',
+    'No biometric profile is enrolled on this device.':
+      'इस डिवाइस पर कोई बायोमेट्रिक प्रोफाइल एनरोल नहीं है।',
+    'Complete one OTP login before enrolling biometric login.':
+      'बायोमेट्रिक लॉगिन एनरोल करने से पहले एक बार ओटीपी लॉगिन पूरा करें।',
+    'Confirm biometric enrollment': 'बायोमेट्रिक एनरोलमेंट की पुष्टि करें',
     'Use device passcode': 'डिवाइस पासकोड इस्तेमाल करें',
     'Biometric verification failed.': 'बायोमेट्रिक सत्यापन विफल।',
-    'Face ID login is not enrolled on this device yet.':
-      'इस डिवाइस पर फेस आईडी लॉगिन अभी एनरोल नहीं है।',
-    'Login with Face ID': 'फेस आईडी से लॉगिन करें',
+    'Biometric login is not enrolled on this device yet.':
+      'इस डिवाइस पर बायोमेट्रिक लॉगिन अभी एनरोल नहीं है।',
+    'Login with biometrics': 'बायोमेट्रिक्स से लॉगिन करें',
+    'Login with Biometrics': 'बायोमेट्रिक्स से लॉगिन करें',
     'Biometric login canceled or failed.':
       'बायोमेट्रिक लॉगिन रद्द हुआ या विफल रहा।',
+    'Biometric session is not available on this device.':
+      'इस डिवाइस पर बायोमेट्रिक सेशन उपलब्ध नहीं है।',
+    'Biometric session expired. Login once with OTP and enroll again.':
+      'बायोमेट्रिक सेशन समाप्त हो गया। एक बार ओटीपी से लॉगिन करें और फिर से एनरोल करें।',
     'As of: {date}': 'तारीख: {date}',
     'Privacy PIN': 'प्राइवेसी पिन'
     ,
@@ -415,6 +420,12 @@ const translations = {
     'Enter a valid 4-digit PIN to enable PIN protection.': 'पिन सक्षम करने के लिए वैध 4-अंकों का पिन दर्ज करें।',
     'Biometric login enrolled for this device.': 'इस डिवाइस के लिए बायोमेट्रिक लॉगिन एनरोल हो गया।',
     'Biometric login disabled for this device.': 'इस डिवाइस के लिए बायोमेट्रिक लॉगिन अक्षम हो गया।',
+    'Open support for FAQs and AI-assisted help with login, subscription, family access, and setup.':
+      'लॉगिन, सब्सक्रिप्शन, फैमिली एक्सेस और सेटअप के लिए FAQ और AI सहायता हेतु सपोर्ट खोलें।',
+    'Open NWM Support': 'NWM सपोर्ट खोलें',
+    'NWM Support': 'NWM सपोर्ट',
+    'Purchase Successful': 'खरीद सफल हुई',
+    'Activated on: {date}': 'सक्रिय हुआ: {date}',
     'Share access with family members and control read/write/admin permissions.':
       'परिवार के साथ एक्सेस साझा करें और पढ़ने/लिखने/एडमिन अनुमति नियंत्रित करें।',
     'Manage Family': 'परिवार प्रबंधित करें',
@@ -634,7 +645,7 @@ const translations = {
     'faq_otp_q': 'मैं OTP से लॉगिन कैसे करूं?',
     'faq_otp_a': 'लॉगिन स्क्रीन में OTP Login चुनें, OTP भेजें और फिर उसे सत्यापित करें। OTP जल्दी समाप्त होता है, इसलिए तुरंत उपयोग करें।',
     'faq_biometric_q': 'फिंगरप्रिंट/फेस आईडी लॉगिन कैसे सक्षम करें?',
-    'faq_biometric_a': 'पहले मोबाइल और MPIN से एक बार लॉगिन करें, फिर Account > Privacy & Security से बायोमेट्रिक लॉगिन सक्षम करें।',
+    'faq_biometric_a': 'पहले एक बार ओटीपी से लॉगिन करें, फिर Account > Privacy & Security से बायोमेट्रिक लॉगिन सक्षम करें।',
     'faq_subscription_expired_q': 'सब्सक्रिप्शन समाप्त होने पर क्या होता है?',
     'faq_subscription_expired_a': 'प्रीमियम एडिटिंग फीचर्स के लिए ऐप व्यू-ओनली जैसा व्यवहार करेगा। पूरा एक्सेस पाने के लिए Subscription से रिन्यू करें।',
     'faq_currency_language_q': 'क्या मैं करेंसी और भाषा बदल सकता/सकती हूँ?',

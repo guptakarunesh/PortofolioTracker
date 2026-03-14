@@ -175,6 +175,13 @@ export async function verifyFirebaseIdToken(mobile, idToken) {
     throw new OtpServiceError('Firebase ID token is required.', 400, 'firebase_id_token_missing');
   }
 
+  if (normalizeProvider(process.env.OTP_PROVIDER) === 'mock') {
+    if (token !== `mock:${String(mobile || '').trim()}`) {
+      throw new OtpServiceError('Mock Firebase ID token does not match mobile.', 401, 'mock_firebase_token_mismatch');
+    }
+    return true;
+  }
+
   const payload = { idToken: token };
   if (FIREBASE_TENANT_ID) payload.tenantId = FIREBASE_TENANT_ID;
   const data = await callFirebase('/accounts:lookup', payload);

@@ -151,6 +151,7 @@ export default function AccountScreen({
   subscriptionStatus,
   onOpenSubscription,
   onOpenFamily,
+  onOpenSupport,
   onOpenOnboarding,
   premiumActive = false,
   preferredCurrency = 'INR',
@@ -449,12 +450,12 @@ export default function AccountScreen({
         <Text style={[styles.label, { color: theme.muted }]}>{t('Biometric Login')}</Text>
         <Text style={[styles.helper, { color: theme.muted }]}>
           {biometricEnrolled
-            ? t('Face ID is enabled for quick login on this device.')
-            : t('Enroll Face ID to login faster without typing MPIN each time.')}
+            ? t('Biometric login is enabled for fast access on this device.')
+            : t('Enroll Biometric Login to use fingerprint or face unlock on this device.')}
         </Text>
         <View style={styles.row}>
           <PillButton
-            label={biometricEnrolled ? t('Face ID Enrolled') : t('Enroll Face ID')}
+            label={biometricEnrolled ? t('Biometric Login Enrolled') : t('Enroll Biometric Login')}
             kind={biometricEnrolled ? 'primary' : 'ghost'}
             onPress={() =>
               Promise.resolve(onEnrollBiometric?.())
@@ -464,7 +465,7 @@ export default function AccountScreen({
           />
           {biometricEnrolled ? (
             <PillButton
-              label={t('Disable Face ID')}
+              label={t('Disable Biometric Login')}
               kind="ghost"
               onPress={() =>
                 Promise.resolve(onDisableBiometric?.())
@@ -583,6 +584,13 @@ export default function AccountScreen({
         )}
         {!!receiptError ? <Text style={[styles.message, { color: theme.danger }]}>{receiptError}</Text> : null}
         <PillButton label={t('Buy Subscription')} kind="ghost" onPress={onOpenSubscription} />
+      </SectionCard>
+
+      <SectionCard title={t('NWM Support')}>
+        <Text style={[styles.helper, { color: theme.muted }]}>
+          {t('Open support for FAQs and AI-assisted help with login, subscription, family access, and setup.')}
+        </Text>
+        <PillButton label={t('Open NWM Support')} kind="primary" onPress={onOpenSupport} />
       </SectionCard>
 
       <SectionCard title={t('FAQs')}>

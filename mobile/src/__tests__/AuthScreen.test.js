@@ -11,7 +11,6 @@ jest.mock('../api/client', () => ({
 
 describe('AuthScreen', () => {
   it('switches to OTP login and triggers send/verify', async () => {
-    const onLogin = jest.fn();
     const onRegister = jest.fn();
     const onLoginWithBiometric = jest.fn(() => Promise.resolve());
     const onRequestOtp = jest.fn(async () => ({ retry_after_seconds: 0 }));
@@ -19,7 +18,6 @@ describe('AuthScreen', () => {
 
     const { getByText, getByPlaceholderText } = render(
       <AuthScreen
-        onLogin={onLogin}
         onRegister={onRegister}
         onLoginWithBiometric={onLoginWithBiometric}
         onRequestOtp={onRequestOtp}
@@ -28,7 +26,6 @@ describe('AuthScreen', () => {
       />
     );
 
-    fireEvent.press(getByText('OTP Login'));
     fireEvent.changeText(getByPlaceholderText('10-digit Indian mobile'), '9999999999');
     fireEvent.press(getByText('Send OTP'));
     await waitFor(() => expect(onRequestOtp).toHaveBeenCalled());

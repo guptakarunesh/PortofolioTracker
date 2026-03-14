@@ -34,7 +34,7 @@ import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import FamilyScreen from './src/screens/FamilyScreen';
 import OnboardingModal from './src/components/OnboardingModal';
 import PillButton from './src/components/PillButton';
-import { api, setAuthToken } from './src/api/client';
+import { api, getAuthToken, setAuthToken } from './src/api/client';
 import {
   canUseNativePhoneAuth,
   clearNativePhoneOtp,
@@ -68,13 +68,11 @@ const TABS = [
   { key: 'assets', labelKey: 'Assets' },
   { key: 'loans', labelKey: 'Liabilities' },
   { key: 'settings', labelKey: 'Targets' },
-  { key: 'performance', labelKey: 'Performance' },
   { key: 'reminders', labelKey: 'Reminders' },
+  { key: 'performance', labelKey: 'Performance' },
   { key: 'account', labelKey: 'Account' }
 ];
-const PRIMARY_TAB_KEYS = ['dashboard', 'assets', 'loans', 'settings'];
-const SECONDARY_TAB_KEYS = ['performance', 'reminders', 'account'];
-const MENU_TAB_KEYS = [...SECONDARY_TAB_KEYS];
+const PRIMARY_TAB_KEYS = ['dashboard', 'assets', 'loans', 'settings', 'reminders'];
 const PREMIUM_TAB_KEYS = new Set(['settings', 'performance', 'reminders']);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -85,8 +83,7 @@ const TAB_ICONS = {
   settings: '🎯',
   performance: '📈',
   reminders: '⏰',
-  account: '👤',
-  more: '☰'
+  account: '👤'
 };
 
 function AiBrainIcon({ stroke, badgeFill, badgeText }) {
@@ -223,7 +220,8 @@ function ScreenRenderer({
   onThemeChange,
   themeKey,
   onRemindersChanged,
-  onRequestScrollTo
+  onRequestScrollTo,
+  onOpenSupport
 }) {
   switch (tab) {
     case 'dashboard':
@@ -286,6 +284,7 @@ function ScreenRenderer({
           subscriptionStatus={subscriptionStatus}
           onOpenSubscription={onOpenSubscription}
           onOpenFamily={onOpenFamily}
+          onOpenSupport={onOpenSupport}
           onOpenOnboarding={onOpenOnboarding}
           onRegisterOnboardingTarget={onRegisterOnboardingTarget}
           onMeasureOnboardingTarget={onMeasureOnboardingTarget}
@@ -300,7 +299,7 @@ function ScreenRenderer({
       return (
         <SubscriptionScreen
           onClose={onCloseSubscription}
-          onPurchased={onCloseSubscription}
+          onPurchased={() => {}}
           user={user}
         />
       );
@@ -341,7 +340,6 @@ export default function App() {
   const [pinSetupError, setPinSetupError] = useState('');
   const [preferredCurrency, setPreferredCurrency] = useState('INR');
   const [fxRates, setFxRates] = useState({ INR: 1 });
-  const [moreMenuVisible, setMoreMenuVisible] = useState(false);
   const [aiVisible, setAiVisible] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
@@ -356,7 +354,6 @@ export default function App() {
   const [onboardingIndex, setOnboardingIndex] = useState(0);
   const [onboardingTargets, setOnboardingTargets] = useState({});
   const [biometricEnrolled, setBiometricEnrolled] = useState(false);
-  const [lastLoginCreds, setLastLoginCreds] = useState(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [accessRole, setAccessRole] = useState('admin');
   const [accountOwner, setAccountOwner] = useState(null);
@@ -506,7 +503,6 @@ export default function App() {
 
   const openSupport = React.useCallback(() => {
     setAiVisible(false);
-    setMoreMenuVisible(false);
     setSupportVisible(true);
     setSupportChatMode(false);
   }, []);
@@ -528,7 +524,7 @@ export default function App() {
           : [
               {
                 role: 'assistant',
-                text: t('Hi! I am your support assistant. Ask me about login, OTP, MPIN reset, biometric login, reminders, family access, or subscription.')
+                text: t('Hi! I am your support assistant. Ask me about OTP login, biometric login, reminders, family access, subscription, or account setup.')
               }
             ]
       );
@@ -550,7 +546,7 @@ export default function App() {
         setSupportChatMessages([
           {
             role: 'assistant',
-            text: t('Hi! I am your support assistant. Ask me about login, OTP, MPIN reset, biometric login, reminders, family access, or subscription.')
+            text: t('Hi! I am your support assistant. Ask me about OTP login, biometric login, reminders, family access, subscription, or account setup.')
           }
         ]);
       }
@@ -561,7 +557,7 @@ export default function App() {
           : [
               {
                 role: 'assistant',
-                text: t('Hi! I am your support assistant. Ask me about login, OTP, MPIN reset, biometric login, reminders, family access, or subscription.')
+                text: t('Hi! I am your support assistant. Ask me about OTP login, biometric login, reminders, family access, subscription, or account setup.')
               }
             ]
       );
@@ -759,7 +755,6 @@ export default function App() {
       if (!reminderId) return;
       const description = String(payload?.description || t('Reminder')).trim() || t('Reminder');
       setActiveTab('reminders');
-      setMoreMenuVisible(false);
       Alert.alert(t('Reminder'), description, [
         { text: t('Open Reminder'), style: 'cancel' },
         {
@@ -914,12 +909,32 @@ export default function App() {
     }
   };
 
-  const handleAuthSuccess = (payload) => {
+  const saveBiometricSession = async (token, profile) => {
+    const sessionToken = String(token || '').trim();
+    const mobile = String(profile?.mobile || '').trim();
+    if (!sessionToken || !mobile) {
+      throw new Error(t('Complete one OTP login before enrolling biometric login.'));
+    }
+    await SecureStore.setItemAsync(
+      BIOMETRIC_CREDENTIALS_KEY,
+      JSON.stringify({
+        token: sessionToken,
+        mobile,
+        full_name: String(profile?.full_name || '').trim()
+      })
+    );
+    setBiometricEnrolled(true);
+  };
+
+  const handleAuthSuccess = async (payload, options = {}) => {
     setAuthToken(payload.token);
     setUser(payload.user);
     setAuthError('');
     setActiveTab('dashboard');
     setPinSetupVisible(false);
+    if (biometricEnrolled && options.refreshBiometric !== false) {
+      await saveBiometricSession(payload.token, payload.user).catch(() => {});
+    }
     refreshPrivacyConfig();
     refreshSubscription();
     refreshAccessContext();
@@ -931,28 +946,20 @@ export default function App() {
     });
   };
 
-  const handleLogin = async (payload) => {
-    try {
-      setAuthLoading(true);
-      setAuthError('');
-      const result = await api.login(payload);
-      setLastLoginCreds({ mobile: payload.mobile, mpin: payload.mpin });
-      handleAuthSuccess(result);
-    } catch (e) {
-      setAuthError(e.message);
-      throw e;
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const handleRegister = async (payload) => {
     try {
       setAuthLoading(true);
       setAuthError('');
-      const result = await api.register(payload);
-      setLastLoginCreds({ mobile: payload.mobile, mpin: payload.mpin });
-      handleAuthSuccess(result);
+      const result = canUseNativePhoneAuth()
+        ? await (async () => {
+            const verified = await completeNativePhoneOtp(payload?.otp);
+            return api.register({
+              ...payload,
+              firebase_id_token: verified.firebase_id_token
+            });
+          })()
+        : await api.register(payload);
+      await handleAuthSuccess(result);
     } catch (e) {
       setAuthError(e.message);
       throw e;
@@ -990,46 +997,8 @@ export default function App() {
             });
           })()
         : await api.verifyLoginOtp(payload);
-      handleAuthSuccess(result);
+      await handleAuthSuccess(result);
       return result;
-    } catch (e) {
-      setAuthError(e.message);
-      throw e;
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleMpinResetOtpRequest = async (payload) => {
-    try {
-      setAuthLoading(true);
-      setAuthError('');
-      if (canUseNativePhoneAuth()) {
-        return await startNativePhoneOtp(payload?.mobile);
-      }
-      return await api.requestMpinResetOtp(payload);
-    } catch (e) {
-      setAuthError(e.message);
-      throw e;
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleMpinResetConfirm = async (payload) => {
-    try {
-      setAuthLoading(true);
-      setAuthError('');
-      return canUseNativePhoneAuth()
-        ? await (async () => {
-            const verified = await completeNativePhoneOtp(payload?.otp);
-            return api.confirmMpinReset({
-              mobile: payload?.mobile,
-              new_mpin: payload?.new_mpin,
-              firebase_id_token: verified.firebase_id_token
-            });
-          })()
-        : await api.confirmMpinReset(payload);
     } catch (e) {
       setAuthError(e.message);
       throw e;
@@ -1067,23 +1036,17 @@ export default function App() {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
     if (!hasHardware) throw new Error(t('Biometric hardware not available on this device.'));
     const enrolled = await LocalAuthentication.isEnrolledAsync();
-    if (!enrolled) throw new Error(t('No Face ID / biometric profile is enrolled on this device.'));
-  };
-
-  const saveBiometricCredentials = async (mobile, mpin) => {
-    if (!mobile || !mpin) throw new Error(t('Login once with mobile + MPIN before enrolling Face ID.'));
-    await SecureStore.setItemAsync(BIOMETRIC_CREDENTIALS_KEY, JSON.stringify({ mobile, mpin }));
-    setBiometricEnrolled(true);
+    if (!enrolled) throw new Error(t('No biometric profile is enrolled on this device.'));
   };
 
   const handleEnrollBiometric = async () => {
     await ensureBiometricReady();
     const auth = await LocalAuthentication.authenticateAsync({
-      promptMessage: t('Confirm Face ID enrollment'),
+      promptMessage: t('Confirm biometric enrollment'),
       fallbackLabel: t('Use device passcode')
     });
     if (!auth.success) throw new Error(t('Biometric verification failed.'));
-    await saveBiometricCredentials(lastLoginCreds?.mobile, lastLoginCreds?.mpin);
+    await saveBiometricSession(getAuthToken(), user);
     await api.upsertSettings({ biometric_login_enabled: '1' }).catch(() => {});
   };
 
@@ -1096,14 +1059,26 @@ export default function App() {
   const handleBiometricLogin = async () => {
     await ensureBiometricReady();
     const raw = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
-    if (!raw) throw new Error(t('Face ID login is not enrolled on this device yet.'));
+    if (!raw) throw new Error(t('Biometric login is not enrolled on this device yet.'));
     const creds = JSON.parse(raw);
     const auth = await LocalAuthentication.authenticateAsync({
-      promptMessage: t('Login with Face ID'),
+      promptMessage: t('Login with biometrics'),
       fallbackLabel: t('Use device passcode')
     });
     if (!auth.success) throw new Error(t('Biometric login canceled or failed.'));
-    await handleLogin({ mobile: String(creds.mobile || ''), mpin: String(creds.mpin || '') });
+    const storedToken = String(creds?.token || '').trim();
+    if (!storedToken) {
+      throw new Error(t('Biometric session is not available on this device.'));
+    }
+    setAuthToken(storedToken);
+    try {
+      const profile = await api.me();
+      await handleAuthSuccess({ token: storedToken, user: profile }, { refreshBiometric: false });
+    } catch (_e) {
+      await handleDisableBiometric();
+      setAuthToken(null);
+      throw new Error(t('Biometric session expired. Login once with OTP and enroll again.'));
+    }
   };
 
   const handlePrivacyConfigChanged = (nextState) => {
@@ -1344,7 +1319,6 @@ export default function App() {
   };
 
   const openOnboarding = () => {
-    setMoreMenuVisible(false);
     setAiVisible(false);
     setOnboardingIndex(0);
     setOnboardingTargets({});
@@ -1443,19 +1417,11 @@ export default function App() {
               <Text style={[styles.aiBtnText, { color: theme.accent }]}>{t('AI Insights')}</Text>
             </View>
           </AnimatedPressable>
-          <Pressable
-            style={[styles.supportBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
-            onPress={openSupport}
-            hitSlop={8}
-          >
-            <SupportIcon stroke={theme.accent} />
-            <Text style={[styles.supportBtnText, { color: theme.accent }]}>{t('Support')}</Text>
-          </Pressable>
         </View>
         <Image source={BRAND_ICON} style={styles.headerLogo} resizeMode="cover" />
         <Text style={[styles.title, { color: theme.text }]}>{t('Networth Manager')}</Text>
         <Text style={[styles.subtitle, { color: theme.muted }]}>
-          {t('Create account or login with mobile + MPIN or OTP')}
+          {t('Create account or login using OTP. Biometric login can be enabled after setup.')}
         </Text>
       </View>
       <ScrollView
@@ -1468,13 +1434,11 @@ export default function App() {
         alwaysBounceVertical
       >
         <AuthScreen
-          onLogin={handleLogin}
           onRegister={handleRegister}
           onLoginWithBiometric={handleBiometricLogin}
           onRequestOtp={handleOtpSend}
           onVerifyOtp={handleOtpVerify}
-          onRequestMpinResetOtp={handleMpinResetOtpRequest}
-          onConfirmMpinReset={handleMpinResetConfirm}
+          biometricReady={biometricEnrolled}
           loading={authLoading}
           externalMessage={authError}
         />
@@ -1503,25 +1467,27 @@ export default function App() {
                 <Text style={[styles.aiBtnText, { color: theme.accent }]}>{t('AI Insights')}</Text>
               </View>
             </AnimatedPressable>
-            <Pressable
-              style={[styles.supportBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
-              onPress={openSupport}
-              hitSlop={8}
-            >
-              <SupportIcon stroke={theme.accent} />
-              <Text style={[styles.supportBtnText, { color: theme.accent }]}>{t('Support')}</Text>
-            </Pressable>
           </View>
           <Image source={BRAND_ICON} style={styles.headerLogo} resizeMode="cover" />
-          <Text style={[styles.title, { color: theme.text }]}>{t('Networth Manager')}</Text>
-          <Text style={[styles.subtitle, { color: theme.muted }]}>
-            {t('Welcome, {name}', { name: `${toInitialsFromName(user.full_name)} (${roleLabel})` })}
-          </Text>
-          {accountOwner && accountOwner.id !== user.id ? (
-            <Text style={[styles.subtitle, { color: theme.muted }]}>
-              {t('Owner: {name}', { name: toInitialsFromName(accountOwner.full_name) })}
-            </Text>
-          ) : null}
+          <View style={styles.loggedHeaderRow}>
+            <View style={styles.loggedHeaderMeta}>
+              <Text style={[styles.subtitle, { color: theme.muted }]}>
+                {t('Welcome, {name}', { name: `${toInitialsFromName(user.full_name)} (${roleLabel})` })}
+              </Text>
+              {accountOwner && accountOwner.id !== user.id ? (
+                <Text style={[styles.subtitle, { color: theme.muted }]}>
+                  {t('Owner: {name}', { name: toInitialsFromName(accountOwner.full_name) })}
+                </Text>
+              ) : null}
+            </View>
+            <Pressable
+              style={[styles.accountAvatar, { backgroundColor: theme.accent, borderColor: theme.border }]}
+              onPress={() => handleTabSelect('account')}
+              hitSlop={8}
+            >
+              <Text style={styles.accountAvatarText}>{toInitialsFromName(user.full_name)}</Text>
+            </Pressable>
+          </View>
           <Pressable
             ref={(node) => setOnboardingTargetRef('privacy_toggle', node)}
             collapsable={false}
@@ -1577,6 +1543,7 @@ export default function App() {
             themeKey={themeKey}
             onRemindersChanged={triggerReminderSync}
             onRequestScrollTo={requestMainScroll}
+            onOpenSupport={openSupport}
           />
         </View>
       ) : (
@@ -1628,6 +1595,7 @@ export default function App() {
               themeKey={themeKey}
               onRemindersChanged={triggerReminderSync}
               onRequestScrollTo={requestMainScroll}
+              onOpenSupport={openSupport}
             />
           </View>
         </ScrollView>
@@ -1704,79 +1672,8 @@ export default function App() {
               </AnimatedPressable>
             );
           })}
-          <Pressable
-            style={[
-              styles.navItem,
-              SECONDARY_TAB_KEYS.includes(activeTab) && { backgroundColor: theme.accentSoft }
-            ]}
-            onPress={() => setMoreMenuVisible(true)}
-          >
-            <View style={styles.navTextWrap}>
-              <Text
-                style={[
-                  styles.navIcon,
-                  { color: theme.muted },
-                  SECONDARY_TAB_KEYS.includes(activeTab) && { color: theme.accent }
-                ]}
-              >
-                {TAB_ICONS.more}
-              </Text>
-              <Text
-                style={[
-                  styles.navText,
-                  { color: theme.muted },
-                  SECONDARY_TAB_KEYS.includes(activeTab) && { color: theme.accent }
-                ]}
-              >
-                {t('More')}
-              </Text>
-            </View>
-          </Pressable>
         </View>
       ) : null}
-
-      <Modal visible={moreMenuVisible} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setMoreMenuVisible(false)}>
-          <Pressable style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => {}}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{t('More')}</Text>
-            <View style={styles.moreGrid}>
-              {MENU_TAB_KEYS.map((key) => {
-                const tab = TABS.find((t) => t.key === key);
-                const active = activeTab === key;
-                const locked = PREMIUM_TAB_KEYS.has(key) && !premiumActive;
-                const label = t(tab?.labelKey || key);
-                return (
-                  <Pressable
-                    key={key}
-                    style={[
-                      styles.moreChip,
-                      { borderColor: theme.border, backgroundColor: theme.card },
-                      active && { borderColor: theme.accent, backgroundColor: theme.accentSoft }
-                    ]}
-                    onPress={() => {
-                      handleTabSelect(key);
-                      setMoreMenuVisible(false);
-                    }}
-                  >
-                    <View style={styles.moreChipRow}>
-                      <Text style={styles.moreChipIcon}>{TAB_ICONS[key] || '•'}</Text>
-                      <Text style={[
-                        styles.moreChipText,
-                        { color: theme.muted },
-                        active && { color: theme.accent },
-                        locked && { color: theme.warn }
-                      ]}>
-                        {locked ? <Text style={[styles.lockIcon, { color: theme.warn }]}>🔒 </Text> : null}
-                        {label}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
     </SafeAreaView>
   );
@@ -1934,7 +1831,7 @@ export default function App() {
               ) : (
                 <View style={styles.supportPageChatArea}>
                   <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>
-                    {t('Share your issue. I can help with login, OTP, MPIN reset, fingerprint login, and common app setup steps.')}
+                    {t('Share your issue. I can help with OTP login, biometric login, subscription, privacy PIN, and common app setup steps.')}
                   </Text>
                   <ScrollView
                     ref={supportChatScrollRef}
@@ -2071,19 +1968,28 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     fontSize: 12
   },
-  supportBtn: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  loggedHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6
+    justifyContent: 'space-between',
+    gap: 12
   },
-  supportBtnText: {
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    fontSize: 12
+  loggedHeaderMeta: {
+    flex: 1
+  },
+  accountAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1
+  },
+  accountAvatarText: {
+    color: '#ffffff',
+    fontWeight: '900',
+    fontSize: 16,
+    letterSpacing: 0.4
   },
   title: {
     fontSize: 24,

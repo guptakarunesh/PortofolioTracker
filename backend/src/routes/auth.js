@@ -525,13 +525,13 @@ router.get('/support-chat/history', requireAuth, (req, res) => {
   return res.json({ items });
 });
 
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const {
     full_name,
     mobile,
     email = '',
     country = '',
-    mpin,
+    firebase_id_token: firebaseIdToken,
     consent_privacy,
     consent_terms,
     privacy_policy_version,
@@ -551,8 +551,8 @@ router.post('/register', (req, res) => {
   if (!isValidIndianMobile(cleanMobile)) {
     return res.status(400).json({ error: 'Valid Indian mobile number is required' });
   }
-  if (!mpin || !/^\d{4,6}$/.test(String(mpin))) {
-    return res.status(400).json({ error: 'mpin must be 4 to 6 digits' });
+  if (!firebaseIdToken) {
+    return res.status(400).json({ error: 'firebase_id_token is required' });
   }
   if (!country || String(country).trim().length < 2) {
     return res.status(400).json({ error: 'country is required' });
@@ -574,9 +574,12 @@ router.post('/register', (req, res) => {
   }
 
   const token = createSessionToken();
+  const disabledMpinHash = hashPin(createSessionToken().slice(0, 6));
   let user = null;
   let registerStage = 'init';
   try {
+    registerStage = 'firebase_verify';
+    await verifyFirebaseIdToken(cleanMobile, String(firebaseIdToken));
     const tx = db.transaction(() => {
       registerStage = 'insert_user';
       const result = db.prepare(`
@@ -587,7 +590,7 @@ router.post('/register', (req, res) => {
         encryptString(cleanMobile),
         mobileHash,
         encryptString(String(email || '').trim()),
-        hashPin(String(mpin)),
+        disabledMpinHash,
         nowIso()
       );
 
@@ -667,7 +670,7 @@ router.post('/register', (req, res) => {
       createBoundSession({
         userId: user.id,
         token,
-        authMethod: 'register_mpin',
+        authMethod: 'register_otp',
         context,
         req,
         createdAt: nowIso()
@@ -721,13 +724,14 @@ router.post('/register', (req, res) => {
     tx();
   } catch (error) {
     console.error('[auth/register] failed stage=%s mobile=%s message=%s', registerStage, cleanMobile, error?.message || error);
-    throw error;
+    const status = Number(error?.status) || 500;
+    return res.status(status).json({ error: error?.message || 'Registration failed' });
   }
   logAuthEvent({
     userId: user?.id || null,
     mobileHash,
     eventType: 'register_success',
-    authMethod: 'register_mpin',
+    authMethod: 'register_otp',
     status: 'ok',
     context,
     req

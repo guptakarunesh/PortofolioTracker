@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { api } from '../api/client';
+import FeedbackBanner from '../components/FeedbackBanner';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import DateField from '../components/DateField';
@@ -42,6 +43,7 @@ export default function RemindersScreen({
     alert_days_before: ALERT_DAYS_OPTIONS[3]
   });
   const [message, setMessage] = useState('');
+  const [messageKind, setMessageKind] = useState('info');
   const [showCategoryOptions, setShowCategoryOptions] = useState(false);
   const [showAlertOptions, setShowAlertOptions] = useState(false);
 
@@ -51,12 +53,22 @@ export default function RemindersScreen({
   }, []);
 
   useEffect(() => {
-    load().catch((e) => setMessage(e.message));
+    load().catch((e) => {
+      setMessage(e.message);
+      setMessageKind('error');
+    });
   }, [load]);
+
+  useEffect(() => {
+    if (!message) return undefined;
+    const timer = setTimeout(() => setMessage(''), 3000);
+    return () => clearTimeout(timer);
+  }, [message]);
 
   const submit = async () => {
     if (!form.due_date || !form.category || !form.description) {
       setMessage(t('Due date, category and description are required.'));
+      setMessageKind('error');
       return;
     }
     await api.createReminder({
@@ -69,12 +81,15 @@ export default function RemindersScreen({
     setShowCategoryOptions(false);
     setShowAlertOptions(false);
     setMessage(t('Reminder added.'));
+    setMessageKind('success');
     onRemindersChanged();
     await load();
   };
 
   const markComplete = async (id) => {
     await api.updateReminderStatus(id, 'Completed');
+    setMessage(t('Reminder marked complete.'));
+    setMessageKind('success');
     onRemindersChanged();
     await load();
   };
@@ -82,6 +97,7 @@ export default function RemindersScreen({
   const snoozeReminder = async (id) => {
     await api.snoozeReminder(id, 1);
     setMessage(t('Reminder snoozed by 1 day.'));
+    setMessageKind('success');
     onRemindersChanged();
     await load();
   };
@@ -99,6 +115,7 @@ export default function RemindersScreen({
 
   return (
     <View>
+      <FeedbackBanner message={message} kind={messageKind} />
       <SectionCard title={t('Add Reminder')}>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Due Date (YYYY-MM-DD)')}</Text>
         <DateField
@@ -192,7 +209,15 @@ export default function RemindersScreen({
             ))}
           </View>
         ) : null}
-        <PillButton label={t('Save Reminder')} onPress={() => submit().catch((e) => setMessage(e.message))} />
+        <PillButton
+          label={t('Save Reminder')}
+          onPress={() =>
+            submit().catch((e) => {
+              setMessage(e.message);
+              setMessageKind('error');
+            })
+          }
+        />
       </SectionCard>
 
       <SectionCard title={t('Upcoming Reminders')}>
@@ -210,16 +235,29 @@ export default function RemindersScreen({
                   <PillButton
                     label={t('Snooze +1d')}
                     kind="ghost"
-                    onPress={() => snoozeReminder(item.id).catch((e) => setMessage(e.message))}
+                    onPress={() =>
+                      snoozeReminder(item.id).catch((e) => {
+                        setMessage(e.message);
+                        setMessageKind('error');
+                      })
+                    }
                   />
-                  <PillButton label={t('Done')} kind="ghost" onPress={() => markComplete(item.id).catch((e) => setMessage(e.message))} />
+                  <PillButton
+                    label={t('Done')}
+                    kind="ghost"
+                    onPress={() =>
+                      markComplete(item.id).catch((e) => {
+                        setMessage(e.message);
+                        setMessageKind('error');
+                      })
+                    }
+                  />
                 </>
               ) : null}
             </View>
           </View>
         ))}
       </SectionCard>
-      {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>
   );
 }

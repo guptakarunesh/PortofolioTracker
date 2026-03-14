@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, Modal } from 'react-native';
 import { api } from '../api/client';
+import FeedbackBanner from '../components/FeedbackBanner';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { formatAmountFromInr } from '../utils/format';
@@ -94,6 +95,12 @@ export default function AssetsScreen({
       setMessageKind('error');
     });
   }, [load]);
+
+  useEffect(() => {
+    if (!message) return undefined;
+    const timer = setTimeout(() => setMessage(''), 3000);
+    return () => clearTimeout(timer);
+  }, [message]);
 
   const clearFieldError = useCallback((key) => {
     setFieldErrors((prev) => {
@@ -334,6 +341,7 @@ export default function AssetsScreen({
 
   return (
     <View>
+      <FeedbackBanner message={message} kind={messageKind} />
       <SectionCard title={editingId ? t('Edit Asset') : t('Add Asset')}>
         {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{t('Subscription expired. View-only mode.')}</Text> : null}
         <Text style={[styles.label, { color: theme.muted }]}>{t('Category')}</Text>
@@ -646,16 +654,6 @@ export default function AssetsScreen({
           <View style={{ marginTop: 8 }}>
             <PillButton label={t('Cancel Edit')} kind="ghost" onPress={cancelEdit} disabled={readOnly} />
           </View>
-        ) : null}
-        {!!message ? (
-          <Text
-            style={[
-              styles.formMessage,
-              { color: messageKind === 'error' ? theme.danger : messageKind === 'success' ? theme.success : theme.text }
-            ]}
-          >
-            {message}
-          </Text>
         ) : null}
       </SectionCard>
 

@@ -140,7 +140,7 @@ export default function OnboardingModal({
     : null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent>
       <View style={styles.root}>
         {shouldBlur
           ? backdropSlices.map((slice) => (

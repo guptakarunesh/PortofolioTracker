@@ -14,7 +14,7 @@
       "channel": "preprod",
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://your-backend-preprod.onrender.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://portofoliotracker-preprod.onrender.com"
       },
       "android": {
         "buildType": "apk"

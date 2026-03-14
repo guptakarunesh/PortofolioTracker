@@ -93,6 +93,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
   const [manualVerifyVisible, setManualVerifyVisible] = useState(false);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState('');
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
 
   const load = async () => {
     const payload = await api.getSubscriptionStatus();
@@ -179,6 +180,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
           currentPeriodEnd: result?.current_period_end || null,
           provider: result?.provider || 'cashfree'
         });
+        setSuccessModalVisible(true);
         setMessage(t('Payment successful. Receipt updated below.'));
         return load().then(() => onPurchased?.());
       })
@@ -221,6 +223,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
             currentPeriodEnd: result?.current_period_end || null,
             provider: result?.provider || 'cashfree'
           });
+          setSuccessModalVisible(true);
           setMessage(t('Payment successful. Receipt updated below.'));
           return load().then(() => onPurchased?.());
         })
@@ -285,8 +288,11 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
       setReceipt({
         orderId: pendingOrder.orderId,
         plan: pendingOrder.plan,
-        status: 'success'
+        status: 'success',
+        currentPeriodEnd: status?.current_period_end || null,
+        provider: 'cashfree'
       });
+      setSuccessModalVisible(true);
       setPendingOrder(null);
       setMessage(t('Payment successful. Refreshing plan status...'));
       await load();
@@ -373,6 +379,26 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
             <Text style={[styles.subtle, { color: theme.muted }]}>{t('Unable to open checkout page.')}</Text>
           </View>
         )}
+      </Modal>
+
+      <Modal visible={successModalVisible} transparent animationType="fade" onRequestClose={() => setSuccessModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.successModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.planTitle, { color: theme.text }]}>{t('Purchase Successful')}</Text>
+            <Text style={[styles.subtle, { color: theme.muted }]}>
+              {t('Plan: {value}', { value: t(formatPlanLabel(receipt?.plan || status?.plan)) })}
+            </Text>
+            <Text style={[styles.subtle, { color: theme.muted }]}>
+              {t('Activated on: {date}', { date: formatDate(status?.started_at || new Date().toISOString()) })}
+            </Text>
+            <Text style={[styles.subtle, { color: theme.muted }]}>
+              {t('Valid till: {date}', { date: formatDate(receipt?.currentPeriodEnd || status?.current_period_end) })}
+            </Text>
+            <View style={styles.pendingActions}>
+              <PillButton label={t('Close')} onPress={() => setSuccessModalVisible(false)} />
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {pendingOrder ? (
@@ -517,11 +543,37 @@ const styles = StyleSheet.create({
   container: {
     paddingBottom: 20
   },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20
+  },
+  successModalCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 6
+  },
+  checkoutHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  emptyCheckout: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24
   },
   headerCenter: {
     flex: 1,

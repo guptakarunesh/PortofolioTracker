@@ -12,7 +12,8 @@ import {
   Animated,
   useWindowDimensions,
   Alert,
-  Platform
+  Platform,
+  InteractionManager
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -334,6 +335,7 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [user, setUser] = useState(null);
   const [hideSensitive, setHideSensitive] = useState(true);
+  const [pinSetupRequired, setPinSetupRequired] = useState(false);
   const [pinSetupVisible, setPinSetupVisible] = useState(false);
   const [pinSetupInput, setPinSetupInput] = useState('');
   const [pinSetupError, setPinSetupError] = useState('');
@@ -835,16 +837,25 @@ export default function App() {
 
   useEffect(() => {
     if (!onboardingVisible) return;
-    const timer = setTimeout(() => {
-      measureOnboardingTarget('content');
-      measureOnboardingTarget('ai_button');
-      measureOnboardingTarget('privacy_toggle');
-      measureOnboardingTarget('account_family_access');
-      measureOnboardingTarget('tab_dashboard');
-      measureOnboardingTarget('tab_assets');
-      measureOnboardingTarget('tab_loans');
-    }, 80);
-    return () => clearTimeout(timer);
+    const timers = [];
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      [80, 220, 420].forEach((delay) => {
+        const timer = setTimeout(() => {
+          measureOnboardingTarget('content');
+          measureOnboardingTarget('ai_button');
+          measureOnboardingTarget('privacy_toggle');
+          measureOnboardingTarget('account_family_access');
+          measureOnboardingTarget('tab_dashboard');
+          measureOnboardingTarget('tab_assets');
+          measureOnboardingTarget('tab_loans');
+        }, delay);
+        timers.push(timer);
+      });
+    });
+    return () => {
+      interaction.cancel();
+      timers.forEach((timer) => clearTimeout(timer));
+    };
   }, [onboardingVisible, onboardingIndex, activeTab, measureOnboardingTarget]);
 
   const refreshFxRates = async () => {
@@ -863,7 +874,7 @@ export default function App() {
     try {
       const settings = await api.getSettings();
       const savedPin = String(settings?.privacy_pin || '');
-      setPinSetupVisible(!savedPin);
+      setPinSetupRequired(!savedPin);
       setPreferredCurrency(String(settings?.preferred_currency || 'INR'));
       const lang = String(settings?.language || 'en').toLowerCase();
       setLanguage(lang === 'hi' ? 'hi' : 'en');
@@ -874,7 +885,7 @@ export default function App() {
       setBiometricEnrolled(biometric === '1' || biometric === 'true' || biometric === 'yes');
       refreshFxRates();
     } catch (_e) {
-      setPinSetupVisible(Boolean(user));
+      setPinSetupRequired(Boolean(user));
       setPreferredCurrency('INR');
       setFxRates({ INR: 1 });
       setBiometricEnrolled(false);
@@ -908,13 +919,16 @@ export default function App() {
     setUser(payload.user);
     setAuthError('');
     setActiveTab('dashboard');
+    setPinSetupVisible(false);
     refreshPrivacyConfig();
     refreshSubscription();
     refreshAccessContext();
     api.postSecurityContext().catch(() => {});
-    setTimeout(() => {
-      openOnboardingAfterLogin().catch(() => {});
-    }, 200);
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        openOnboardingAfterLogin().catch(() => {});
+      }, 180);
+    });
   };
 
   const handleLogin = async (payload) => {
@@ -1033,6 +1047,7 @@ export default function App() {
     setAuthToken(null);
     setUser(null);
     setActiveTab('dashboard');
+    setPinSetupRequired(false);
     setPinSetupVisible(false);
     setPinSetupInput('');
     setPinSetupError('');
@@ -1332,6 +1347,8 @@ export default function App() {
     setMoreMenuVisible(false);
     setAiVisible(false);
     setOnboardingIndex(0);
+    setOnboardingTargets({});
+    setPinSetupVisible(false);
     setOnboardingVisible(true);
   };
 
@@ -1357,6 +1374,7 @@ export default function App() {
       return;
     }
     await api.upsertSettings({ privacy_pin: pinSetupInput, privacy_pin_enabled: '1' });
+    setPinSetupRequired(false);
     setPinSetupVisible(false);
     setPinSetupInput('');
     setPinSetupError('');
@@ -1377,6 +1395,15 @@ export default function App() {
     }, 40);
     return () => clearTimeout(timer);
   }, [activeTab, onboardingVisible, requestMainScroll, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (onboardingVisible) {
+      if (pinSetupVisible) setPinSetupVisible(false);
+      return;
+    }
+    setPinSetupVisible(Boolean(pinSetupRequired));
+  }, [user, onboardingVisible, pinSetupRequired]);
 
   useEffect(() => {
     if (!supportVisible || !supportChatMode) return;

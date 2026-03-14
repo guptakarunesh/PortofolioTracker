@@ -41,44 +41,6 @@ function monthStartIso(date = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0)).toISOString().slice(0, 10);
 }
 
-function seedLastSixMonthsIfEmpty(userId) {
-  const existingCount = Number(
-    db
-      .prepare('SELECT COUNT(*) AS c FROM performance_snapshots WHERE user_id = ?')
-      .get(userId).c
-  );
-  if (existingCount > 0) return false;
-
-  const totals = currentTotals(userId);
-  const baseAssets = totals.totalAssets > 0 ? totals.totalAssets * 0.82 : 1250000;
-  const baseLiabilities = totals.totalLiabilities > 0 ? totals.totalLiabilities * 1.12 : 360000;
-
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO performance_snapshots (
-      user_id, quarter_start, total_assets, total_liabilities, net_worth, captured_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
-  `);
-
-  for (let i = 5; i >= 0; i -= 1) {
-    const monthDate = new Date();
-    monthDate.setUTCDate(1);
-    monthDate.setUTCHours(0, 0, 0, 0);
-    monthDate.setUTCMonth(monthDate.getUTCMonth() - i);
-
-    const monthStart = monthStartIso(monthDate);
-    const growthStep = 1 + (5 - i) * 0.03;
-    const assetBump = 1 + ((5 - i) % 3) * 0.01;
-    const liabilityDrop = 1 - ((5 - i) % 2) * 0.015;
-    const totalAssets = Math.round(baseAssets * growthStep * assetBump);
-    const totalLiabilities = Math.max(0, Math.round(baseLiabilities * (1 / growthStep) * liabilityDrop));
-    const netWorth = totalAssets - totalLiabilities;
-
-    insert.run(userId, monthStart, totalAssets, totalLiabilities, netWorth, nowIso());
-  }
-
-  return true;
-}
-
 function captureQuarterSnapshotIfDue(userId) {
   if (!isQuarterStartToday()) return null;
   const quarterStart = quarterStartIso(new Date());
@@ -107,7 +69,6 @@ router.get('/last-six', (req, res) => {
       .status(403)
       .json({ error: 'premium_required', message: 'Premium subscription required', feature: 'performance' });
   }
-  const seeded = seedLastSixMonthsIfEmpty(req.accountUserId);
   captureQuarterSnapshotIfDue(req.accountUserId);
 
   const rows = db
@@ -130,7 +91,7 @@ router.get('/last-six', (req, res) => {
 
   return res.json({
     quarterCapturePolicy: 'auto-on-quarter-start-day',
-    seededSampleData: seeded,
+    seededSampleData: false,
     snapshots: rows
   });
 });

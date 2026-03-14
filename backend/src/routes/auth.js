@@ -580,7 +580,14 @@ router.post('/register', (req, res) => {
       nowIso()
     );
 
-    user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+    const insertedUserId = result.lastInsertRowid || db.prepare('SELECT id FROM users WHERE mobile_hash = ?').get(mobileHash)?.id;
+    if (!insertedUserId) {
+      throw new Error('register_insert_lookup_failed');
+    }
+    user = db.prepare('SELECT * FROM users WHERE id = ?').get(insertedUserId);
+    if (!user) {
+      throw new Error('register_user_load_failed');
+    }
     const settingsUpsert = db.prepare(`
       INSERT INTO user_settings (user_id, key, value, updated_at)
       VALUES (?, ?, ?, ?)

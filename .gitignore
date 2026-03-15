@@ -5,6 +5,8 @@ node_modules/
 **/.env
 .expo/
 mobile/.expo/
+mobile/google-services.json
+mobile/GoogleService-Info.plist
 
 dist/
 mobile/dist/

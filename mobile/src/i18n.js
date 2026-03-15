@@ -13,7 +13,7 @@ const translations = {
       'Yes. In Family Access, you can invite members and set permissions. It is a premium feature limited to up to 2 members.',
     'faq_premium_q': 'Which premium features do I get?',
     'faq_premium_a':
-      'Premium unlocks targets, performance insights, reminders, and role-based Family Access.',
+      'Premium unlocks targets, net worth trend, reminders, and role-based Family Access.',
     'faq_buy_premium_q': 'How do I buy or renew premium?',
     'faq_buy_premium_a':
       'Open Subscription from this page, choose a plan, and complete payment. Your plan updates immediately.',
@@ -44,6 +44,7 @@ const translations = {
     'Liabilities': 'देयताएँ',
     'Targets': 'लक्ष्य',
     'Performance': 'प्रदर्शन',
+    'Net Worth Trend': 'नेट वर्थ ट्रेंड',
     'Reminders': 'रिमाइंडर्स',
     'Account': 'अकाउंट',
     'AI Insights': 'एआई इनसाइट्स',
@@ -69,8 +70,12 @@ const translations = {
     'Net Worth': 'निवल मूल्य',
     'Last updated: {date}': 'अंतिम अपडेट: {date}',
     'Asset Allocation': 'एसेट एलोकेशन',
+    'Asset Mix': 'एसेट मिक्स',
     'Chart view (with value and %)': 'चार्ट व्यू (मूल्य और % के साथ)',
     'Yearly Target Progress': 'वार्षिक लक्ष्य प्रगति',
+    'Target Progress': 'लक्ष्य प्रगति',
+    'Created from month-end snapshots captured after each month closes.':
+      'हर महीने के अंत में कैप्चर किए गए स्नैपशॉट से तैयार किया गया।',
     'No yearly targets set yet. Add them in Settings.':
       'अभी कोई वार्षिक लक्ष्य सेट नहीं है। सेटिंग्स में जोड़ें।',
     'Snapshot PDF Report': 'स्नैपशॉट पीडीएफ रिपोर्ट',
@@ -271,10 +276,17 @@ const translations = {
     '0': '0',
     'Save Settings & Targets': 'सेटिंग्स और लक्ष्य सेव करें',
     'Performance (Premium)': 'प्रदर्शन (प्रीमियम)',
+    'Net Worth Trend (Premium)': 'नेट वर्थ ट्रेंड (प्रीमियम)',
     'Performance insights are available with Premium.': 'प्रदर्शन इनसाइट्स प्रीमियम में उपलब्ध हैं।',
+    'Net worth trend is available with Premium.': 'नेट वर्थ ट्रेंड प्रीमियम में उपलब्ध है।',
     'Performance (Last 6 Months)': 'प्रदर्शन (पिछले 6 महीने)',
+    'Net Worth Trend (Last 6 Months)': 'नेट वर्थ ट्रेंड (पिछले 6 महीने)',
     'Monthly trend of assets, liabilities, and net worth.': 'एसेट्स, देयताओं और नेटवर्थ का मासिक ट्रेंड।',
+    'Built from month-end snapshots of assets, liabilities, and net worth.':
+      'एसेट्स, देयताओं और नेटवर्थ के महीने-अंत स्नैपशॉट से तैयार किया गया।',
     'No performance snapshots available yet.': 'अभी कोई प्रदर्शन स्नैपशॉट उपलब्ध नहीं है।',
+    'No net worth snapshots available yet.': 'अभी कोई नेट वर्थ स्नैपशॉट उपलब्ध नहीं है।',
+    'No month-end snapshots available yet.': 'अभी कोई महीने-अंत स्नैपशॉट उपलब्ध नहीं है।',
     'Mobile number and MPIN are required.': 'मोबाइल नंबर और एमपिन आवश्यक हैं।',
     'Full name is required for registration.': 'रजिस्ट्रेशन के लिए पूरा नाम आवश्यक है।',
     'Country is required for registration.': 'रजिस्ट्रेशन के लिए देश आवश्यक है।',
@@ -357,6 +369,8 @@ const translations = {
     'Buy Yearly': 'सालाना खरीदें',
     'Unlock targets, reminders, and performance.':
       'लक्ष्य, रिमाइंडर्स और प्रदर्शन अनलॉक करें।',
+    'Unlock targets, reminders, and net worth trend.':
+      'लक्ष्य, रिमाइंडर्स और नेट वर्थ ट्रेंड अनलॉक करें।',
     'Family limit reached. You can add up to {count} members.':
       'परिवार सीमा पूरी हो गई। आप अधिकतम {count} सदस्य जोड़ सकते हैं।',
     'Invite sent.': 'आमंत्रण भेज दिया गया।',
@@ -624,6 +638,10 @@ const translations = {
       'लोन और देय राशि मॉनिटर करने के लिए Liabilities का उपयोग करें ताकि नेट वर्थ हमेशा सटीक रहे।',
     'Use Performance to review trends and progress over time.':
       'समय के साथ ट्रेंड्स और प्रगति की समीक्षा के लिए Performance का उपयोग करें।',
+    'Use Net Worth Trend to review trends and progress over time.':
+      'समय के साथ ट्रेंड्स और प्रगति की समीक्षा के लिए Net Worth Trend का उपयोग करें।',
+    'Read month-end snapshots and compare asset, liability, and net worth movement over time.':
+      'महीने-अंत स्नैपशॉट पढ़ें और समय के साथ एसेट, देयता और नेट वर्थ की चाल की तुलना करें।',
     'Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.':
       'परिवार को आगे क्या करना है यह बताने के लिए इसका उपयोग करें। यह एन्क्रिप्टेड रहता है और केवल सिक्योरिटी पिन से खुलता है।',
     'Valid till: {date}': 'मान्य तिथि: {date}',

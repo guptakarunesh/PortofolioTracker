@@ -53,8 +53,8 @@ export default function PerformanceScreen({
   if (!premiumActive) {
     return (
       <View>
-        <SectionCard title={t('Performance (Premium)')}>
-          <Text style={[styles.sub, { color: theme.warn }]}>{t('Performance insights are available with Premium.')}</Text>
+        <SectionCard title={t('Net Worth Trend (Premium)')}>
+          <Text style={[styles.sub, { color: theme.warn }]}>{t('Net worth trend is available with Premium.')}</Text>
           <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
         </SectionCard>
       </View>
@@ -63,8 +63,8 @@ export default function PerformanceScreen({
 
   return (
     <View>
-      <SectionCard title={t('Performance (Last 6 Months)')}>
-        <Text style={[styles.sub, { color: theme.muted }]}>{t('Monthly trend of assets, liabilities, and net worth.')}</Text>
+      <SectionCard title={t('Net Worth Trend (Last 6 Months)')}>
+        <Text style={[styles.sub, { color: theme.muted }]}>{t('Built from month-end snapshots of assets, liabilities, and net worth.')}</Text>
         <View style={styles.legendRow}>
           <Text style={[styles.legendItem, styles.assetsLegend]}>{t('Assets')}</Text>
           <Text style={[styles.legendItem, styles.liabilitiesLegend]}>{t('Liabilities')}</Text>
@@ -117,7 +117,7 @@ export default function PerformanceScreen({
           })}
         </View>
 
-        {!rows.length ? <Text style={[styles.sub, { color: theme.muted }]}>{t('No performance snapshots available yet.')}</Text> : null}
+        {!rows.length ? <Text style={[styles.sub, { color: theme.muted }]}>{t('No month-end snapshots available yet.')}</Text> : null}
       </SectionCard>
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>

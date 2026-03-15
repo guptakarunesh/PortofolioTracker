@@ -115,7 +115,6 @@ export default function RemindersScreen({
 
   return (
     <View>
-      <FeedbackBanner message={message} kind={messageKind} />
       <SectionCard title={t('Add Reminder')}>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Due Date (YYYY-MM-DD)')}</Text>
         <DateField
@@ -219,6 +218,8 @@ export default function RemindersScreen({
           }
         />
       </SectionCard>
+
+      <FeedbackBanner message={message} kind={messageKind} />
 
       <SectionCard title={t('Upcoming Reminders')}>
         {items.map((item) => (

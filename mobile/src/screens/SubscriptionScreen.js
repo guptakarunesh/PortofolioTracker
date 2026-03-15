@@ -28,7 +28,7 @@ const COMPARISON = [
   { feature: 'Family Share', basic: '✗', premium: '✓' },
   { feature: 'AI Insights', basic: '✗', premium: '✓' },
   { feature: 'Targets', basic: '✗', premium: '✓' },
-  { feature: 'Performance', basic: '✗', premium: '✓' },
+  { feature: 'Net Worth Trend', basic: '✗', premium: '✓' },
   { feature: 'Reminders', basic: '✗', premium: '✓' }
 ];
 
@@ -511,7 +511,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
               </Text>
             ) : null}
             <Text style={[styles.planPrice, { color: theme.accent }]}>{t(PLANS.premium_monthly.price)}</Text>
-            <Text style={[styles.planNote, { color: theme.muted }]}>{t('Unlock targets, reminders, and performance.')}</Text>
+            <Text style={[styles.planNote, { color: theme.muted }]}>{t('Unlock targets, reminders, and net worth trend.')}</Text>
             <PillButton
               kind={premiumMonthlyActive ? 'status' : 'ghost'}
               disabled={premiumMonthlyActive}

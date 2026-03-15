@@ -159,8 +159,6 @@ export default function LiabilitiesScreen({
     setShowHolderOptions(false);
     setShowReachOptions(false);
     setFieldErrors({});
-    setMessage(t('Editing {name}. Enter sensitive fields only if you want to replace them.', { name: item.loan_type }));
-    setMessageKind('info');
     scrollToField();
   };
 
@@ -328,7 +326,6 @@ export default function LiabilitiesScreen({
 
   return (
     <View>
-      <FeedbackBanner message={message} kind={messageKind} />
       <SectionCard title={editingId ? t('Edit Liability') : t('Add Liability')}>
         {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{t('Subscription expired. View-only mode.')}</Text> : null}
         <Text style={[styles.label, { color: theme.muted }]}>{t('Type')}</Text>
@@ -585,6 +582,8 @@ export default function LiabilitiesScreen({
           </View>
         ) : null}
       </SectionCard>
+
+      <FeedbackBanner message={message} kind={messageKind} />
 
       <SectionCard title={t('Current Liabilities')}>
         {[...items]

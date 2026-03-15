@@ -70,7 +70,7 @@ const TABS = [
   { key: 'loans', labelKey: 'Liabilities' },
   { key: 'settings', labelKey: 'Targets' },
   { key: 'reminders', labelKey: 'Reminders' },
-  { key: 'performance', labelKey: 'Performance' },
+  { key: 'performance', labelKey: 'Net Worth Trend' },
   { key: 'account', labelKey: 'Account' }
 ];
 const PRIMARY_TAB_KEYS = ['dashboard', 'assets', 'loans', 'settings', 'reminders'];
@@ -121,9 +121,9 @@ function getPageHeaderCopy(tab, t) {
       };
     case 'performance':
       return {
-        eyebrow: t('Performance'),
+        eyebrow: t('Net Worth Trend'),
         title: t('Review how net worth is moving'),
-        body: t('Read recent net worth snapshots and compare asset and liability movement over time.')
+        body: t('Read month-end snapshots and compare asset, liability, and net worth movement over time.')
       };
     case 'family':
       return {
@@ -140,30 +140,29 @@ function AiBrainIcon({ stroke, badgeFill, badgeText }) {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M9 4C6.8 4 5 5.8 5 8c0 1 .4 2 1.1 2.7C5.4 11.1 5 12 5 13c0 1.7 1.3 3 3 3h1v4h3V4H9z"
+        d="M7.5 4.5h7a5 5 0 0 1 5 5v5a5 5 0 0 1-5 5h-7a5 5 0 0 1-5-5v-5a5 5 0 0 1 5-5Z"
+        fill={badgeFill}
+        fillOpacity={0.12}
         stroke={stroke}
         strokeWidth={1.5}
-        strokeLinejoin="round"
       />
       <Path
-        d="M15 4c2.2 0 4 1.8 4 4 0 1-.4 2-1.1 2.7.7.4 1.1 1.3 1.1 2.3 0 1.7-1.3 3-3 3h-1v4h-3V4h3z"
+        d="M8.2 10.8 10 7.4l1.3 2.6 1.4-2.3 1.4 3.1 1.6-.2"
         stroke={stroke}
         strokeWidth={1.5}
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <Line x1="12" y1="5" x2="12" y2="20" stroke={stroke} strokeWidth={1} />
-      <Line x1="11" y1="8" x2="7" y2="8" stroke={stroke} strokeWidth={1} />
-      <Line x1="11" y1="12" x2="7.5" y2="12" stroke={stroke} strokeWidth={1} />
-      <Line x1="11" y1="16" x2="8.5" y2="16" stroke={stroke} strokeWidth={1} />
-      <Circle cx="6.3" cy="8" r="1" stroke={stroke} strokeWidth={1} />
-      <Circle cx="6.8" cy="12" r="1" stroke={stroke} strokeWidth={1} />
-      <Circle cx="7.8" cy="16" r="1" stroke={stroke} strokeWidth={1} />
-      <Circle cx="18.5" cy="17.5" r="4.2" fill={badgeFill} stroke={stroke} strokeWidth={1} />
+      <Circle cx="16.9" cy="7.1" r="1.1" fill={stroke} />
+      <Line x1="16.9" y1="4.9" x2="16.9" y2="3.6" stroke={stroke} strokeWidth={1.2} strokeLinecap="round" />
+      <Line x1="19.1" y1="7.1" x2="20.4" y2="7.1" stroke={stroke} strokeWidth={1.2} strokeLinecap="round" />
+      <Line x1="18.4" y1="5.6" x2="19.3" y2="4.7" stroke={stroke} strokeWidth={1.2} strokeLinecap="round" />
+      <Circle cx="17.2" cy="17.2" r="3.8" fill={badgeFill} stroke={stroke} strokeWidth={1} />
       <SvgText
-        x="18.5"
-        y="19"
-        fontSize="6"
-        fontWeight="700"
+        x="17.2"
+        y="18.5"
+        fontSize="5.6"
+        fontWeight="800"
         textAnchor="middle"
         fill={badgeText}
       >
@@ -430,52 +429,52 @@ export default function App() {
         tab: 'dashboard',
         targetKey: 'tab_dashboard',
         panel: 'top',
-        title: t('Start with your full net worth view'),
-        body: t('Dashboard is your main control room.\nSee net worth, assets, liabilities, and snapshot reports together.\nUse this page first whenever you want a quick financial check.')
+        title: t('Start on Dashboard'),
+        body: t('See net worth, assets, and liabilities together.\nUse this page first for a quick financial check.')
       },
       {
         tab: 'assets',
         targetKey: 'tab_assets',
         panel: 'top',
-        title: t('Use Assets to record everything you own'),
-        body: t('Add investments, cash, deposits, gold, property, and other holdings here.\nKeep values updated so your dashboard stays accurate.\nThis is the core page for wealth tracking.')
+        title: t('Track your Assets'),
+        body: t('Add investments, deposits, property, and cash here.\nKeep values updated so your totals stay accurate.')
       },
       {
         tab: 'loans',
         targetKey: 'tab_loans',
         panel: 'top',
-        title: t('Track every liability in one place'),
-        body: t('Use Liabilities for loans, cards, dues, and obligations.\nThis keeps your net worth realistic instead of overstated.\nAdd notes that help your family or admin follow the account later.')
+        title: t('Track your Liabilities'),
+        body: t('Record loans, cards, and dues in one place.\nThis keeps your net worth realistic and current.')
       },
       {
         tab: 'settings',
         targetKey: 'tab_settings',
         panel: 'top',
-        title: t('Set targets that guide your yearly plan'),
-        body: t('Targets help you measure progress against your financial goals.\nUpdate yearly goals here for each important category.\nThe dashboard will then show how close you are to each target.')
+        title: t('Set yearly Targets'),
+        body: t('Add yearly goals for the categories that matter.\nThe dashboard will show how close you are to target.')
       },
       {
         tab: 'reminders',
         targetKey: 'tab_reminders',
         panel: 'top',
-        title: t('Stay ahead with reminders and due-date alerts'),
-        body: t('Use Reminders for bills, renewals, policy dates, and important follow-ups.\nThis reduces missed payments and forgotten actions.\nYou can keep your financial routine disciplined from one screen.')
+        title: t('Use smart Reminders'),
+        body: t('Track bills, renewals, and follow-ups here.\nStay ahead of due dates from one screen.')
       },
       {
         tab: 'dashboard',
         targetKey: 'ai_button',
         panel: 'middle',
         blurBackground: true,
-        title: t('Open AI Insights for quick portfolio understanding'),
-        body: t('AI Insights gives a fast summary of your portfolio and current context.\nUse it when you want a simple read instead of checking every page manually.\nIt is designed to surface what needs attention first.')
+        title: t('Use AI Insights'),
+        body: t('Get a quick summary of your portfolio here.\nUse it when you want the main takeaways fast.')
       },
       {
-        tab: 'account',
-        targetKey: 'account_manage_family',
+        tab: 'dashboard',
+        targetKey: 'account_chip',
         panel: 'top',
         blurBackground: true,
-        title: t('Share access safely with family when needed'),
-        body: t('Family Sharing lets you grant controlled visibility to trusted members.\nUse it to define who can view, edit, or manage selected information.\nOpen this from Account when you are ready to extend access.')
+        title: t('Manage Account'),
+        body: t('Open Account to manage biometrics, privacy, language, theme, and subscription.\nYou can review family access, support options, and security settings here.\nUse this area whenever you need control changes instead of portfolio updates.')
       }
     ],
     [t]
@@ -877,7 +876,7 @@ export default function App() {
           measureOnboardingTarget('content');
           measureOnboardingTarget('ai_button');
           measureOnboardingTarget('privacy_toggle');
-          measureOnboardingTarget('account_manage_family');
+          measureOnboardingTarget('account_chip');
           measureOnboardingTarget('tab_dashboard');
           measureOnboardingTarget('tab_assets');
           measureOnboardingTarget('tab_loans');
@@ -1320,15 +1319,21 @@ export default function App() {
           {
             scale: onboardingZoom.interpolate({
               inputRange: [0, 0.5, 1],
-              outputRange: [1, 1.1, 1]
+              outputRange: [1, 1.14, 1]
             })
           }
         ],
         backgroundColor: theme.accentSoft,
-        borderRadius: 18
+        borderRadius: 18,
+        borderColor: theme.accent,
+        shadowColor: theme.accent,
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 8
       };
     },
-    [onboardingVisible, onboardingSteps, onboardingIndex, onboardingZoom, theme.accentSoft]
+    [onboardingVisible, onboardingSteps, onboardingIndex, onboardingZoom, theme.accentSoft, theme.accent]
   );
 
   useEffect(() => {
@@ -1336,20 +1341,6 @@ export default function App() {
     const step = onboardingSteps[onboardingIndex];
     const scroller = contentScrollRef.current;
     if (!step || !scroller || typeof scroller.scrollTo !== 'function') return;
-
-    if (step.tab === 'account' && step.targetKey === 'account_manage_family') {
-      const y = Math.max(520, Math.round(screenHeight * 0.95));
-      const scrollTimer = setTimeout(() => {
-        scroller.scrollTo({ y, animated: true });
-      }, 180);
-      const measureTimer = setTimeout(() => {
-        measureOnboardingTarget('account_manage_family');
-      }, 780);
-      return () => {
-        clearTimeout(scrollTimer);
-        clearTimeout(measureTimer);
-      };
-    }
 
     const timer = setTimeout(() => {
       scroller.scrollTo({ y: 0, animated: true });
@@ -1504,8 +1495,15 @@ export default function App() {
         <View style={styles.header}>
           <View style={[styles.headerUtilityCard, { backgroundColor: theme.accent, borderColor: theme.accent }]}>
             <View style={styles.headerMainRow}>
-              <Pressable
-                style={[styles.accountCapsule, { backgroundColor: theme.accentSoft, borderColor: theme.border }]}
+              <AnimatedPressable
+                ref={(node) => setOnboardingTargetRef('account_chip', node)}
+                collapsable={false}
+                onLayout={() => measureOnboardingTarget('account_chip')}
+                style={[
+                  styles.accountCapsule,
+                  { backgroundColor: theme.accentSoft, borderColor: theme.border },
+                  getOnboardingZoomStyle('account_chip')
+                ]}
                 onPress={() => handleTabSelect('account')}
                 hitSlop={8}
               >
@@ -1519,12 +1517,24 @@ export default function App() {
                   <Text style={[styles.accountRoleText, { color: theme.accent }]}>{roleLabel}</Text>
                 </View>
                 <Text style={[styles.accountChevron, { color: theme.accent }]}>{'\u203A'}</Text>
-              </Pressable>
+              </AnimatedPressable>
               <View style={[styles.headerLogoBadge, { backgroundColor: theme.background, borderColor: theme.border }]}>
                 <Image source={BRAND_ICON} style={styles.headerLogoCompact} resizeMode="cover" />
               </View>
             </View>
             <View style={styles.headerActions}>
+              <Pressable
+                ref={(node) => setOnboardingTargetRef('privacy_toggle', node)}
+                collapsable={false}
+                onLayout={() => measureOnboardingTarget('privacy_toggle')}
+                style={[styles.eyeToggleButton, { borderColor: theme.border, backgroundColor: theme.background }]}
+                onPress={togglePrivacy}
+                accessibilityRole="button"
+                accessibilityLabel={hideSensitive ? 'Show values' : 'Hide values'}
+              >
+                <Text style={[styles.eyeToggleLabel, { color: theme.accent }]}>{t('Privacy')}</Text>
+                <EyeToggleIcon stroke={theme.accent} closed={hideSensitive} />
+              </Pressable>
               <AnimatedPressable
                 ref={(node) => setOnboardingTargetRef('ai_button', node)}
                 collapsable={false}
@@ -1542,18 +1552,6 @@ export default function App() {
                   <Text style={[styles.aiBtnText, { color: theme.accent }]}>{t('AI Insights')}</Text>
                 </View>
               </AnimatedPressable>
-              <Pressable
-                ref={(node) => setOnboardingTargetRef('privacy_toggle', node)}
-                collapsable={false}
-                onLayout={() => measureOnboardingTarget('privacy_toggle')}
-                style={[styles.eyeToggleButton, { borderColor: theme.border, backgroundColor: theme.background }]}
-                onPress={togglePrivacy}
-                accessibilityRole="button"
-                accessibilityLabel={hideSensitive ? 'Show values' : 'Hide values'}
-              >
-                <Text style={[styles.eyeToggleLabel, { color: theme.accent }]}>{t('Privacy')}</Text>
-                <EyeToggleIcon stroke={theme.accent} closed={hideSensitive} />
-              </Pressable>
             </View>
           </View>
         </View>

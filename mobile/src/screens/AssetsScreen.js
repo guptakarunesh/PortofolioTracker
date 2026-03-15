@@ -168,8 +168,6 @@ export default function AssetsScreen({
     setShowHolderOptions(false);
     setShowReachOptions(false);
     setFieldErrors({});
-    setMessage(t('Editing {name}. Enter sensitive fields only if you want to replace them.', { name: item.name }));
-    setMessageKind('info');
     scrollToField();
   };
 
@@ -361,7 +359,6 @@ export default function AssetsScreen({
 
   return (
     <View>
-      <FeedbackBanner message={message} kind={messageKind} />
       <SectionCard title={editingId ? t('Edit Asset') : t('Add Asset')}>
         {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{t('Subscription expired. View-only mode.')}</Text> : null}
         <Text style={[styles.label, { color: theme.muted }]}>{t('Category')}</Text>
@@ -680,6 +677,8 @@ export default function AssetsScreen({
           </View>
         ) : null}
       </SectionCard>
+
+      <FeedbackBanner message={message} kind={messageKind} />
 
       <SectionCard title={t('Current Assets')}>
         {Number(maxAssets) > 0 ? (

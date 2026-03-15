@@ -48,7 +48,8 @@ export default function OnboardingModal({
       const middleTop = Math.round(screenHeight * 0.42);
       return { top: clamp(middleTop, 110, Math.max(110, screenHeight - 260)) };
     }
-    return styles.cardTop;
+    const bottomOffset = clamp(Math.round(screenHeight * 0.1), 88, 126);
+    return { bottom: bottomOffset };
   }, [panel, screenHeight]);
 
   return (
@@ -130,9 +131,6 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 999,
     marginBottom: 2
-  },
-  cardTop: {
-    top: 66
   },
   topRow: {
     flexDirection: 'row',

@@ -34,7 +34,6 @@ export default function AuthScreen({
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
-  const [country, setCountry] = useState('');
   const [otp, setOtp] = useState('');
   const [otpRequested, setOtpRequested] = useState(false);
   const [otpCooldown, setOtpCooldown] = useState(0);
@@ -76,6 +75,7 @@ export default function AuthScreen({
 
   const canRegister = useMemo(() => consentPrivacy && consentTerms, [consentPrivacy, consentTerms]);
   const requiresOtp = mode === 'login' || mode === 'register';
+  const submitDisabled = loading || (mode === 'register' && !canRegister);
 
   const handleMobileInput = (text) => {
     const digits = String(text || '').replace(/\D/g, '').slice(0, 10);
@@ -90,9 +90,6 @@ export default function AuthScreen({
   const validateRegisterFields = () => {
     if (!/^[A-Za-z]{2}$/.test(String(fullName || '').trim())) {
       return t('Enter exactly 2 initials for registration.');
-    }
-    if (!country.trim()) {
-      return t('Country is required for registration.');
     }
     if (!canRegister) {
       return t('Please accept Privacy Policy and Terms before creating an account.');
@@ -145,7 +142,7 @@ export default function AuthScreen({
         full_name: String(fullName || '').trim().toUpperCase(),
         mobile: mobile.trim(),
         email: email.trim(),
-        country: country.trim(),
+        country: 'India',
         otp: otp.trim(),
         consent_privacy: true,
         consent_terms: true,
@@ -163,7 +160,7 @@ export default function AuthScreen({
 
   return (
     <View>
-      <SectionCard title={t('Account Access')}>
+      <SectionCard title="" titleStyle={styles.sectionTitleCenter}>
         {typeof onLoginWithBiometric === 'function' && biometricReady ? (
           <>
             <PillButton
@@ -217,15 +214,20 @@ export default function AuthScreen({
               autoCapitalize="none"
             />
 
-            <Text style={[styles.label, { color: theme.muted }]}>{t('Country')}</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
-              value={country}
-              onChangeText={setCountry}
-              placeholder={t('India')}
-              placeholderTextColor={theme.muted}
-              autoCapitalize="words"
-            />
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile Number')}</Text>
+            <View style={[styles.phoneWrap, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+              <Text style={[styles.phonePrefix, { color: theme.text }]}>+91</Text>
+              <TextInput
+                style={[styles.phoneInput, { color: theme.inputText }]}
+                value={mobile}
+                onChangeText={handleMobileInput}
+                placeholder={t('10-digit Indian mobile')}
+                placeholderTextColor={theme.muted}
+                keyboardType="number-pad"
+                autoCapitalize="none"
+                maxLength={10}
+              />
+            </View>
 
             <View style={[styles.consentWrap, { borderColor: theme.border, backgroundColor: theme.background }]}> 
               <Pressable style={styles.consentRow} onPress={() => setConsentPrivacy((v) => !v)}>
@@ -250,17 +252,24 @@ export default function AuthScreen({
           </>
         ) : null}
 
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile Number')}</Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
-          value={mobile}
-          onChangeText={handleMobileInput}
-          placeholder={t('10-digit Indian mobile')}
-          placeholderTextColor={theme.muted}
-          keyboardType="number-pad"
-          autoCapitalize="none"
-          maxLength={10}
-        />
+        {mode !== 'register' ? (
+          <>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile Number')}</Text>
+            <View style={[styles.phoneWrap, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+              <Text style={[styles.phonePrefix, { color: theme.text }]}>+91</Text>
+              <TextInput
+                style={[styles.phoneInput, { color: theme.inputText }]}
+                value={mobile}
+                onChangeText={handleMobileInput}
+                placeholder={t('10-digit Indian mobile')}
+                placeholderTextColor={theme.muted}
+                keyboardType="number-pad"
+                autoCapitalize="none"
+                maxLength={10}
+              />
+            </View>
+          </>
+        ) : null}
 
         {requiresOtp && otpRequested ? (
           <>
@@ -287,7 +296,7 @@ export default function AuthScreen({
                 : t('Send OTP')
           }
           kind="primary"
-          disabled={loading}
+          disabled={submitDisabled}
           onPress={() => submit().catch((e) => setMessage(e.message))}
         />
 
@@ -305,6 +314,20 @@ export default function AuthScreen({
       </SectionCard>
 
       <Text style={[styles.help, { color: theme.muted }]}>{t('Create account and login using OTP only. Enable biometric login after your first successful OTP session.')}</Text>
+      <View style={styles.trustRow}>
+        <View style={[styles.trustItem, { borderColor: theme.border, backgroundColor: theme.card }]}>
+          <Text style={styles.trustIcon}>🔐</Text>
+          <Text style={[styles.trustText, { color: theme.muted }]}>{t('Encrypted')}</Text>
+        </View>
+        <View style={[styles.trustItem, { borderColor: theme.border, backgroundColor: theme.card }]}>
+          <Text style={styles.trustIcon}>🛡️</Text>
+          <Text style={[styles.trustText, { color: theme.muted }]}>{t('Private')}</Text>
+        </View>
+        <View style={[styles.trustItem, { borderColor: theme.border, backgroundColor: theme.card }]}>
+          <Text style={styles.trustIcon}>✅</Text>
+          <Text style={[styles.trustText, { color: theme.muted }]}>{t('OTP Verified')}</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -313,7 +336,8 @@ const styles = StyleSheet.create({
   modeRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 14
+    marginBottom: 14,
+    justifyContent: 'center'
   },
   label: { color: '#35526e', fontWeight: '700', marginBottom: 5 },
   input: {
@@ -324,6 +348,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12
+  },
+  phoneWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  phonePrefix: {
+    fontWeight: '800',
+    fontSize: 15
+  },
+  phoneInput: {
+    flex: 1,
+    paddingVertical: 10
   },
   message: {
     marginTop: 12,
@@ -372,6 +414,29 @@ const styles = StyleSheet.create({
     color: '#607d99',
     textAlign: 'center',
     marginTop: 4
+  },
+  trustRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  trustItem: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  trustIcon: {
+    fontSize: 13
+  },
+  trustText: {
+    fontSize: 12,
+    fontWeight: '700'
   },
   orRow: {
     flexDirection: 'row',

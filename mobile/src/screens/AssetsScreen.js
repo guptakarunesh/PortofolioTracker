@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, Modal } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, Modal, Alert } from 'react-native';
 import { api } from '../api/client';
 import FeedbackBanner from '../components/FeedbackBanner';
 import SectionCard from '../components/SectionCard';
@@ -328,6 +328,26 @@ export default function AssetsScreen({
     await load();
   };
 
+  const confirmRemove = (item) => {
+    Alert.alert(
+      t('Delete Asset'),
+      t('Delete {name}? This action cannot be undone.', { name: item?.name || t('this asset') }),
+      [
+        { text: t('Cancel'), style: 'cancel' },
+        {
+          text: t('Delete'),
+          style: 'destructive',
+          onPress: () => {
+            remove(item.id).catch((e) => {
+              setMessage(String(e?.message || e));
+              setMessageKind('error');
+            });
+          }
+        }
+      ]
+    );
+  };
+
   const cancelEdit = () => {
     resetForm();
     setMessage('');
@@ -496,28 +516,32 @@ export default function AssetsScreen({
           theme={theme}
           text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
         />
-        <TextInput
+        <View
           ref={relationshipMobileInputRef}
+          collapsable={false}
           onLayout={(event) => setFieldOffset('relationship_mobile', event.nativeEvent.layout.y)}
           style={[
-            styles.input,
+            styles.phoneWrap,
             {
-              backgroundColor: theme.inputBg,
-              borderColor: fieldErrors.relationship_mobile ? theme.danger : theme.border,
-              color: theme.inputText
-            },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
+              backgroundColor: readOnly ? theme.background : theme.inputBg,
+              borderColor: fieldErrors.relationship_mobile ? theme.danger : theme.border
+            }
           ]}
-          value={form.relationship_mobile}
-          onChangeText={(v) => {
-            clearFieldError('relationship_mobile');
-            setForm((f) => ({ ...f, relationship_mobile: String(v || '').replace(/\D/g, '').slice(0, 10) }));
-          }}
-          placeholder={editingId ? t('Enter new mobile to replace existing') : t('10-digit mobile number')}
-          keyboardType="number-pad"
-          placeholderTextColor={theme.muted}
-          editable={!readOnly}
-        />
+        >
+          <Text style={[styles.phonePrefix, { color: readOnly ? theme.muted : theme.text }]}>+91</Text>
+          <TextInput
+            style={[styles.phoneInput, { color: readOnly ? theme.muted : theme.inputText }]}
+            value={form.relationship_mobile}
+            onChangeText={(v) => {
+              clearFieldError('relationship_mobile');
+              setForm((f) => ({ ...f, relationship_mobile: String(v || '').replace(/\D/g, '').slice(0, 10) }));
+            }}
+            placeholder={editingId ? t('Enter new mobile to replace existing') : t('10-digit mobile number')}
+            keyboardType="number-pad"
+            placeholderTextColor={theme.muted}
+            editable={!readOnly}
+          />
+        </View>
         {!!fieldErrors.relationship_mobile ? (
           <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.relationship_mobile}</Text>
         ) : null}
@@ -673,9 +697,12 @@ export default function AssetsScreen({
                 <Text style={[styles.name, { color: theme.text }]}>{item.institution || item.name}</Text>
                 <Text style={[styles.sub, { color: theme.muted }]}>{t(item.category)}</Text>
               </View>
-              <Text style={[styles.amount, { color: theme.success }]}>
-                {displayAmount(item.current_value, hideSensitive, preferredCurrency, fxRates)}
-              </Text>
+              <View style={styles.amountBlock}>
+                <Text style={[styles.amount, { color: theme.success }]}>
+                  {displayAmount(item.current_value, hideSensitive, preferredCurrency, fxRates)}
+                </Text>
+                <Text style={[styles.amountLabel, { color: theme.muted }]}>{t('Current Value')}</Text>
+              </View>
             </View>
             <View style={styles.metaBlock}>
               {hasInfo(item.holder_type) ? (
@@ -714,12 +741,7 @@ export default function AssetsScreen({
               <PillButton
                 label={t('Delete')}
                 kind="ghost"
-                onPress={() =>
-                  remove(item.id).catch((e) => {
-                    setMessage(String(e?.message || e));
-                    setMessageKind('error');
-                  })
-                }
+                onPress={() => confirmRemove(item)}
                 disabled={readOnly}
               />
             </View>
@@ -732,20 +754,6 @@ export default function AssetsScreen({
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
             <Text style={[styles.modalTitle, { color: theme.text }]}>{t('Sensitive Asset Details')}</Text>
-            <Text style={[styles.modalSub, { color: theme.muted }]}> 
-              {t('Enter your security PIN to view full identifier, contact, and notes.')}
-            </Text>
-            <TextInput
-              style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
-              value={revealPin}
-              onChangeText={(v) => setRevealPin(String(v || '').replace(/\D/g, '').slice(0, 4))}
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={4}
-              placeholder={t('4-digit PIN')}
-              placeholderTextColor={theme.muted}
-            />
-            {!!revealError ? <Text style={[styles.modalError, { color: theme.danger }]}>{revealError}</Text> : null}
             {revealData ? (
               <View style={styles.revealDetails}>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Identifier: {value}', { value: revealData.account_ref || '-' })}</Text>
@@ -753,14 +761,33 @@ export default function AssetsScreen({
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Tracking URL: {value}', { value: revealData.tracking_url || '-' })}</Text>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Notes: {value}', { value: revealData.notes || '-' })}</Text>
               </View>
-            ) : null}
+            ) : (
+              <>
+                <Text style={[styles.modalSub, { color: theme.muted }]}> 
+                  {t('Enter your security PIN to view full identifier, contact, and notes.')}
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
+                  value={revealPin}
+                  onChangeText={(v) => setRevealPin(String(v || '').replace(/\D/g, '').slice(0, 4))}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={4}
+                  placeholder={t('4-digit PIN')}
+                  placeholderTextColor={theme.muted}
+                />
+                {!!revealError ? <Text style={[styles.modalError, { color: theme.danger }]}>{revealError}</Text> : null}
+              </>
+            )}
             <View style={styles.modalActions}>
               <PillButton label={t('Close')} kind="ghost" onPress={closeReveal} />
-              <PillButton
-                label={revealLoading ? t('Please wait...') : t('Unlock')}
-                onPress={() => submitReveal().catch((e) => setRevealError(String(e?.message || e)))}
-                disabled={revealLoading}
-              />
+              {!revealData ? (
+                <PillButton
+                  label={revealLoading ? t('Please wait...') : t('Unlock')}
+                  onPress={() => submitReveal().catch((e) => setRevealError(String(e?.message || e)))}
+                  disabled={revealLoading}
+                />
+              ) : null}
             </View>
           </View>
         </View>
@@ -860,6 +887,24 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 12
   },
+  phoneWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  phonePrefix: {
+    fontWeight: '800',
+    fontSize: 15
+  },
+  phoneInput: {
+    flex: 1,
+    paddingVertical: 10
+  },
   notesInput: {
     minHeight: 72,
     textAlignVertical: 'top'
@@ -889,6 +934,9 @@ const styles = StyleSheet.create({
   rowTitleWrap: {
     flex: 1
   },
+  amountBlock: {
+    alignItems: 'flex-end'
+  },
   metaBlock: {
     gap: 2
   },
@@ -902,6 +950,7 @@ const styles = StyleSheet.create({
   name: { color: '#0f3557', fontWeight: '700' },
   sub: { color: '#607d99' },
   amount: { color: '#0a8f4b', fontWeight: '800' },
+  amountLabel: { fontSize: 11, fontWeight: '700', marginTop: 2 },
   readOnlyText: { color: '#9a6b00', fontWeight: '700', marginBottom: 8 },
   modalBackdrop: {
     flex: 1,

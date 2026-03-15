@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { BlurView } from 'expo-blur';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -43,7 +42,6 @@ export default function OnboardingModal({
   const skipColor = appIsDark ? '#111111' : '#f8fafc';
   const inactiveDotColor = appIsDark ? theme.border : 'rgba(255,255,255,0.24)';
   const panel = String(step?.panel || 'top').toLowerCase();
-  const shouldBlur = Boolean(step?.blurBackground);
 
   const cardPositionStyle = useMemo(() => {
     if (panel === 'middle') {
@@ -56,15 +54,6 @@ export default function OnboardingModal({
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent>
       <View style={styles.root}>
-        {shouldBlur ? (
-          <BlurView
-            tint="dark"
-            intensity={12}
-            style={[styles.backdropFill, { width: screenWidth, height: screenHeight }]}
-          />
-        ) : null}
-        <View style={[styles.backdropFill, styles.dimFill, { width: screenWidth, height: screenHeight }]} />
-
         <View
           style={[
             styles.card,
@@ -120,15 +109,7 @@ export default function OnboardingModal({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: 'rgba(5, 10, 16, 0.18)'
-  },
-  backdropFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0
-  },
-  dimFill: {
-    backgroundColor: 'rgba(8, 24, 36, 0.28)'
+    backgroundColor: 'transparent'
   },
   card: {
     position: 'absolute',

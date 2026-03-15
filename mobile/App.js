@@ -86,6 +86,55 @@ const TAB_ICONS = {
   account: '👤'
 };
 
+function getPageHeaderCopy(tab, t) {
+  switch (tab) {
+    case 'assets':
+      return {
+        eyebrow: t('Assets'),
+        title: t('Everything you own, in one place'),
+        body: t('Track bank balances, investments, gold, property, and every other asset with a cleaner overview.')
+      };
+    case 'loans':
+      return {
+        eyebrow: t('Liabilities'),
+        title: t('See every obligation clearly'),
+        body: t('Review loans, credit dues, and outstanding amounts together so net worth stays honest and current.')
+      };
+    case 'settings':
+      return {
+        eyebrow: t('Targets'),
+        title: t('Set the numbers you want to grow into'),
+        body: t('Define yearly targets category by category and measure progress without digging through multiple screens.')
+      };
+    case 'reminders':
+      return {
+        eyebrow: t('Reminders'),
+        title: t('Stay ahead of due dates'),
+        body: t('Keep renewals, premiums, and review dates visible so important financial actions do not slip.')
+      };
+    case 'account':
+      return {
+        eyebrow: t('Account'),
+        title: t('Control access, privacy, and support'),
+        body: t('Manage security settings, family access, subscription details, and support options from one place.')
+      };
+    case 'performance':
+      return {
+        eyebrow: t('Performance'),
+        title: t('Review how net worth is moving'),
+        body: t('Read recent net worth snapshots and compare asset and liability movement over time.')
+      };
+    case 'family':
+      return {
+        eyebrow: t('Family'),
+        title: t('Share visibility with the right people'),
+        body: t('Grant access carefully, review permissions, and keep family sharing limited to what is actually needed.')
+      };
+    default:
+      return null;
+  }
+}
+
 function AiBrainIcon({ stroke, badgeFill, badgeText }) {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
@@ -373,6 +422,7 @@ export default function App() {
     ['trial_premium', 'premium_monthly', 'premium_yearly'].includes(subscriptionStatus?.plan);
   const subscriptionActive = subscriptionStatus?.status === 'active';
   const readOnly = !subscriptionActive || accessRole === 'read';
+  const pageHeaderCopy = user ? getPageHeaderCopy(activeTab, t) : null;
   const onboardingSteps = React.useMemo(
     () => [
       {
@@ -1307,6 +1357,11 @@ export default function App() {
   const closeOnboarding = () => {
     setOnboardingVisible(false);
     setOnboardingIndex(0);
+    if (user && pinSetupRequired) {
+      requestAnimationFrame(() => {
+        setPinSetupVisible(true);
+      });
+    }
   };
 
   const openOnboarding = () => {
@@ -1390,30 +1445,10 @@ export default function App() {
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
       <View style={styles.header}>
-        <View style={styles.headerActions}>
-          <AnimatedPressable
-            ref={(node) => setOnboardingTargetRef('ai_button', node)}
-            collapsable={false}
-            onLayout={() => measureOnboardingTarget('ai_button')}
-            style={[
-              styles.aiBtn,
-              { backgroundColor: theme.card, borderColor: theme.border },
-              getOnboardingZoomStyle('ai_button')
-            ]}
-            onPress={() => openAiInsights().catch(() => {})}
-            hitSlop={8}
-          >
-            <View style={styles.aiBtnContent}>
-              <AiBrainIcon stroke={theme.accent} badgeFill={theme.accent} badgeText={theme.card} />
-              <Text style={[styles.aiBtnText, { color: theme.accent }]}>{t('AI Insights')}</Text>
-            </View>
-          </AnimatedPressable>
+        <View style={styles.authHeaderTopRow}>
+          <Image source={BRAND_ICON} style={styles.headerLogoLarge} resizeMode="cover" />
         </View>
-        <Image source={BRAND_ICON} style={styles.headerLogo} resizeMode="cover" />
-        <Text style={[styles.title, { color: theme.text }]}>{t('Networth Manager')}</Text>
-        <Text style={[styles.subtitle, { color: theme.muted }]}>
-          {t('Create account or login using OTP. Biometric login can be enabled after setup.')}
-        </Text>
+        <Text style={[styles.title, styles.authTitle, styles.authHeaderCenter]}>{t('Networth Manager')}</Text>
       </View>
       <ScrollView
         style={styles.body}
@@ -1438,59 +1473,70 @@ export default function App() {
   ) : (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
-      {activeTab !== 'subscription' ? (
+      {activeTab === 'dashboard' ? (
         <View style={styles.header}>
-          <View style={styles.headerActions}>
-            <AnimatedPressable
-              ref={(node) => setOnboardingTargetRef('ai_button', node)}
-              collapsable={false}
-              onLayout={() => measureOnboardingTarget('ai_button')}
-              style={[
-                styles.aiBtn,
-                { backgroundColor: theme.card, borderColor: theme.border },
-                getOnboardingZoomStyle('ai_button')
-              ]}
-              onPress={() => openAiInsights().catch(() => {})}
-              hitSlop={8}
-            >
-              <View style={styles.aiBtnContent}>
-                <AiBrainIcon stroke={theme.accent} badgeFill={theme.accent} badgeText={theme.card} />
-                <Text style={[styles.aiBtnText, { color: theme.accent }]}>{t('AI Insights')}</Text>
+          <View style={[styles.headerUtilityCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.headerMainRow}>
+              <Pressable
+                style={[styles.accountCapsule, { backgroundColor: theme.accentSoft, borderColor: theme.border }]}
+                onPress={() => handleTabSelect('account')}
+                hitSlop={8}
+              >
+                <View style={[styles.accountAvatar, { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+                  <Text style={styles.accountAvatarText}>{toInitialsFromName(user.full_name)}</Text>
+                </View>
+                <View style={styles.accountMeta}>
+                  <Text style={[styles.accountCapsuleText, { color: theme.text }]} numberOfLines={1}>
+                    {user.full_name || t('Account')}
+                  </Text>
+                  <Text style={[styles.accountRoleText, { color: theme.accent }]}>{roleLabel}</Text>
+                </View>
+                <Text style={[styles.accountChevron, { color: theme.accent }]}>{'\u203A'}</Text>
+              </Pressable>
+              <View style={[styles.headerLogoBadge, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                <Image source={BRAND_ICON} style={styles.headerLogoCompact} resizeMode="cover" />
               </View>
-            </AnimatedPressable>
-          </View>
-          <Image source={BRAND_ICON} style={styles.headerLogo} resizeMode="cover" />
-          <View style={styles.loggedHeaderRow}>
-            <View style={styles.loggedHeaderMeta}>
-              <Text style={[styles.subtitle, { color: theme.muted }]}>
-                {t('Welcome, {name}', { name: `${toInitialsFromName(user.full_name)} (${roleLabel})` })}
-              </Text>
-              {accountOwner && accountOwner.id !== user.id ? (
-                <Text style={[styles.subtitle, { color: theme.muted }]}>
-                  {t('Owner: {name}', { name: toInitialsFromName(accountOwner.full_name) })}
-                </Text>
-              ) : null}
             </View>
-            <Pressable
-              style={[styles.accountAvatar, { backgroundColor: theme.accent, borderColor: theme.border }]}
-              onPress={() => handleTabSelect('account')}
-              hitSlop={8}
-            >
-              <Text style={styles.accountAvatarText}>{toInitialsFromName(user.full_name)}</Text>
-            </Pressable>
+            <View style={styles.headerActions}>
+              <AnimatedPressable
+                ref={(node) => setOnboardingTargetRef('ai_button', node)}
+                collapsable={false}
+                onLayout={() => measureOnboardingTarget('ai_button')}
+                style={[
+                  styles.aiBtn,
+                  { backgroundColor: theme.background, borderColor: theme.border },
+                  getOnboardingZoomStyle('ai_button')
+                ]}
+                onPress={() => openAiInsights().catch(() => {})}
+                hitSlop={8}
+              >
+                <View style={styles.aiBtnContent}>
+                  <AiBrainIcon stroke={theme.accent} badgeFill={theme.accent} badgeText={theme.card} />
+                  <Text style={[styles.aiBtnText, { color: theme.accent }]}>{t('AI Insights')}</Text>
+                </View>
+              </AnimatedPressable>
+              <Pressable
+                ref={(node) => setOnboardingTargetRef('privacy_toggle', node)}
+                collapsable={false}
+                onLayout={() => measureOnboardingTarget('privacy_toggle')}
+                style={[styles.eyeToggleButton, { borderColor: theme.border, backgroundColor: theme.background }]}
+                onPress={togglePrivacy}
+                accessibilityRole="button"
+                accessibilityLabel={hideSensitive ? 'Show values' : 'Hide values'}
+              >
+                <Text style={[styles.eyeToggleLabel, { color: theme.accent }]}>{t('Privacy')}</Text>
+                <EyeToggleIcon stroke={theme.accent} closed={hideSensitive} />
+              </Pressable>
+            </View>
           </View>
-          <Pressable
-            ref={(node) => setOnboardingTargetRef('privacy_toggle', node)}
-            collapsable={false}
-            onLayout={() => measureOnboardingTarget('privacy_toggle')}
-            style={[styles.eyeToggleButton, { borderColor: theme.border, backgroundColor: theme.card }]}
-            onPress={togglePrivacy}
-            accessibilityRole="button"
-            accessibilityLabel={hideSensitive ? 'Show values' : 'Hide values'}
-          >
-            <Text style={[styles.eyeToggleLabel, { color: theme.accent }]}>{t('Privacy')}</Text>
-            <EyeToggleIcon stroke={theme.accent} closed={hideSensitive} />
-          </Pressable>
+        </View>
+      ) : pageHeaderCopy && activeTab !== 'subscription' ? (
+        <View style={styles.header}>
+          <View style={[styles.pageIntroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.pageIntroEyebrow, { color: theme.accent }]}>{pageHeaderCopy.eyebrow}</Text>
+            <Text style={[styles.pageIntroTitle, { color: theme.text }]}>{pageHeaderCopy.title}</Text>
+            <Text style={[styles.pageIntroBody, { color: theme.muted }]}>{pageHeaderCopy.body}</Text>
+          </View>
         </View>
       ) : null}
 
@@ -1931,27 +1977,103 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 10
   },
+  authHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12
+  },
+  authHeaderCenter: {
+    textAlign: 'center',
+    alignSelf: 'center'
+  },
   headerLogo: {
     width: 56,
     height: 56,
-    borderRadius: 12,
-    marginBottom: 8
+    borderRadius: 12
+  },
+  headerLogoLarge: {
+    width: 76,
+    height: 76,
+    borderRadius: 18,
+    alignSelf: 'center'
   },
   headerActions: {
-    position: 'absolute',
-    right: 16,
-    top: 12,
-    zIndex: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8
+  },
+  headerUtilityCard: {
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+    shadowColor: '#0b1b2b',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4
+  },
+  pageIntroCard: {
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    shadowColor: '#0b1b2b',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3
+  },
+  pageIntroEyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: 6
+  },
+  pageIntroTitle: {
+    fontSize: 21,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    marginBottom: 6
+  },
+  pageIntroBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600'
+  },
+  headerMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  headerLogoBadge: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0
+  },
+  headerLogoCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 10
   },
   aiBtn: {
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    elevation: 10
+    paddingVertical: 10,
+    elevation: 10,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   aiBtnContent: {
     flexDirection: 'row',
@@ -1963,19 +2085,49 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     fontSize: 12
   },
-  loggedHeaderRow: {
+  accountCapsule: {
+    minHeight: 56,
+    flex: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    justifyContent: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12
+    gap: 10,
+    shadowColor: '#0b1b2b',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2
   },
-  loggedHeaderMeta: {
-    flex: 1
+  accountCapsuleText: {
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 0.3
+  },
+  accountMeta: {
+    flex: 1,
+    minWidth: 0
+  },
+  accountRoleText: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase'
+  },
+  accountChevron: {
+    fontSize: 24,
+    fontWeight: '800',
+    lineHeight: 24,
+    marginLeft: 4
   },
   accountAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 999,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1
@@ -1991,6 +2143,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0f2f4d'
   },
+  authTitle: {
+    color: '#0d6f74'
+  },
   titleDark: {
     color: '#e7edf5'
   },
@@ -2004,16 +2159,20 @@ const styles = StyleSheet.create({
     color: '#9db0c4'
   },
   eyeToggleButton: {
-    marginTop: 8,
     borderWidth: 1,
     borderRadius: 999,
-    width: 112,
-    height: 42,
+    flex: 1,
+    height: 44,
     paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8
+    gap: 8,
+    shadowColor: '#0b1b2b',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2
   },
   eyeToggleLabel: {
     fontSize: 12,

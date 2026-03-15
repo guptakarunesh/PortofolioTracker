@@ -2,11 +2,11 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme';
 
-export default function SectionCard({ title, children }) {
+export default function SectionCard({ title, children, titleStyle }) {
   const { theme } = useTheme();
   return (
     <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, shadowColor: theme.text }]}>
-      <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+      {title ? <Text style={[styles.title, { color: theme.text }, titleStyle]}>{title}</Text> : null}
       {children}
     </View>
   );

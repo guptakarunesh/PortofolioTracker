@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme';
 
 const KIND_STYLES = {
@@ -25,32 +25,41 @@ export default function FeedbackBanner({ message = '', kind = 'info' }) {
   if (!message) return null;
   const palette = KIND_STYLES[kind] || KIND_STYLES.info;
   return (
-    <View
-      style={[
-        styles.banner,
-        {
-          backgroundColor: palette.bg,
-          borderColor: palette.border,
-          shadowColor: theme.shadow
-        }
-      ]}
-    >
-      <Text style={[styles.text, { color: palette.text }]}>{message}</Text>
-    </View>
+    <Modal transparent visible animationType="fade" statusBarTranslucent>
+      <View style={styles.overlay} pointerEvents="box-none">
+        <View
+          style={[
+            styles.banner,
+            {
+              backgroundColor: palette.bg,
+              borderColor: palette.border,
+              shadowColor: theme.shadow
+            }
+          ]}
+        >
+          <Text style={[styles.text, { color: palette.text }]}>{message}</Text>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    paddingTop: 72,
+    paddingHorizontal: 16
+  },
   banner: {
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginBottom: 12,
     shadowOpacity: 0.08,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 3
+    elevation: 6
   },
   text: {
     fontWeight: '700',

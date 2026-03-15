@@ -225,14 +225,17 @@ export default function FamilyScreen({
                 </Text>
               ) : null}
             </View>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
-              value={mobile}
-              onChangeText={(text) => setMobile(String(text || '').replace(/\D/g, '').slice(0, 10))}
-              placeholder={t('10-digit mobile number')}
-              placeholderTextColor={theme.muted}
-              keyboardType="number-pad"
-            />
+            <View style={[styles.phoneWrap, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+              <Text style={[styles.phonePrefix, { color: theme.text }]}>+91</Text>
+              <TextInput
+                style={[styles.phoneInput, { color: theme.inputText }]}
+                value={mobile}
+                onChangeText={(text) => setMobile(String(text || '').replace(/\D/g, '').slice(0, 10))}
+                placeholder={t('10-digit mobile number')}
+                placeholderTextColor={theme.muted}
+                keyboardType="number-pad"
+              />
+            </View>
             <View style={styles.roleRow}>
               {ROLE_OPTIONS.map((opt) => (
                 <PillButton
@@ -370,6 +373,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  phoneWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  phonePrefix: {
+    fontWeight: '800',
+    fontSize: 15
+  },
+  phoneInput: {
+    flex: 1,
     paddingVertical: 10
   },
   roleRow: {

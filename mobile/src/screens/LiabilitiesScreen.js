@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, Modal } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, Modal, Alert } from 'react-native';
 import { api } from '../api/client';
 import FeedbackBanner from '../components/FeedbackBanner';
 import SectionCard from '../components/SectionCard';
@@ -300,6 +300,26 @@ export default function LiabilitiesScreen({
     }
   };
 
+  const confirmRemove = (item) => {
+    Alert.alert(
+      t('Delete Liability'),
+      t('Delete {name}? This action cannot be undone.', { name: item?.loan_type || t('this liability') }),
+      [
+        { text: t('Cancel'), style: 'cancel' },
+        {
+          text: t('Delete'),
+          style: 'destructive',
+          onPress: () => {
+            remove(item.id).catch((e) => {
+              setMessage(String(e?.message || e));
+              setMessageKind('error');
+            });
+          }
+        }
+      ]
+    );
+  };
+
   const cancelEdit = () => {
     resetForm();
     setMessage('');
@@ -311,14 +331,14 @@ export default function LiabilitiesScreen({
       <FeedbackBanner message={message} kind={messageKind} />
       <SectionCard title={editingId ? t('Edit Liability') : t('Add Liability')}>
         {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{t('Subscription expired. View-only mode.')}</Text> : null}
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Loan Type')}</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Type')}</Text>
         <Pressable
           onLayout={(event) => setFieldOffset('loan_type', event.nativeEvent.layout.y)}
           style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
           disabled={readOnly}
           onPress={() => setShowLoanTypeOptions((v) => !v)}
         >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.loan_type || 'Select loan type')}</Text>
+          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.loan_type || 'Select type')}</Text>
           <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showLoanTypeOptions ? '▲' : '▼'}</Text>
         </Pressable>
         {showLoanTypeOptions ? (
@@ -455,28 +475,32 @@ export default function LiabilitiesScreen({
           theme={theme}
           text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
         />
-        <TextInput
+        <View
           ref={relationshipMobileInputRef}
+          collapsable={false}
           onLayout={(event) => setFieldOffset('relationship_mobile', event.nativeEvent.layout.y)}
           style={[
-            styles.input,
+            styles.phoneWrap,
             {
-              backgroundColor: theme.inputBg,
-              borderColor: fieldErrors.relationship_mobile ? theme.danger : theme.border,
-              color: theme.inputText
-            },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
+              backgroundColor: readOnly ? theme.background : theme.inputBg,
+              borderColor: fieldErrors.relationship_mobile ? theme.danger : theme.border
+            }
           ]}
-          value={form.relationship_mobile}
-          onChangeText={(v) => {
-            clearFieldError('relationship_mobile');
-            setForm((f) => ({ ...f, relationship_mobile: String(v || '').replace(/\D/g, '').slice(0, 10) }));
-          }}
-          placeholder={editingId ? t('Enter new mobile to replace existing') : t('10-digit mobile number')}
-          keyboardType="number-pad"
-          placeholderTextColor={theme.muted}
-          editable={!readOnly}
-        />
+        >
+          <Text style={[styles.phonePrefix, { color: readOnly ? theme.muted : theme.text }]}>+91</Text>
+          <TextInput
+            style={[styles.phoneInput, { color: readOnly ? theme.muted : theme.inputText }]}
+            value={form.relationship_mobile}
+            onChangeText={(v) => {
+              clearFieldError('relationship_mobile');
+              setForm((f) => ({ ...f, relationship_mobile: String(v || '').replace(/\D/g, '').slice(0, 10) }));
+            }}
+            placeholder={editingId ? t('Enter new mobile to replace existing') : t('10-digit mobile number')}
+            keyboardType="number-pad"
+            placeholderTextColor={theme.muted}
+            editable={!readOnly}
+          />
+        </View>
         {!!fieldErrors.relationship_mobile ? (
           <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.relationship_mobile}</Text>
         ) : null}
@@ -569,8 +593,8 @@ export default function LiabilitiesScreen({
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <View style={styles.rowHeader}>
               <View style={styles.rowTitleWrap}>
-                <Text style={[styles.name, { color: theme.text }]}>{item.lender}</Text>
-                <Text style={[styles.sub, { color: theme.muted }]}>{t(item.loan_type)}</Text>
+                <Text style={[styles.name, { color: theme.text }]}>{t(item.loan_type)}</Text>
+                <Text style={[styles.sub, { color: theme.muted }]}>{item.lender}</Text>
               </View>
               <Text style={[styles.amount, { color: theme.danger }]}>
                 {displayAmount(item.outstanding_amount, hideSensitive, preferredCurrency, fxRates)}
@@ -607,12 +631,7 @@ export default function LiabilitiesScreen({
               <PillButton
                 label={t('Delete')}
                 kind="ghost"
-                onPress={() =>
-                  remove(item.id).catch((e) => {
-                    setMessage(String(e?.message || e));
-                    setMessageKind('error');
-                  })
-                }
+                onPress={() => confirmRemove(item)}
                 disabled={readOnly}
               />
             </View>
@@ -624,34 +643,39 @@ export default function LiabilitiesScreen({
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
             <Text style={[styles.modalTitle, { color: theme.text }]}>{t('Sensitive Liability Details')}</Text>
-            <Text style={[styles.modalSub, { color: theme.muted }]}> 
-              {t('Enter your security PIN to view full identifier, contact, and notes.')}
-            </Text>
-            <TextInput
-              style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
-              value={revealPin}
-              onChangeText={(v) => setRevealPin(String(v || '').replace(/\D/g, '').slice(0, 4))}
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={4}
-              placeholder={t('4-digit PIN')}
-              placeholderTextColor={theme.muted}
-            />
-            {!!revealError ? <Text style={[styles.modalError, { color: theme.danger }]}>{revealError}</Text> : null}
             {revealData ? (
               <View style={styles.revealDetails}>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Identifier: {value}', { value: revealData.account_ref || '-' })}</Text>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Contact: {value}', { value: revealData.relationship_mobile || '-' })}</Text>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Notes: {value}', { value: revealData.notes || '-' })}</Text>
               </View>
-            ) : null}
+            ) : (
+              <>
+                <Text style={[styles.modalSub, { color: theme.muted }]}> 
+                  {t('Enter your security PIN to view full identifier, contact, and notes.')}
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
+                  value={revealPin}
+                  onChangeText={(v) => setRevealPin(String(v || '').replace(/\D/g, '').slice(0, 4))}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={4}
+                  placeholder={t('4-digit PIN')}
+                  placeholderTextColor={theme.muted}
+                />
+                {!!revealError ? <Text style={[styles.modalError, { color: theme.danger }]}>{revealError}</Text> : null}
+              </>
+            )}
             <View style={styles.modalActions}>
               <PillButton label={t('Close')} kind="ghost" onPress={closeReveal} />
-              <PillButton
-                label={revealLoading ? t('Please wait...') : t('Unlock')}
-                onPress={() => submitReveal().catch((e) => setRevealError(String(e?.message || e)))}
-                disabled={revealLoading}
-              />
+              {!revealData ? (
+                <PillButton
+                  label={revealLoading ? t('Please wait...') : t('Unlock')}
+                  onPress={() => submitReveal().catch((e) => setRevealError(String(e?.message || e)))}
+                  disabled={revealLoading}
+                />
+              ) : null}
             </View>
           </View>
         </View>
@@ -731,6 +755,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12
+  },
+  phoneWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  phonePrefix: {
+    fontWeight: '800',
+    fontSize: 15
+  },
+  phoneInput: {
+    flex: 1,
+    paddingVertical: 10
   },
   notesInput: {
     minHeight: 72,

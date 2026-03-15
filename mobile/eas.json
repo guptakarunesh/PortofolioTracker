@@ -4,6 +4,7 @@
   },
   "build": {
     "preview": {
+      "environment": "preview",
       "channel": "preview",
       "distribution": "internal",
       "android": {
@@ -11,6 +12,7 @@
       }
     },
     "preprod": {
+      "environment": "preview",
       "channel": "preprod",
       "distribution": "internal",
       "env": {
@@ -21,6 +23,7 @@
       }
     },
     "production": {
+      "environment": "production",
       "channel": "production"
     }
   }

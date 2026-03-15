@@ -378,66 +378,53 @@ export default function App() {
       {
         tab: 'dashboard',
         targetKey: 'tab_dashboard',
-        arrow: 'down',
         panel: 'top',
-        targetAnchor: 'center',
-        title: t('See your portfolio on one screen'),
-        body: t('Dashboard gives a quick snapshot of assets, liabilities, and net worth in one view.')
+        title: t('Start with your full net worth view'),
+        body: t('Dashboard is your main control room.\nSee net worth, assets, liabilities, and snapshot reports together.\nUse this page first whenever you want a quick financial check.')
       },
       {
         tab: 'assets',
         targetKey: 'tab_assets',
-        arrow: 'down',
         panel: 'top',
-        targetAnchor: 'center',
-        title: t('Jump to Assets fast'),
-        body: t('Tap Assets to add or update investments, deposits, gold, property, and other holdings.')
+        title: t('Use Assets to record everything you own'),
+        body: t('Add investments, cash, deposits, gold, property, and other holdings here.\nKeep values updated so your dashboard stays accurate.\nThis is the core page for wealth tracking.')
       },
       {
         tab: 'loans',
         targetKey: 'tab_loans',
-        arrow: 'down',
         panel: 'top',
-        targetAnchor: 'center',
-        title: t('Track liabilities here'),
-        body: t('Use Liabilities to monitor loans and dues so your net worth is always accurate.')
+        title: t('Track every liability in one place'),
+        body: t('Use Liabilities for loans, cards, dues, and obligations.\nThis keeps your net worth realistic instead of overstated.\nAdd notes that help your family or admin follow the account later.')
       },
       {
-        tab: 'performance',
-        targetKey: null,
-        arrow: 'up',
-        panel: 'bottom',
-        title: t('Performance Insights'),
-        body: t('Use Performance to review trends and progress over time.')
+        tab: 'settings',
+        targetKey: 'tab_settings',
+        panel: 'top',
+        title: t('Set targets that guide your yearly plan'),
+        body: t('Targets help you measure progress against your financial goals.\nUpdate yearly goals here for each important category.\nThe dashboard will then show how close you are to each target.')
       },
       {
         tab: 'reminders',
-        targetKey: null,
-        arrow: 'up',
-        panel: 'bottom',
-        title: t('Reminders & Alerts'),
-        body: t('Manage upcoming bills and events with timely reminders.')
-      },
-      {
-        tab: 'account',
-        targetKey: 'account_family_access',
-        arrow: 'up',
+        targetKey: 'tab_reminders',
         panel: 'top',
-        targetAnchor: 'top',
-        blurBackground: true,
-        singleBorder: true,
-        title: t('Family Sharing'),
-        body: t('From Account, open Family Access to share with members and control permissions.')
+        title: t('Stay ahead with reminders and due-date alerts'),
+        body: t('Use Reminders for bills, renewals, policy dates, and important follow-ups.\nThis reduces missed payments and forgotten actions.\nYou can keep your financial routine disciplined from one screen.')
       },
       {
         tab: 'dashboard',
         targetKey: 'ai_button',
-        arrow: 'left',
         panel: 'middle',
-        targetAnchor: 'center',
         blurBackground: true,
-        title: t('Open AI Insights anytime'),
-        body: t('Use AI Insights for quick portfolio summaries and context when premium is active.')
+        title: t('Open AI Insights for quick portfolio understanding'),
+        body: t('AI Insights gives a fast summary of your portfolio and current context.\nUse it when you want a simple read instead of checking every page manually.\nIt is designed to surface what needs attention first.')
+      },
+      {
+        tab: 'account',
+        targetKey: 'account_manage_family',
+        panel: 'top',
+        blurBackground: true,
+        title: t('Share access safely with family when needed'),
+        body: t('Family Sharing lets you grant controlled visibility to trusted members.\nUse it to define who can view, edit, or manage selected information.\nOpen this from Account when you are ready to extend access.')
       }
     ],
     [t]
@@ -839,10 +826,12 @@ export default function App() {
           measureOnboardingTarget('content');
           measureOnboardingTarget('ai_button');
           measureOnboardingTarget('privacy_toggle');
-          measureOnboardingTarget('account_family_access');
+          measureOnboardingTarget('account_manage_family');
           measureOnboardingTarget('tab_dashboard');
           measureOnboardingTarget('tab_assets');
           measureOnboardingTarget('tab_loans');
+          measureOnboardingTarget('tab_settings');
+          measureOnboardingTarget('tab_reminders');
         }, delay);
         timers.push(timer);
       });
@@ -1257,10 +1246,12 @@ export default function App() {
               outputRange: [1, 1.1, 1]
             })
           }
-        ]
+        ],
+        backgroundColor: theme.accentSoft,
+        borderRadius: 18
       };
     },
-    [onboardingVisible, onboardingSteps, onboardingIndex, onboardingZoom]
+    [onboardingVisible, onboardingSteps, onboardingIndex, onboardingZoom, theme.accentSoft]
   );
 
   useEffect(() => {
@@ -1269,14 +1260,14 @@ export default function App() {
     const scroller = contentScrollRef.current;
     if (!step || !scroller || typeof scroller.scrollTo !== 'function') return;
 
-    if (step.tab === 'account' && step.targetKey === 'account_family_access') {
-      const y = Math.max(420, Math.round(screenHeight * 0.78));
+    if (step.tab === 'account' && step.targetKey === 'account_manage_family') {
+      const y = Math.max(520, Math.round(screenHeight * 0.95));
       const scrollTimer = setTimeout(() => {
         scroller.scrollTo({ y, animated: true });
-      }, 120);
+      }, 180);
       const measureTimer = setTimeout(() => {
-        measureOnboardingTarget('account_family_access');
-      }, 520);
+        measureOnboardingTarget('account_manage_family');
+      }, 780);
       return () => {
         clearTimeout(scrollTimer);
         clearTimeout(measureTimer);
@@ -1643,6 +1634,10 @@ export default function App() {
                   ? 'tab_assets'
                   : key === 'loans'
                     ? 'tab_loans'
+                    : key === 'settings'
+                      ? 'tab_settings'
+                      : key === 'reminders'
+                        ? 'tab_reminders'
                     : null;
             return (
               <AnimatedPressable

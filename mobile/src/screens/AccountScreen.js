@@ -514,12 +514,7 @@ export default function AccountScreen({
         </View>
       </SectionCard>
 
-      <Animated.View
-        ref={(node) => onRegisterOnboardingTarget?.('account_family_access', node)}
-        collapsable={false}
-        onLayout={() => onMeasureOnboardingTarget?.('account_family_access')}
-        style={onGetOnboardingZoomStyle?.('account_family_access')}
-      >
+      <Animated.View>
         <SectionCard title={t('Family Access')}>
           <Text style={[styles.helper, { color: theme.muted }]}>
             {t('Share access with family members and control read/write/admin permissions.')}
@@ -527,13 +522,18 @@ export default function AccountScreen({
           {!premiumActive ? (
             <Text style={[styles.lockedText, { color: theme.warn }]}>{t('Premium required to manage family access.')}</Text>
           ) : null}
-          <View style={styles.row}>
+          <Animated.View
+            ref={(node) => onRegisterOnboardingTarget?.('account_manage_family', node)}
+            collapsable={false}
+            onLayout={() => onMeasureOnboardingTarget?.('account_manage_family')}
+            style={[styles.row, onGetOnboardingZoomStyle?.('account_manage_family')]}
+          >
             <PillButton
               label={t('Manage Family')}
               kind={premiumActive ? 'primary' : 'ghost'}
               onPress={premiumActive ? onOpenFamily : onOpenSubscription}
             />
-          </View>
+          </Animated.View>
         </SectionCard>
       </Animated.View>
 

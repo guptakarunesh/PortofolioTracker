@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme';
 
 const KIND_STYLES = {
@@ -25,33 +25,26 @@ export default function FeedbackBanner({ message = '', kind = 'info' }) {
   if (!message) return null;
   const palette = KIND_STYLES[kind] || KIND_STYLES.info;
   return (
-    <Modal transparent visible animationType="fade" statusBarTranslucent>
-      <View style={styles.overlay} pointerEvents="box-none">
-        <View
-          style={[
-            styles.banner,
-            {
-              backgroundColor: palette.bg,
-              borderColor: palette.border,
-              shadowColor: theme.shadow
-            }
-          ]}
-        >
-          <Text style={[styles.text, { color: palette.text }]}>{message}</Text>
-        </View>
-      </View>
-    </Modal>
+    <View
+      style={[
+        styles.banner,
+        {
+          backgroundColor: palette.bg,
+          borderColor: palette.border,
+          shadowColor: theme.shadow
+        }
+      ]}
+    >
+      <Text style={[styles.text, { color: palette.text }]}>{message}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    paddingTop: 72,
-    paddingHorizontal: 16
-  },
   banner: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 12,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,

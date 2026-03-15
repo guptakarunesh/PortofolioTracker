@@ -61,7 +61,7 @@ export default function RemindersScreen({
 
   useEffect(() => {
     if (!message) return undefined;
-    const timer = setTimeout(() => setMessage(''), 3000);
+    const timer = setTimeout(() => setMessage(''), 5000);
     return () => clearTimeout(timer);
   }, [message]);
 

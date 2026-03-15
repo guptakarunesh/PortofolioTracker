@@ -49,6 +49,7 @@ const ACCENT = '#0f766e';
 const ACCENT_DARK = '#5eead4';
 const FX_SYMBOLS = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
 const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials_v1';
+const BIOMETRIC_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 3; // 3 days
 const ONBOARDING_SKIPPED_KEY = 'onboarding_skipped_v1';
 const REMINDER_NOTIFICATION_CACHE_KEY = 'reminder_notification_cache_v1';
 const BRAND_ICON = require('./src/assets/app-icon.png');
@@ -954,12 +955,25 @@ export default function App() {
     if (!sessionToken || !mobile) {
       throw new Error(t('Complete one OTP login before enrolling biometric login.'));
     }
+    const savedRaw = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY).catch(() => null);
+    let existingSessionStartedAt = '';
+    if (savedRaw) {
+      try {
+        const saved = JSON.parse(savedRaw);
+        existingSessionStartedAt = String(saved?.session_started_at || '').trim();
+      } catch (_e) {
+        existingSessionStartedAt = '';
+      }
+    }
+    const nextSessionStartedAt = new Date().toISOString();
     await SecureStore.setItemAsync(
       BIOMETRIC_CREDENTIALS_KEY,
       JSON.stringify({
         token: sessionToken,
         mobile,
-        full_name: String(profile?.full_name || '').trim()
+        full_name: String(profile?.full_name || '').trim(),
+        enrolled_at: existingSessionStartedAt || nextSessionStartedAt,
+        session_started_at: nextSessionStartedAt
       })
     );
     setBiometricEnrolled(true);
@@ -1099,7 +1113,18 @@ export default function App() {
     await ensureBiometricReady();
     const raw = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
     if (!raw) throw new Error(t('Biometric login is not enrolled on this device yet.'));
-    const creds = JSON.parse(raw);
+    let creds = null;
+    try {
+      creds = JSON.parse(raw);
+    } catch (_e) {
+      throw new Error(t('Biometric login is not enrolled on this device yet.'));
+    }
+    const sessionStartedAt = String(creds?.session_started_at || creds?.enrolled_at || '').trim();
+    const sessionStartedAtMs = Date.parse(sessionStartedAt);
+    if (sessionStartedAtMs && Date.now() - sessionStartedAtMs > BIOMETRIC_SESSION_MAX_AGE_MS) {
+      setAuthToken(null);
+      throw new Error(t('Biometric login needs one OTP refresh after 3 days. Login with OTP once to continue.'));
+    }
     const auth = await LocalAuthentication.authenticateAsync({
       promptMessage: t('Login with biometrics'),
       fallbackLabel: t('Use device passcode')
@@ -1113,10 +1138,12 @@ export default function App() {
     try {
       const profile = await api.me();
       await handleAuthSuccess({ token: storedToken, user: profile }, { refreshBiometric: false });
-    } catch (_e) {
-      await handleDisableBiometric();
+    } catch (e) {
       setAuthToken(null);
-      throw new Error(t('Biometric session expired. Login once with OTP and enroll again.'));
+      if (Number(e?.status || 0) === 401) {
+        throw new Error(t('Biometric session is no longer valid. Login with OTP once to refresh it.'));
+      }
+      throw new Error(t('Biometric login could not be completed right now. Try again.'));
     }
   };
 
@@ -1475,7 +1502,7 @@ export default function App() {
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
       {activeTab === 'dashboard' ? (
         <View style={styles.header}>
-          <View style={[styles.headerUtilityCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={[styles.headerUtilityCard, { backgroundColor: theme.accent, borderColor: theme.accent }]}>
             <View style={styles.headerMainRow}>
               <Pressable
                 style={[styles.accountCapsule, { backgroundColor: theme.accentSoft, borderColor: theme.border }]}
@@ -1532,10 +1559,8 @@ export default function App() {
         </View>
       ) : pageHeaderCopy && activeTab !== 'subscription' ? (
         <View style={styles.header}>
-          <View style={[styles.pageIntroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.pageIntroEyebrow, { color: theme.accent }]}>{pageHeaderCopy.eyebrow}</Text>
-            <Text style={[styles.pageIntroTitle, { color: theme.text }]}>{pageHeaderCopy.title}</Text>
-            <Text style={[styles.pageIntroBody, { color: theme.muted }]}>{pageHeaderCopy.body}</Text>
+          <View style={[styles.pageTitleBar, { backgroundColor: theme.accent }]}>
+            <Text style={styles.pageTitleBarText}>{pageHeaderCopy.eyebrow}</Text>
           </View>
         </View>
       ) : null}
@@ -1594,6 +1619,13 @@ export default function App() {
           showsVerticalScrollIndicator
           alwaysBounceVertical
         >
+          {pageHeaderCopy && activeTab !== 'subscription' ? (
+            <View style={[styles.pageIntroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.pageIntroEyebrow, { color: theme.accent }]}>{pageHeaderCopy.eyebrow}</Text>
+              <Text style={[styles.pageIntroTitle, { color: theme.text }]}>{pageHeaderCopy.title}</Text>
+              <Text style={[styles.pageIntroBody, { color: theme.muted }]}>{pageHeaderCopy.body}</Text>
+            </View>
+          ) : null}
           <View
             ref={(node) => setOnboardingTargetRef('content', node)}
             collapsable={false}
@@ -2021,11 +2053,28 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     paddingHorizontal: 16,
     paddingVertical: 15,
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 12,
     shadowColor: '#0b1b2b',
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 3
+  },
+  pageTitleBar: {
+    minHeight: 44,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    justifyContent: 'center'
+  },
+  pageTitleBarText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase'
   },
   pageIntroEyebrow: {
     fontSize: 11,

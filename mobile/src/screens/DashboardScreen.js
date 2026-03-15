@@ -22,9 +22,9 @@ const ASSET_TARGET_CATEGORIES = [
 const PIE_COLORS = ['#0f766e', '#f59e0b', '#ef4444', '#a855f7', '#22c55e', '#f97316', '#eab308'];
 const ACCENT = '#0f766e';
 const PANEL_OPTIONS = [
-  { key: 'allocation', label: 'Asset Allocation' },
-  { key: 'performance', label: 'Performance' },
-  { key: 'targets', label: 'Yearly Target Progress' }
+  { key: 'allocation', label: 'Asset Mix' },
+  { key: 'targets', label: 'Target Progress' },
+  { key: 'performance', label: 'Net Worth Trend' }
 ];
 
 const targetSettingKey = (category) =>
@@ -32,6 +32,12 @@ const targetSettingKey = (category) =>
 
 const displayAmount = (value, hideSensitive, currency, fxRates) =>
   hideSensitive ? '••••••' : formatAmountFromInr(value, currency, fxRates);
+
+const targetProgressColor = (pct) => {
+  const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+  const hue = (clamped / 100) * 120;
+  return `hsl(${hue}, 72%, 42%)`;
+};
 
 export default function DashboardScreen({ hideSensitive = false, preferredCurrency = 'INR', fxRates = { INR: 1 } }) {
   const { theme } = useTheme();
@@ -41,6 +47,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
   const [error, setError] = useState('');
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
   const [activePanel, setActivePanel] = useState('allocation');
+  const [snapshotExpanded, setSnapshotExpanded] = useState(false);
 
   const loadSummary = useCallback(async () => {
     const response = await api.getSummary();
@@ -102,26 +109,35 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
         </View>
         <Text style={[styles.muted, { color: theme.muted }]}>{t('Last updated: {date}', { date: formatDate(data.lastUpdated) })}</Text>
 
-        <View style={[styles.snapshotBox, { borderColor: theme.border, backgroundColor: theme.card }]}> 
-          <Text style={[styles.snapshotTitle, { color: theme.text }]}>{t('Snapshot PDF Report')}</Text>
-          <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('Download asset and liability snapshot for a selected date.')}</Text>
-          <DateField value={reportDate} onChange={setReportDate} theme={theme} placeholder="YYYY-MM-DD" />
-          <PillButton
-            label={t('Download Snapshot PDF')}
-            onPress={() => {
-              const token = getAuthToken();
-              if (!token) {
-                setError(t('Session expired. Please login again.'));
-                return;
-              }
-              const url = buildApiUrl(`/api/reports/snapshot/file?date=${encodeURIComponent(reportDate)}&token=${encodeURIComponent(token)}`);
-              Linking.openURL(url).catch((e) => setError(e.message));
-            }}
-          />
+        <View style={[styles.snapshotBox, { borderColor: theme.border, backgroundColor: theme.card }]}>
+          <Pressable style={styles.snapshotHeader} onPress={() => setSnapshotExpanded((value) => !value)}>
+            <View style={styles.snapshotHeaderTextWrap}>
+              <Text style={[styles.snapshotTitle, { color: theme.text }]}>{t('Snapshot PDF Report')}</Text>
+              <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('Download asset and liability snapshot for a selected date.')}</Text>
+            </View>
+            <Text style={[styles.snapshotChevron, { color: theme.accent }]}>{snapshotExpanded ? '▲' : '▼'}</Text>
+          </Pressable>
+          {snapshotExpanded ? (
+            <View style={styles.snapshotContent}>
+              <DateField value={reportDate} onChange={setReportDate} theme={theme} placeholder="YYYY-MM-DD" />
+              <PillButton
+                label={t('Download Snapshot PDF')}
+                onPress={() => {
+                  const token = getAuthToken();
+                  if (!token) {
+                    setError(t('Session expired. Please login again.'));
+                    return;
+                  }
+                  const url = buildApiUrl(`/api/reports/snapshot/file?date=${encodeURIComponent(reportDate)}&token=${encodeURIComponent(token)}`);
+                  Linking.openURL(url).catch((e) => setError(e.message));
+                }}
+              />
+            </View>
+          ) : null}
         </View>
       </SectionCard>
 
-      <SectionCard title={t('Home Page Insights')}>
+      <SectionCard title={t('Portfolio Highlights')}>
         <View style={styles.chipRow}>
           {PANEL_OPTIONS.map((panel) => {
             const active = activePanel === panel.key;
@@ -150,7 +166,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
                 </View>
                 <View style={styles.chartValueRow}>
                   <Text style={[styles.allocValue, { color: theme.text }]}>{displayAmount(item.currentValue, hideSensitive, currency, fxRates)}</Text>
-                  <Text style={[styles.allocPct, { color: theme.muted }]}>{formatPct(item.pctOfTotal)}</Text>
+                  <Text style={[styles.allocPct, { color: theme.text }]}>{formatPct(item.pctOfTotal)}</Text>
                 </View>
                 <View style={[styles.progressTrack, { backgroundColor: theme.border }]}> 
                   <View
@@ -167,22 +183,27 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
 
         {activePanel === 'performance' ? (
           performancePoints.length ? (
-            performancePoints.map((point) => (
-              <View key={`${point.label}-${point.netWorth}`} style={[styles.targetRow, { borderBottomColor: theme.border }]}> 
-                <View style={styles.targetHeadRow}>
-                  <Text style={[styles.targetLabel, { color: theme.text }]}>{String(point.label || '-')}</Text>
-                  <Text style={[styles.targetPct, { color: theme.accent }]}>{displayAmount(point.netWorth, hideSensitive, currency, fxRates)}</Text>
+            <>
+              <Text style={[styles.subtleInfo, { color: theme.muted }]}>
+                {t('Created from month-end snapshots captured after each month closes.')}
+              </Text>
+              {performancePoints.map((point) => (
+                <View key={`${point.label}-${point.netWorth}`} style={[styles.targetRow, { borderBottomColor: theme.border }]}> 
+                  <View style={styles.targetHeadRow}>
+                    <Text style={[styles.targetLabel, { color: theme.text }]}>{String(point.label || '-')}</Text>
+                    <Text style={[styles.targetPct, { color: theme.accent }]}>{displayAmount(point.netWorth, hideSensitive, currency, fxRates)}</Text>
+                  </View>
+                  <Text style={[styles.targetSub, { color: theme.muted }]}>
+                    {t('Assets: {assets} • Liabilities: {liabilities}', {
+                      assets: displayAmount(point.assets, hideSensitive, currency, fxRates),
+                      liabilities: displayAmount(point.liabilities, hideSensitive, currency, fxRates)
+                    })}
+                  </Text>
                 </View>
-                <Text style={[styles.targetSub, { color: theme.muted }]}>
-                  {t('Assets: {assets} • Liabilities: {liabilities}', {
-                    assets: displayAmount(point.assets, hideSensitive, currency, fxRates),
-                    liabilities: displayAmount(point.liabilities, hideSensitive, currency, fxRates)
-                  })}
-                </Text>
-              </View>
-            ))
+              ))}
+            </>
           ) : (
-            <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('No performance snapshots available yet.')}</Text>
+            <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('No month-end snapshots available yet.')}</Text>
           )
         ) : null}
 
@@ -192,13 +213,21 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
               <View key={row.category} style={[styles.targetRow, { borderBottomColor: theme.border }]}> 
                 <View style={styles.targetHeadRow}>
                   <Text style={[styles.targetLabel, { color: theme.text }]}>{t(row.category)}</Text>
-                  <Text style={[styles.targetPct, { color: theme.accent }]}>{formatPct(row.pct)}</Text>
+                  <Text style={[styles.targetPct, { color: targetProgressColor(row.pctClamped) }]}>{formatPct(row.pct)}</Text>
                 </View>
                 <Text style={[styles.targetSub, { color: theme.muted }]}>
                   {displayAmount(row.current, hideSensitive, currency, fxRates)} of {displayAmount(row.target, hideSensitive, currency, fxRates)}
                 </Text>
                 <View style={[styles.progressTrack, { backgroundColor: theme.border }]}> 
-                  <View style={[styles.progressFill, { width: `${row.pctClamped}%`, backgroundColor: theme.accent }]} />
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${row.pctClamped}%`,
+                        backgroundColor: targetProgressColor(row.pctClamped)
+                      }
+                    ]}
+                  />
                 </View>
               </View>
             ))
@@ -304,12 +333,29 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderWidth: 1,
     borderRadius: 14,
-    padding: 12,
+    padding: 12
+  },
+  snapshotHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  snapshotHeaderTextWrap: {
+    flex: 1,
+    gap: 4
+  },
+  snapshotContent: {
+    marginTop: 10,
     gap: 8
   },
   snapshotTitle: {
     fontWeight: '800',
     fontSize: 15
+  },
+  snapshotChevron: {
+    fontSize: 14,
+    fontWeight: '900'
   },
   subtleInfo: {
     lineHeight: 18,

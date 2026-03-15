@@ -640,6 +640,61 @@ apiRouter.post('/users/:id/actions', (req, res) => {
       const expiresAt = addDaysIso(nowIso(), INVITE_TTL_DAYS);
       db.prepare(`UPDATE family_invites SET expires_at = ?, updated_at = ? WHERE id = ?`).run(expiresAt, nowIso(), inviteId);
       result = { ok: true, invite_id: inviteId, expires_at: expiresAt };
+    } else if (action === 'seed_performance_snapshots') {
+      const snapshots = Array.isArray(payload.snapshots) ? payload.snapshots : [];
+      if (!snapshots.length) return res.status(400).json({ error: 'snapshots_required' });
+      if (snapshots.length > 12) return res.status(400).json({ error: 'too_many_snapshots' });
+
+      const upsertSnapshot = db.prepare(`
+        INSERT INTO performance_snapshots (
+          user_id, quarter_start, total_assets, total_liabilities, net_worth, captured_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, quarter_start) DO UPDATE SET
+          total_assets = excluded.total_assets,
+          total_liabilities = excluded.total_liabilities,
+          net_worth = excluded.net_worth,
+          captured_at = excluded.captured_at
+      `);
+
+      const normalized = snapshots.map((row) => {
+        const quarterStart = String(row?.quarter_start || row?.quarterStart || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(quarterStart)) {
+          throw new Error('invalid_quarter_start');
+        }
+        const totalAssets = Number(row?.total_assets ?? row?.totalAssets ?? 0);
+        const totalLiabilities = Number(row?.total_liabilities ?? row?.totalLiabilities ?? 0);
+        const hasNetWorth = row?.net_worth != null || row?.netWorth != null;
+        const netWorth = hasNetWorth ? Number(row?.net_worth ?? row?.netWorth ?? 0) : totalAssets - totalLiabilities;
+        if (![totalAssets, totalLiabilities, netWorth].every(Number.isFinite)) {
+          throw new Error('invalid_snapshot_amounts');
+        }
+        return {
+          quarterStart,
+          totalAssets,
+          totalLiabilities,
+          netWorth,
+          capturedAt: String(row?.captured_at || row?.capturedAt || nowIso())
+        };
+      });
+
+      db.transaction(() => {
+        normalized.forEach((row) => {
+          upsertSnapshot.run(
+            targetUserId,
+            row.quarterStart,
+            row.totalAssets,
+            row.totalLiabilities,
+            row.netWorth,
+            row.capturedAt
+          );
+        });
+      })();
+
+      result = {
+        ok: true,
+        snapshots_upserted: normalized.length,
+        quarter_starts: normalized.map((row) => row.quarterStart)
+      };
     } else {
       return res.status(400).json({ error: 'unsupported_action' });
     }

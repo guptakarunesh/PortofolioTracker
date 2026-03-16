@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { api } from '../api/client';
 import SectionCard from '../components/SectionCard';
@@ -20,17 +20,37 @@ const ASSET_TARGET_CATEGORIES = [
 const targetSettingKey = (category) =>
   `yearly_target_${category.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}`;
 
-export default function SettingsScreen({ premiumActive = false, onOpenSubscription, readOnly = false }) {
+export default function SettingsScreen({
+  premiumActive = false,
+  onOpenSubscription,
+  readOnly = false,
+  onRequestScrollTo = () => {}
+}) {
   const { theme } = useTheme();
   const { t } = useI18n();
   const [form, setForm] = useState({});
   const [message, setMessage] = useState('');
+  const fieldOffsetsRef = useRef({});
 
   useEffect(() => {
     api.getSettings()
       .then((data) => setForm(data))
       .catch((e) => setMessage(e.message));
   }, []);
+
+  const setFieldOffset = useCallback((key, layoutY) => {
+    const y = Number(layoutY);
+    fieldOffsetsRef.current[key] = Number.isFinite(y) ? Math.max(0, y - 18) : 0;
+  }, []);
+
+  const scrollToField = useCallback(
+    (key) => {
+      if (typeof onRequestScrollTo !== 'function') return;
+      const targetY = fieldOffsetsRef.current[key];
+      onRequestScrollTo(Number.isFinite(targetY) ? targetY : 0);
+    },
+    [onRequestScrollTo]
+  );
 
   const save = async () => {
     await api.upsertSettings(form);
@@ -67,6 +87,8 @@ export default function SettingsScreen({ premiumActive = false, onOpenSubscripti
             <View key={key}>
               <Text style={[styles.label, { color: theme.muted }]}>{t(category)}</Text>
               <TextInput
+                onLayout={(event) => setFieldOffset(key, event.nativeEvent.layout.y)}
+                onFocus={() => scrollToField(key)}
                 style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
                 keyboardType="numeric"
                 placeholder={t('0')}

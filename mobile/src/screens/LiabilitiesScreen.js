@@ -371,6 +371,7 @@ export default function LiabilitiesScreen({
         <TextInput
           ref={lenderInputRef}
           onLayout={(event) => setFieldOffset('lender', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('lender')}
           style={[
             styles.input,
             { backgroundColor: theme.inputBg, borderColor: fieldErrors.lender ? theme.danger : theme.border, color: theme.inputText },
@@ -487,6 +488,7 @@ export default function LiabilitiesScreen({
           <Text style={[styles.phonePrefix, { color: readOnly ? theme.muted : theme.text }]}>+91</Text>
           <TextInput
             style={[styles.phoneInput, { color: readOnly ? theme.muted : theme.inputText }]}
+            onFocus={() => scrollToField('relationship_mobile')}
             value={form.relationship_mobile}
             onChangeText={(v) => {
               clearFieldError('relationship_mobile');
@@ -508,6 +510,8 @@ export default function LiabilitiesScreen({
           text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
         />
         <TextInput
+          onFocus={() => scrollToField('account_ref')}
+          onLayout={(event) => setFieldOffset('account_ref', event.nativeEvent.layout.y)}
           style={[
             styles.input,
             { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText },
@@ -525,6 +529,7 @@ export default function LiabilitiesScreen({
         <TextInput
           ref={outstandingAmountInputRef}
           onLayout={(event) => setFieldOffset('outstanding_amount', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('outstanding_amount')}
           style={[
             styles.input,
             {
@@ -552,6 +557,8 @@ export default function LiabilitiesScreen({
           text={t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')}
         />
         <TextInput
+          onFocus={() => scrollToField('notes_for_family')}
+          onLayout={(event) => setFieldOffset('notes_for_family', event.nativeEvent.layout.y)}
           style={[
             styles.input,
             styles.notesInput,

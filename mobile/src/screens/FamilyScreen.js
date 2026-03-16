@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
@@ -47,7 +47,8 @@ export default function FamilyScreen({
   accessRole = 'read',
   isAccountOwner = false,
   onOpenSubscription,
-  onClose
+  onClose,
+  onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
@@ -60,6 +61,7 @@ export default function FamilyScreen({
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [inviteFilter, setInviteFilter] = useState('pending');
+  const fieldOffsetsRef = useRef({});
   const pendingInvitesCount = invites.filter((row) => row.status === 'pending').length;
   const totalUsed = members.length + pendingInvitesCount;
   const slotsLeft = Math.max(0, MAX_FAMILY_MEMBERS - totalUsed);
@@ -100,6 +102,20 @@ export default function FamilyScreen({
     loadMembers();
     loadAudit();
   }, [premiumActive]);
+
+  const setFieldOffset = useCallback((key, layoutY) => {
+    const y = Number(layoutY);
+    fieldOffsetsRef.current[key] = Number.isFinite(y) ? Math.max(0, y - 18) : 0;
+  }, []);
+
+  const scrollToField = useCallback(
+    (key) => {
+      if (typeof onRequestScrollTo !== 'function') return;
+      const targetY = fieldOffsetsRef.current[key];
+      onRequestScrollTo(Number.isFinite(targetY) ? targetY : 0);
+    },
+    [onRequestScrollTo]
+  );
 
   const handleAdd = async () => {
     if (slotsLeft === 0) {
@@ -228,6 +244,8 @@ export default function FamilyScreen({
             <View style={[styles.phoneWrap, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
               <Text style={[styles.phonePrefix, { color: theme.text }]}>+91</Text>
               <TextInput
+                onLayout={(event) => setFieldOffset('mobile', event.nativeEvent.layout.y)}
+                onFocus={() => scrollToField('mobile')}
                 style={[styles.phoneInput, { color: theme.inputText }]}
                 value={mobile}
                 onChangeText={(text) => setMobile(String(text || '').replace(/\D/g, '').slice(0, 10))}

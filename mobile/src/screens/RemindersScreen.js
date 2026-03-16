@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { api } from '../api/client';
 import FeedbackBanner from '../components/FeedbackBanner';
@@ -30,7 +30,8 @@ export default function RemindersScreen({
   fxRates = { INR: 1 },
   premiumActive = false,
   onOpenSubscription,
-  onRemindersChanged = () => {}
+  onRemindersChanged = () => {},
+  onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
@@ -46,6 +47,9 @@ export default function RemindersScreen({
   const [messageKind, setMessageKind] = useState('info');
   const [showCategoryOptions, setShowCategoryOptions] = useState(false);
   const [showAlertOptions, setShowAlertOptions] = useState(false);
+  const descriptionInputRef = useRef(null);
+  const amountInputRef = useRef(null);
+  const fieldOffsetsRef = useRef({});
 
   const load = useCallback(async () => {
     const rows = await api.getReminders();
@@ -64,6 +68,24 @@ export default function RemindersScreen({
     const timer = setTimeout(() => setMessage(''), 5000);
     return () => clearTimeout(timer);
   }, [message]);
+
+  const setFieldOffset = useCallback((key, layoutY) => {
+    const y = Number(layoutY);
+    fieldOffsetsRef.current[key] = Number.isFinite(y) ? Math.max(0, y - 18) : 0;
+  }, []);
+
+  const scrollToField = useCallback(
+    (key) => {
+      if (typeof onRequestScrollTo !== 'function') return;
+      if (!key) {
+        onRequestScrollTo(0);
+        return;
+      }
+      const targetY = fieldOffsetsRef.current[key];
+      onRequestScrollTo(Number.isFinite(targetY) ? targetY : 0);
+    },
+    [onRequestScrollTo]
+  );
 
   const submit = async () => {
     if (!form.due_date || !form.category || !form.description) {
@@ -161,12 +183,18 @@ export default function RemindersScreen({
         ) : null}
         <Text style={[styles.label, { color: theme.muted }]}>{t('Description')}</Text>
         <TextInput
+          ref={descriptionInputRef}
+          onLayout={(event) => setFieldOffset('description', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('description')}
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           value={form.description}
           onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
         />
         <Text style={[styles.label, { color: theme.muted }]}>{t('Amount')}</Text>
         <TextInput
+          ref={amountInputRef}
+          onLayout={(event) => setFieldOffset('amount', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('amount')}
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           keyboardType="numeric"
           value={form.amount}

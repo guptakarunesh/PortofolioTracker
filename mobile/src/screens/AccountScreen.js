@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, Linking, Share, Pressable, Animated, Modal, ScrollView } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -159,7 +159,8 @@ export default function AccountScreen({
   onMeasureOnboardingTarget,
   onGetOnboardingZoomStyle,
   onThemeChange,
-  themeKey = 'teal'
+  themeKey = 'teal',
+  onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
   const { language, setLanguage, t } = useI18n();
@@ -177,6 +178,7 @@ export default function AccountScreen({
   const [receiptError, setReceiptError] = useState('');
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const fieldOffsetsRef = useRef({});
 
   useEffect(() => {
     api
@@ -211,6 +213,20 @@ export default function AccountScreen({
       .then((rows) => setSubscriptionHistory(Array.isArray(rows) ? rows : []))
       .catch(() => {});
   }, []);
+
+  const setFieldOffset = useCallback((key, layoutY) => {
+    const y = Number(layoutY);
+    fieldOffsetsRef.current[key] = Number.isFinite(y) ? Math.max(0, y - 18) : 0;
+  }, []);
+
+  const scrollToField = useCallback(
+    (key) => {
+      if (typeof onRequestScrollTo !== 'function') return;
+      const targetY = fieldOffsetsRef.current[key];
+      onRequestScrollTo(Number.isFinite(targetY) ? targetY : 0);
+    },
+    [onRequestScrollTo]
+  );
 
   const saveSecurityPin = async () => {
     if (!/^\d{4}$/.test(pin)) {
@@ -392,6 +408,8 @@ export default function AccountScreen({
         </Text>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Security PIN (4 digits)')}</Text>
         <TextInput
+          onLayout={(event) => setFieldOffset('pin', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('pin')}
           style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
           value={pin}
           onChangeText={handleMaskedPinInput}
@@ -410,6 +428,8 @@ export default function AccountScreen({
           <>
             <Text style={[styles.label, { color: theme.muted }]}>{t('OTP (6 digits)')}</Text>
             <TextInput
+              onLayout={(event) => setFieldOffset('pinResetOtp', event.nativeEvent.layout.y)}
+              onFocus={() => scrollToField('pinResetOtp')}
               style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
               value={pinResetOtp}
               onChangeText={(v) => setPinResetOtp(String(v || '').replace(/\D/g, '').slice(0, 6))}
@@ -418,6 +438,8 @@ export default function AccountScreen({
             />
             <Text style={[styles.label, { color: theme.muted }]}>{t('New Security PIN (4 digits)')}</Text>
             <TextInput
+              onLayout={(event) => setFieldOffset('pinResetNewPin', event.nativeEvent.layout.y)}
+              onFocus={() => scrollToField('pinResetNewPin')}
               style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
               value={pinResetNewPin}
               onChangeText={(v) => setPinResetNewPin(String(v || '').replace(/\D/g, '').slice(0, 4))}

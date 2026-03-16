@@ -13,7 +13,8 @@ import {
   useWindowDimensions,
   Alert,
   Platform,
-  InteractionManager
+  InteractionManager,
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -50,6 +51,7 @@ const ACCENT_DARK = '#5eead4';
 const FX_SYMBOLS = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
 const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials_v1';
 const BIOMETRIC_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 3; // 3 days
+const AUTH_SESSION_TOKEN_KEY = 'auth_session_token_v1';
 const ONBOARDING_SKIPPED_KEY = 'onboarding_skipped_v1';
 const REMINDER_NOTIFICATION_CACHE_KEY = 'reminder_notification_cache_v1';
 const BRAND_ICON = require('./src/assets/app-icon.png');
@@ -218,6 +220,38 @@ function SupportIcon({ stroke }) {
   );
 }
 
+function LockIcon({ stroke }) {
+  return (
+    <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M8 10V7.8C8 5.7 9.8 4 12 4s4 1.7 4 3.8V10"
+        stroke={stroke}
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M7 10.2h10a1.8 1.8 0 0 1 1.8 1.8v6A1.8 1.8 0 0 1 17 19.8H7A1.8 1.8 0 0 1 5.2 18v-6A1.8 1.8 0 0 1 7 10.2Z"
+        stroke={stroke}
+        strokeWidth={1.9}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function FingerprintIcon({ stroke }) {
+  return (
+    <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3.5c-4.4 0-8 3.6-8 8 0 1.6.5 3.2 1.4 4.5" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M12 7c-2.5 0-4.5 2-4.5 4.5 0 1.2.4 2.4 1.1 3.3" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M12 10.5c-.6 0-1 .4-1 1 0 1.9-.7 3.7-2 5.1" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M12 5.2c3.5 0 6.3 2.8 6.3 6.3 0 3.7-1.2 7.1-3.5 9.8" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M12 8.8c1.5 0 2.7 1.2 2.7 2.7 0 2.9-.8 5.5-2.4 7.8" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 function parseDueDateAtNine(dateValue) {
   const match = String(dateValue || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
@@ -316,10 +350,18 @@ function ScreenRenderer({
           premiumActive={premiumActive}
           onOpenSubscription={onOpenSubscription}
           onRemindersChanged={onRemindersChanged}
+          onRequestScrollTo={onRequestScrollTo}
         />
       );
     case 'settings':
-      return <SettingsScreen premiumActive={premiumActive} onOpenSubscription={onOpenSubscription} readOnly={readOnly} />;
+      return (
+        <SettingsScreen
+          premiumActive={premiumActive}
+          onOpenSubscription={onOpenSubscription}
+          readOnly={readOnly}
+          onRequestScrollTo={onRequestScrollTo}
+        />
+      );
     case 'account':
       return (
         <AccountScreen
@@ -342,6 +384,7 @@ function ScreenRenderer({
           preferredCurrency={preferredCurrency}
           onThemeChange={onThemeChange}
           themeKey={themeKey}
+          onRequestScrollTo={onRequestScrollTo}
         />
       );
     case 'subscription':
@@ -360,6 +403,7 @@ function ScreenRenderer({
           isAccountOwner={isAccountOwner}
           onOpenSubscription={onOpenSubscription}
           onClose={onCloseFamily}
+          onRequestScrollTo={onRequestScrollTo}
         />
       );
     default:
@@ -382,6 +426,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [user, setUser] = useState(null);
+  const [sessionRestoring, setSessionRestoring] = useState(true);
   const [hideSensitive, setHideSensitive] = useState(true);
   const [pinSetupRequired, setPinSetupRequired] = useState(false);
   const [pinSetupVisible, setPinSetupVisible] = useState(false);
@@ -948,6 +993,46 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    const bootstrapSession = async () => {
+      try {
+        const savedToken = String((await SecureStore.getItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => null)) || '').trim();
+        if (!savedToken) {
+          setAuthToken(null);
+          return;
+        }
+        setAuthToken(savedToken);
+        const profile = await api.me();
+        if (cancelled) return;
+        setUser(profile);
+        setAuthError('');
+        setActiveTab('dashboard');
+        await Promise.allSettled([
+          refreshPrivacyConfig(),
+          refreshSubscription(),
+          refreshAccessContext(),
+          api.postSecurityContext().catch(() => {})
+        ]);
+      } catch (_e) {
+        setAuthToken(null);
+        if (!cancelled) {
+          setUser(null);
+          setAuthError('');
+        }
+        await SecureStore.deleteItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => {});
+      } finally {
+        if (!cancelled) setSessionRestoring(false);
+      }
+    };
+    bootstrapSession().catch(() => {
+      if (!cancelled) setSessionRestoring(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const saveBiometricSession = async (token, profile) => {
     const sessionToken = String(token || '').trim();
     const mobile = String(profile?.mobile || '').trim();
@@ -980,6 +1065,7 @@ export default function App() {
 
   const handleAuthSuccess = async (payload, options = {}) => {
     setAuthToken(payload.token);
+    await SecureStore.setItemAsync(AUTH_SESSION_TOKEN_KEY, String(payload?.token || '')).catch(() => {});
     setUser(payload.user);
     setAuthError('');
     setActiveTab('dashboard');
@@ -1066,6 +1152,7 @@ export default function App() {
       // Ignore logout failure and clear local auth anyway.
     }
     setAuthToken(null);
+    await SecureStore.deleteItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => {});
     setUser(null);
     setActiveTab('dashboard');
     setPinSetupRequired(false);
@@ -1122,6 +1209,7 @@ export default function App() {
     const sessionStartedAtMs = Date.parse(sessionStartedAt);
     if (sessionStartedAtMs && Date.now() - sessionStartedAtMs > BIOMETRIC_SESSION_MAX_AGE_MS) {
       setAuthToken(null);
+      await SecureStore.deleteItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => {});
       throw new Error(t('Biometric login needs one OTP refresh after 3 days. Login with OTP once to continue.'));
     }
     const auth = await LocalAuthentication.authenticateAsync({
@@ -1139,6 +1227,7 @@ export default function App() {
       await handleAuthSuccess({ token: storedToken, user: profile }, { refreshBiometric: false });
     } catch (e) {
       setAuthToken(null);
+      await SecureStore.deleteItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => {});
       if (Number(e?.status || 0) === 401) {
         throw new Error(t('Biometric session is no longer valid. Login with OTP once to refresh it.'));
       }
@@ -1459,34 +1548,98 @@ export default function App() {
     setSupportChatLoading(false);
   }, [user?.id]);
 
-  const mainContent = !user ? (
+  const mainContent = sessionRestoring ? (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
-      <View style={styles.header}>
-        <View style={styles.authHeaderTopRow}>
+      <View style={styles.authRestoreState}>
+        <View style={[styles.authLogoBadge, styles.authHeroLogoBadge, { backgroundColor: '#0f172a', borderColor: theme.border }]}>
           <Image source={BRAND_ICON} style={styles.headerLogoLarge} resizeMode="cover" />
         </View>
-        <Text style={[styles.title, styles.authTitle, styles.authHeaderCenter]}>{t('Networth Manager')}</Text>
+        <Text style={[styles.title, styles.authTitle, styles.authHeaderCenter]}>{t('Restoring your secure session...')}</Text>
       </View>
-      <ScrollView
+    </SafeAreaView>
+  ) : !user ? (
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
+      <KeyboardAvoidingView
         style={styles.body}
-        contentContainerStyle={styles.bodyContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        contentInsetAdjustmentBehavior="automatic"
-        showsVerticalScrollIndicator
-        alwaysBounceVertical
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
-        <AuthScreen
-          onRegister={handleRegister}
-          onLoginWithBiometric={handleBiometricLogin}
-          onRequestOtp={handleOtpSend}
-          onVerifyOtp={handleOtpVerify}
-          biometricReady={biometricEnrolled}
-          loading={authLoading}
-          externalMessage={authError}
-        />
-      </ScrollView>
+        <ScrollView
+          style={styles.body}
+          contentContainerStyle={styles.authPageContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator
+          alwaysBounceVertical
+        >
+          <View style={styles.authHero}>
+            <View style={[styles.authHeroPanel, { backgroundColor: theme.accent }]}>
+              <View style={styles.authHeroBlend}>
+                <View style={[styles.authHeroGlow, styles.authHeroGlowLeft, { backgroundColor: '#10b981' }]} />
+                <View style={[styles.authHeroGlow, styles.authHeroGlowRight, { backgroundColor: '#2563eb' }]} />
+              </View>
+              <View style={styles.authHeroContent}>
+                <View style={[styles.authLogoBadge, styles.authHeroLogoBadge, { backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.24)' }]}>
+                  <Image source={BRAND_ICON} style={styles.headerLogoLarge} resizeMode="cover" />
+                </View>
+                <Text style={styles.authHeroTitle}>{t('Take Control of Your Wealth')}</Text>
+                <Text style={styles.authHeroLead}>
+                  {t('Your wealth data stays private, encrypted, protected, and visible only to you.')}
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.authFormSection}>
+            <AuthScreen
+              onRegister={handleRegister}
+              onLoginWithBiometric={handleBiometricLogin}
+              onRequestOtp={handleOtpSend}
+              onVerifyOtp={handleOtpVerify}
+              biometricReady={biometricEnrolled}
+              loading={authLoading}
+              externalMessage={authError}
+            />
+          </View>
+          <View style={styles.authAssuranceSection}>
+            <View style={[styles.authAssuranceCard, styles.authAssuranceCardGlossy, { backgroundColor: '#eef5ff', borderColor: '#7db2ff' }]}>
+              <View style={[styles.authAssuranceIconChip, styles.authAssuranceIconChipGlossy, { backgroundColor: '#2563eb' }]}>
+                <LockIcon stroke="#ffffff" />
+              </View>
+              <View style={styles.authAssuranceCopy}>
+                <Text style={[styles.authAssuranceTitle, styles.authAssuranceTitleLeft, { color: theme.text }]}>{t('Encrypted & Private')}</Text>
+                <Text style={[styles.authAssuranceBody, styles.authAssuranceBodyLeft, { color: theme.muted }]}>
+                  {t('Your sensitive wealth data is encrypted so it stays protected and unreadable to others.')}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.authAssuranceCard, styles.authAssuranceCardGlossy, { backgroundColor: '#edfdf5', borderColor: '#62d99d' }]}>
+              <View style={[styles.authAssuranceIconChip, styles.authAssuranceIconChipGlossy, { backgroundColor: '#059669' }]}>
+                <FingerprintIcon stroke="#ffffff" />
+              </View>
+              <View style={styles.authAssuranceCopy}>
+                <Text style={[styles.authAssuranceTitle, styles.authAssuranceTitleLeft, { color: theme.text }]}>{t('Only You Can Unlock It')}</Text>
+                <Text style={[styles.authAssuranceBody, styles.authAssuranceBodyLeft, { color: theme.muted }]}>
+                  {t('Biometric login, OTP verification, and your Privacy PIN help ensure only you can access sensitive information.')}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.authAssuranceCard, styles.authAssuranceCardGlossy, { backgroundColor: '#fff9e8', borderColor: '#f5c84c' }]}>
+              <View style={[styles.authAssuranceIconChip, styles.authAssuranceIconChipGlossy, { backgroundColor: '#d97706' }]}>
+                <EyeToggleIcon stroke="#ffffff" closed />
+              </View>
+              <View style={styles.authAssuranceCopy}>
+                <Text style={[styles.authAssuranceTitle, styles.authAssuranceTitleLeft, { color: theme.text }]}>{t("We Can’t Simply Peek Inside")}</Text>
+                <Text style={[styles.authAssuranceBody, styles.authAssuranceBodyLeft, { color: theme.muted }]}>
+                  {t('Your private details are designed to stay under your control, not visible to staff, developers, or unauthorized viewers.')}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   ) : (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
@@ -1607,65 +1760,71 @@ export default function App() {
           />
         </View>
       ) : (
-        <ScrollView
-          ref={contentScrollRef}
+        <KeyboardAvoidingView
           style={styles.body}
-          contentContainerStyle={styles.bodyContent}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          contentInsetAdjustmentBehavior="automatic"
-          showsVerticalScrollIndicator
-          alwaysBounceVertical
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
-          {pageHeaderCopy && activeTab !== 'subscription' ? (
-            <View style={[styles.pageIntroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[styles.pageIntroEyebrow, { color: theme.accent }]}>{pageHeaderCopy.eyebrow}</Text>
-              <Text style={[styles.pageIntroTitle, { color: theme.text }]}>{pageHeaderCopy.title}</Text>
-              <Text style={[styles.pageIntroBody, { color: theme.muted }]}>{pageHeaderCopy.body}</Text>
-            </View>
-          ) : null}
-          <View
-            ref={(node) => setOnboardingTargetRef('content', node)}
-            collapsable={false}
-            onLayout={() => measureOnboardingTarget('content')}
+          <ScrollView
+            ref={contentScrollRef}
+            style={styles.body}
+            contentContainerStyle={styles.bodyContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            contentInsetAdjustmentBehavior="automatic"
+            showsVerticalScrollIndicator
+            alwaysBounceVertical
           >
-            <ScreenRenderer
-              tab={activeTab}
-              user={user}
-              onLogout={handleLogout}
-              hideSensitive={hideSensitive}
-              onPrivacyConfigChanged={handlePrivacyConfigChanged}
-              onCurrencyChanged={(currency) => handlePrivacyConfigChanged({ preferredCurrency: currency })}
-              preferredCurrency={preferredCurrency}
-              fxRates={fxRates}
-              biometricEnrolled={biometricEnrolled}
-              onEnrollBiometric={handleEnrollBiometric}
-              onDisableBiometric={handleDisableBiometric}
-              subscriptionStatus={subscriptionStatus}
-              onOpenSubscription={openSubscription}
-              onOpenFamily={openFamily}
-              onOpenOnboarding={openOnboarding}
-              onRegisterOnboardingTarget={setOnboardingTargetRef}
-              onMeasureOnboardingTarget={measureOnboardingTarget}
-              onGetOnboardingZoomStyle={getOnboardingZoomStyle}
-              accessRole={accessRole}
-              isAccountOwner={isAccountOwner}
-              premiumActive={premiumActive}
-              readOnly={readOnly}
-              onCloseSubscription={closeSubscription}
-              onCloseFamily={closeFamily}
-              onThemeChange={(nextKey) => {
-                if (!THEMES[nextKey]) return;
-                setThemeKey(nextKey);
-                api.upsertSettings({ ui_theme: nextKey }).catch(() => {});
-              }}
-              themeKey={themeKey}
-              onRemindersChanged={triggerReminderSync}
-              onRequestScrollTo={requestMainScroll}
-              onOpenSupport={openSupport}
-            />
-          </View>
-        </ScrollView>
+            {pageHeaderCopy && activeTab !== 'subscription' ? (
+              <View style={[styles.pageIntroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.pageIntroEyebrow, { color: theme.accent }]}>{pageHeaderCopy.eyebrow}</Text>
+                <Text style={[styles.pageIntroTitle, { color: theme.text }]}>{pageHeaderCopy.title}</Text>
+                <Text style={[styles.pageIntroBody, { color: theme.muted }]}>{pageHeaderCopy.body}</Text>
+              </View>
+            ) : null}
+            <View
+              ref={(node) => setOnboardingTargetRef('content', node)}
+              collapsable={false}
+              onLayout={() => measureOnboardingTarget('content')}
+            >
+              <ScreenRenderer
+                tab={activeTab}
+                user={user}
+                onLogout={handleLogout}
+                hideSensitive={hideSensitive}
+                onPrivacyConfigChanged={handlePrivacyConfigChanged}
+                onCurrencyChanged={(currency) => handlePrivacyConfigChanged({ preferredCurrency: currency })}
+                preferredCurrency={preferredCurrency}
+                fxRates={fxRates}
+                biometricEnrolled={biometricEnrolled}
+                onEnrollBiometric={handleEnrollBiometric}
+                onDisableBiometric={handleDisableBiometric}
+                subscriptionStatus={subscriptionStatus}
+                onOpenSubscription={openSubscription}
+                onOpenFamily={openFamily}
+                onOpenOnboarding={openOnboarding}
+                onRegisterOnboardingTarget={setOnboardingTargetRef}
+                onMeasureOnboardingTarget={measureOnboardingTarget}
+                onGetOnboardingZoomStyle={getOnboardingZoomStyle}
+                accessRole={accessRole}
+                isAccountOwner={isAccountOwner}
+                premiumActive={premiumActive}
+                readOnly={readOnly}
+                onCloseSubscription={closeSubscription}
+                onCloseFamily={closeFamily}
+                onThemeChange={(nextKey) => {
+                  if (!THEMES[nextKey]) return;
+                  setThemeKey(nextKey);
+                  api.upsertSettings({ ui_theme: nextKey }).catch(() => {});
+                }}
+                themeKey={themeKey}
+                onRemindersChanged={triggerReminderSync}
+                onRequestScrollTo={requestMainScroll}
+                onOpenSupport={openSupport}
+              />
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       )}
 
       <Modal visible={pinSetupVisible} transparent animationType="fade">
@@ -2013,6 +2172,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12
   },
+  authLogoBadge: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 12
+  },
   authHeaderCenter: {
     textAlign: 'center',
     alignSelf: 'center'
@@ -2023,10 +2192,142 @@ const styles = StyleSheet.create({
     borderRadius: 12
   },
   headerLogoLarge: {
-    width: 76,
-    height: 76,
-    borderRadius: 18,
+    width: 84,
+    height: 84,
+    borderRadius: 20,
     alignSelf: 'center'
+  },
+  authSubtitle: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 20,
+    maxWidth: 280,
+    alignSelf: 'center',
+    fontWeight: '600'
+  },
+  authHero: {
+    paddingHorizontal: 16,
+    paddingTop: 10
+  },
+  authHeroPanel: {
+    minHeight: 320,
+    borderRadius: 30,
+    overflow: 'hidden',
+    position: 'relative',
+    justifyContent: 'center'
+  },
+  authHeroBlend: {
+    ...StyleSheet.absoluteFillObject
+  },
+  authHeroGlow: {
+    position: 'absolute',
+    borderRadius: 999,
+    opacity: 0.36
+  },
+  authHeroGlowLeft: {
+    width: 240,
+    height: 240,
+    left: -40,
+    top: -25
+  },
+  authHeroGlowRight: {
+    width: 300,
+    height: 300,
+    right: -90,
+    top: -30
+  },
+  authHeroContent: {
+    paddingHorizontal: 24,
+    paddingVertical: 34,
+    alignItems: 'center'
+  },
+  authHeroLogoBadge: {
+    width: 108,
+    height: 108,
+    borderRadius: 54
+  },
+  authHeroTitle: {
+    marginTop: 8,
+    color: '#ffffff',
+    textAlign: 'center',
+    fontSize: 40,
+    lineHeight: 44,
+    fontWeight: '800',
+    letterSpacing: -1.2
+  },
+  authHeroLead: {
+    marginTop: 18,
+    color: 'rgba(255,255,255,0.94)',
+    textAlign: 'center',
+    fontSize: 20,
+    lineHeight: 29,
+    fontWeight: '500',
+    maxWidth: 320
+  },
+  authAssuranceSection: {
+    paddingHorizontal: 22,
+    paddingTop: 26,
+    gap: 28
+  },
+  authFormSection: {
+    marginTop: 30
+  },
+  authAssuranceCard: {
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16
+  },
+  authAssuranceCardGlossy: {
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3
+  },
+  authAssuranceCopy: {
+    flex: 1
+  },
+  authAssuranceIconChip: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  authAssuranceIconChipGlossy: {
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3
+  },
+  authAssuranceTitle: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '800'
+  },
+  authAssuranceTitleLeft: {
+    textAlign: 'left',
+    fontSize: 20,
+    lineHeight: 26
+  },
+  authAssuranceBody: {
+    marginTop: 10,
+    fontSize: 17,
+    lineHeight: 29,
+    maxWidth: 330
+  },
+  authAssuranceBodyLeft: {
+    textAlign: 'left',
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 6,
+    maxWidth: undefined
   },
   headerActions: {
     flexDirection: 'row',
@@ -2237,6 +2538,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 14,
     paddingBottom: 84
+  },
+  authPageContent: {
+    paddingBottom: 84
+  },
+  authRestoreState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24
   },
   authError: {
     color: '#b3261e',

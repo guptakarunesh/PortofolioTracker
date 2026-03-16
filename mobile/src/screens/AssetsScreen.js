@@ -406,6 +406,7 @@ export default function AssetsScreen({
         <TextInput
           ref={nameInputRef}
           onLayout={(event) => setFieldOffset('name', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('name')}
           style={[
             styles.input,
             { backgroundColor: theme.inputBg, borderColor: fieldErrors.name ? theme.danger : theme.border, color: theme.inputText },
@@ -528,6 +529,7 @@ export default function AssetsScreen({
           <Text style={[styles.phonePrefix, { color: readOnly ? theme.muted : theme.text }]}>+91</Text>
           <TextInput
             style={[styles.phoneInput, { color: readOnly ? theme.muted : theme.inputText }]}
+            onFocus={() => scrollToField('relationship_mobile')}
             value={form.relationship_mobile}
             onChangeText={(v) => {
               clearFieldError('relationship_mobile');
@@ -570,6 +572,7 @@ export default function AssetsScreen({
         <TextInput
           ref={trackingUrlInputRef}
           onLayout={(event) => setFieldOffset('tracking_url', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('tracking_url')}
           style={[
             styles.input,
             { backgroundColor: theme.inputBg, borderColor: fieldErrors.tracking_url ? theme.danger : theme.border, color: theme.inputText },
@@ -593,6 +596,7 @@ export default function AssetsScreen({
         <TextInput
           ref={currentValueInputRef}
           onLayout={(event) => setFieldOffset('current_value', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('current_value')}
           style={[
             styles.input,
             {
@@ -619,6 +623,7 @@ export default function AssetsScreen({
         <TextInput
           ref={investedAmountInputRef}
           onLayout={(event) => setFieldOffset('invested_amount', event.nativeEvent.layout.y)}
+          onFocus={() => scrollToField('invested_amount')}
           style={[
             styles.input,
             {
@@ -647,6 +652,8 @@ export default function AssetsScreen({
           text={t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')}
         />
         <TextInput
+          onFocus={() => scrollToField('notes_for_family')}
+          onLayout={(event) => setFieldOffset('notes_for_family', event.nativeEvent.layout.y)}
           style={[
             styles.input,
             styles.notesInput,

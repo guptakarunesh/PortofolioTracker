@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, Linking } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
-import SectionCard from '../components/SectionCard';
+import { View, Text, TextInput, StyleSheet, Pressable, Linking, Modal, ScrollView } from 'react-native';
+import Svg, { Circle, Path } from 'react-native-svg';
 import PillButton from '../components/PillButton';
 import { api, buildApiUrl } from '../api/client';
 import { useTheme } from '../theme';
@@ -15,6 +14,85 @@ function FingerprintIcon({ color }) {
       <Path d="M12 10.5c-.6 0-1 .4-1 1 0 1.9-.7 3.7-2 5.1" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
       <Path d="M12 5.2c3.5 0 6.3 2.8 6.3 6.3 0 3.7-1.2 7.1-3.5 9.8" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
       <Path d="M12 8.8c1.5 0 2.7 1.2 2.7 2.7 0 2.9-.8 5.5-2.4 7.8" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function LockBadgeIcon({ color }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M8 10V7.9C8 5.8 9.8 4 12 4s4 1.8 4 3.9V10"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M7.2 10.2h9.6c1 0 1.8.8 1.8 1.8V18c0 1-.8 1.8-1.8 1.8H7.2c-1 0-1.8-.8-1.8-1.8V12c0-1 .8-1.8 1.8-1.8Z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function ShieldBadgeIcon({ color }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3.8 18.5 6v5.2c0 4.1-2.6 7.8-6.5 9-3.9-1.2-6.5-4.9-6.5-9V6L12 3.8Z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Path d="m9.2 12.2 1.9 1.9 3.7-4.1" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function EyeOffBadgeIcon({ color }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 12s3.5-5.5 9-5.5c1.3 0 2.4.2 3.4.6M21 12s-3.5 5.5-9 5.5c-1.3 0-2.5-.2-3.5-.6"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path d="M9.9 9.9A3 3 0 0 1 14.1 14.1" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M4 4 20 20" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function ClockBadgeIcon({ color }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Path d="M12 8v4.2l2.8 1.8" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function PhoneBadgeIcon({ color }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M8.2 3.8h7.6c1 0 1.8.8 1.8 1.8v12.8c0 1-.8 1.8-1.8 1.8H8.2c-1 0-1.8-.8-1.8-1.8V5.6c0-1 .8-1.8 1.8-1.8Z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Path d="M10 6.6h4" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Circle cx="12" cy="17.1" r="1" fill={color} />
     </Svg>
   );
 }
@@ -33,7 +111,6 @@ export default function AuthScreen({
   const [mode, setMode] = useState('login');
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
-  const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [otpRequested, setOtpRequested] = useState(false);
   const [otpCooldown, setOtpCooldown] = useState(0);
@@ -43,6 +120,7 @@ export default function AuthScreen({
   const [termsVersion, setTermsVersion] = useState('v1.1');
   const [message, setMessage] = useState('');
   const [biometricMessage, setBiometricMessage] = useState('');
+  const [privacyInfoVisible, setPrivacyInfoVisible] = useState(false);
 
   useEffect(() => {
     api
@@ -141,7 +219,6 @@ export default function AuthScreen({
       await onRegister({
         full_name: String(fullName || '').trim().toUpperCase(),
         mobile: mobile.trim(),
-        email: email.trim(),
         country: 'India',
         otp: otp.trim(),
         consent_privacy: true,
@@ -159,8 +236,38 @@ export default function AuthScreen({
   const effectiveMessage = message || externalMessage;
 
   return (
-    <View>
-      <SectionCard title="" titleStyle={styles.sectionTitleCenter}>
+    <View style={styles.authShell}>
+      <View style={styles.panelWrap}>
+        <View style={[styles.authPanelFrame, styles.authPanelFramePremiumBlue]}>
+          <View style={[styles.authPanelCard, styles.authPanelCardPremiumBlue, { shadowColor: theme.text }]}>
+          <View style={styles.formInner}>
+        <View style={styles.modeRow}>
+          <PillButton label={t('Login')} kind={mode === 'login' ? 'primary' : 'ghost'} onPress={() => setMode('login')} />
+          <PillButton
+            label={t('Register')}
+            kind={mode === 'register' ? 'primary' : 'ghost'}
+            onPress={() => setMode('register')}
+          />
+        </View>
+        <Text style={[styles.cardTitle, { color: theme.text }]}>
+          {mode === 'register'
+            ? t('Create Your Account')
+            : otpRequested || mobile.trim().length === 10
+              ? t('Welcome Back')
+              : t('Sign In Securely')}
+        </Text>
+        <Text style={[styles.cardSubtitle, { color: theme.muted }]}>
+          {mode === 'register'
+            ? t('Encrypted, protected, and visible only to you.')
+            : otpRequested || mobile.trim().length === 10
+              ? t('Continue with OTP or your enrolled biometrics.')
+              : t('Use your mobile number to continue securely.')}
+        </Text>
+        {mode === 'register' ? (
+          <Pressable style={styles.privacyInfoLinkWrap} onPress={() => setPrivacyInfoVisible(true)}>
+            <Text style={[styles.privacyInfoLink, { color: theme.accent }]}>{t('Know how your privacy works?')}</Text>
+          </Pressable>
+        ) : null}
         {typeof onLoginWithBiometric === 'function' && biometricReady ? (
           <>
             <PillButton
@@ -182,15 +289,6 @@ export default function AuthScreen({
           </>
         ) : null}
 
-        <View style={styles.modeRow}>
-          <PillButton label={t('Login')} kind={mode === 'login' ? 'primary' : 'ghost'} onPress={() => setMode('login')} />
-          <PillButton
-            label={t('Register')}
-            kind={mode === 'register' ? 'primary' : 'ghost'}
-            onPress={() => setMode('register')}
-          />
-        </View>
-
         {mode === 'register' ? (
           <>
             <Text style={[styles.label, { color: theme.muted }]}>{t('Initials (2 letters)')}</Text>
@@ -202,16 +300,6 @@ export default function AuthScreen({
               placeholderTextColor={theme.muted}
               autoCapitalize="characters"
               maxLength={2}
-            />
-
-            <Text style={[styles.label, { color: theme.muted }]}>{t('Email (Optional)')}</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
-              value={email}
-              onChangeText={setEmail}
-              placeholder={t('you@example.com')}
-              placeholderTextColor={theme.muted}
-              autoCapitalize="none"
             />
 
             <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile Number')}</Text>
@@ -311,32 +399,148 @@ export default function AuthScreen({
 
         {!!effectiveMessage && <Text style={[styles.message, { color: theme.danger }]}>{effectiveMessage}</Text>}
         {!!biometricMessage && <Text style={[styles.message, { color: theme.danger }]}>{biometricMessage}</Text>}
-      </SectionCard>
-
-      <Text style={[styles.help, { color: theme.muted }]}>{t('Create account and login using OTP only. Enable biometric login after your first successful OTP session.')}</Text>
-      <View style={styles.trustRow}>
-        <View style={[styles.trustItem, { borderColor: theme.border, backgroundColor: theme.card }]}>
-          <Text style={styles.trustIcon}>🔐</Text>
-          <Text style={[styles.trustText, { color: theme.muted }]}>{t('Encrypted')}</Text>
-        </View>
-        <View style={[styles.trustItem, { borderColor: theme.border, backgroundColor: theme.card }]}>
-          <Text style={styles.trustIcon}>🛡️</Text>
-          <Text style={[styles.trustText, { color: theme.muted }]}>{t('Private')}</Text>
-        </View>
-        <View style={[styles.trustItem, { borderColor: theme.border, backgroundColor: theme.card }]}>
-          <Text style={styles.trustIcon}>✅</Text>
-          <Text style={[styles.trustText, { color: theme.muted }]}>{t('OTP Verified')}</Text>
+          </View>
+          </View>
         </View>
       </View>
+      <View style={styles.legalRow}>
+        <Pressable onPress={() => Linking.openURL(buildApiUrl('/legal/terms')).catch(() => {})}>
+          <Text style={[styles.legalLink, { color: theme.muted }]}>{t('Terms')}</Text>
+        </Pressable>
+        <Pressable onPress={() => Linking.openURL(buildApiUrl('/legal/privacy')).catch(() => {})}>
+          <Text style={[styles.legalLink, { color: theme.muted }]}>{t('Privacy Policy')}</Text>
+        </Pressable>
+      </View>
+      <Modal visible={privacyInfoVisible} transparent animationType="fade" onRequestClose={() => setPrivacyInfoVisible(false)}>
+        <View style={styles.infoModalBackdrop}>
+          <View style={[styles.infoModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.infoModalTitle, { color: '#0f6b78' }]}>{t('How Your Privacy Works')}</Text>
+            <ScrollView style={styles.infoModalBody} contentContainerStyle={styles.infoModalBodyContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.infoBulletRow}>
+                <View style={[styles.infoBulletIcon, { backgroundColor: '#2563eb' }]}>
+                  <PhoneBadgeIcon color="#ffffff" />
+                </View>
+                <View style={styles.infoBulletCopy}>
+                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
+                    {t('We collect only your mobile number as personal information, and nothing more, to keep your experience discreet and secure.')}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.infoBulletRow}>
+                <View style={[styles.infoBulletIcon, { backgroundColor: '#0ea5e9' }]}>
+                  <LockBadgeIcon color="#ffffff" />
+                </View>
+                <View style={styles.infoBulletCopy}>
+                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
+                    {t('Your sensitive information is encrypted before it is stored.')}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.infoBulletRow}>
+                <View style={[styles.infoBulletIcon, { backgroundColor: '#059669' }]}>
+                  <FingerprintIcon color="#ffffff" />
+                </View>
+                <View style={styles.infoBulletCopy}>
+                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
+                    {t('Access is protected using OTP verification and device biometrics.')}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.infoBulletRow}>
+                <View style={[styles.infoBulletIcon, { backgroundColor: '#7c3aed' }]}>
+                  <ClockBadgeIcon color="#ffffff" />
+                </View>
+                <View style={styles.infoBulletCopy}>
+                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
+                    {t('Sensitive details are unlocked only temporarily when you choose to view them.')}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.infoBulletRow}>
+                <View style={[styles.infoBulletIcon, { backgroundColor: '#dc2626' }]}>
+                  <EyeOffBadgeIcon color="#ffffff" />
+                </View>
+                <View style={styles.infoBulletCopy}>
+                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
+                    {t('Personal and financial information remains inaccessible to our developers, staff and anyone without authorization.')}
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+            <PillButton label={t('Close')} kind="primary" onPress={() => setPrivacyInfoVisible(false)} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  authShell: {
+    alignItems: 'center'
+  },
+  panelWrap: {
+    width: '100%',
+    maxWidth: 360
+  },
+  authPanelFrame: {
+    borderWidth: 1,
+    borderRadius: 30,
+    padding: 10,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4
+  },
+  authPanelFramePremiumBlue: {
+    backgroundColor: '#edf4ff',
+    borderColor: '#183b72'
+  },
+  authPanelCard: {
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 3
+  },
+  authPanelCardPremiumBlue: {
+    backgroundColor: '#fdfefe',
+    borderColor: '#c7d8f8'
+  },
+  formInner: {
+    width: '100%'
+  },
+  cardTitle: {
+    textAlign: 'center',
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '800',
+    marginBottom: 8
+  },
+  cardSubtitle: {
+    textAlign: 'center',
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 10
+  },
+  privacyInfoLinkWrap: {
+    alignItems: 'center',
+    marginBottom: 18
+  },
+  privacyInfoLink: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '800',
+    textDecorationLine: 'underline'
+  },
   modeRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 14,
+    marginBottom: 18,
     justifyContent: 'center'
   },
   label: { color: '#35526e', fontWeight: '700', marginBottom: 5 },
@@ -413,30 +617,20 @@ const styles = StyleSheet.create({
   help: {
     color: '#607d99',
     textAlign: 'center',
-    marginTop: 4
+    marginTop: 4,
+    maxWidth: 300,
+    lineHeight: 20
   },
-  trustRow: {
-    marginTop: 14,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 8
-  },
-  trustItem: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  legalRow: {
+    marginTop: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6
+    justifyContent: 'center',
+    gap: 18
   },
-  trustIcon: {
-    fontSize: 13
-  },
-  trustText: {
+  legalLink: {
     fontSize: 12,
-    fontWeight: '700'
+    fontWeight: '600'
   },
   orRow: {
     flexDirection: 'row',
@@ -452,5 +646,58 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
     letterSpacing: 1
+  },
+  infoModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  infoModalCard: {
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 18,
+    maxHeight: '78%'
+  },
+  infoModalTitle: {
+    textAlign: 'center',
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '800'
+  },
+  infoModalBody: {
+    marginTop: 14,
+    marginBottom: 18
+  },
+  infoModalBodyContent: {
+    gap: 14
+  },
+  infoBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12
+  },
+  infoBulletCopy: {
+    flex: 1
+  },
+  infoBulletIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3
+  },
+  infoBulletText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '500'
   }
 });

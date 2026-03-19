@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
 
 const router = Router();
+const AI_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const CATEGORY_BUCKETS = [
   'Banking & Deposits',
@@ -40,6 +41,10 @@ function setUserSetting(userId, key, value) {
       updated_at=excluded.updated_at
   `
   ).run(userId, key, value, nowIso());
+}
+
+function deleteUserSetting(userId, key) {
+  db.prepare('DELETE FROM user_settings WHERE user_id = ? AND key = ?').run(userId, key);
 }
 
 function normalizeCountry(value = '') {
@@ -199,14 +204,19 @@ async function callOpenAI({
               "You MUST:\n" +
               "- Never provide personalized investment advice or buy/sell instructions.\n" +
               "- Avoid recommending specific tickers, funds, or products.\n" +
-              "- Use simple language and only specific catalysts (policy changes, rate moves, regulation, price shocks).\n" +
+              "- Use very simple language a normal middle-class saver or investor can understand quickly.\n" +
+              "- Focus on helping the user decide what to review next, not what to buy or sell.\n" +
+              "- Use only specific catalysts (policy changes, rate moves, regulation, price shocks).\n" +
               "- Prioritize India news first, then global news affecting India.\n" +
               "- Focus on last 48 hours only.\n" +
+              "- Never mention or imply news older than 48 hours.\n" +
+              "- If recent news cannot be verified, clearly say live 48h news is unavailable.\n" +
               "- Output STRICT JSON (no markdown) with keys: bullets (array), disclaimer (string), as_of (ISO-8601 string).\n" +
               "- Output EXACTLY 5 bullets.\n" +
-              "- Each bullet must be max 30-35 words.\n" +
-              "- Bullet format: [Investment Type]: News Fact. Wallet Impact: Bullish/Bearish/Neutral - 5 to 8 word explanation. Source: Site Name - URL.\n" +
-              "- No long explanations, opinions, or generic macro commentary.\n" +
+              "- Each bullet must be max 42 words.\n" +
+              "- Bullet format: [Investment Type] What happened: short fact. Why it matters: short impact. What to consider: short practical review point. Source: Site Name - URL.\n" +
+              "- Do not use the words Bullish, Bearish, or Neutral.\n" +
+              "- No long explanations, opinions, jargon, or generic macro commentary.\n" +
               (forceNewsUnavailable
                 ? "- Web news is unavailable. Still output exactly 5 bullets in the same format, and clearly say data is unavailable and user should verify trusted sources manually."
                 : "")
@@ -227,8 +237,9 @@ async function callOpenAI({
               JSON.stringify(portfolio) +
               `\n\nTask:\n` +
               `1) Provide exactly 5 bullets.\n` +
-              `2) Keep each bullet within 30-35 words.\n` +
-              `3) Keep it short and layman-friendly.`
+              `2) Keep each bullet within 42 words.\n` +
+              `3) Keep it short, practical, and layman-friendly.\n` +
+              `4) Make every bullet useful for a person deciding what part of their portfolio to review next.`
           }
         ]
       }
@@ -293,11 +304,11 @@ async function callOpenAI({
 
 function unavailableNewsBullets(reason = 'Live news fetch unavailable right now.') {
   return [
-    `Stocks / ETFs / Mutual Funds: ${reason} Wallet Impact: Neutral - Verify index and fund updates manually. Source: NSE India - https://www.nseindia.com/`,
-    `FDs / Savings / RDs: ${reason} Wallet Impact: Neutral - Check latest bank rate circulars. Source: RBI - https://www.rbi.org.in/`,
-    `EPF / NPS / Insurance: ${reason} Wallet Impact: Neutral - Confirm contribution and policy rule updates. Source: EPFO - https://www.epfindia.gov.in/`,
-    `Gold / Silver / Bonds: ${reason} Wallet Impact: Neutral - Track bullion and bond yield moves. Source: MCX - https://www.mcxindia.com/`,
-    `Real Estate (Land / Flats): ${reason} Wallet Impact: Neutral - Verify local policy and demand signals. Source: CREDAI - https://credai.org/`
+    `Stocks / ETFs / Mutual Funds. What happened: ${reason} Why it matters: stock and fund moves may be missed. What to consider: check index, sector, and fund updates manually. Source: NSE India - https://www.nseindia.com/`,
+    `FDs / Savings / RDs. What happened: ${reason} Why it matters: deposit rates may have changed. What to consider: review latest bank and RBI rate circulars. Source: RBI - https://www.rbi.org.in/`,
+    `EPF / NPS / Insurance. What happened: ${reason} Why it matters: rule or contribution changes may matter. What to consider: verify scheme and policy updates manually. Source: EPFO - https://www.epfindia.gov.in/`,
+    `Gold / Silver / Bonds. What happened: ${reason} Why it matters: commodity and yield moves can shift returns. What to consider: check bullion prices and bond yield direction. Source: MCX - https://www.mcxindia.com/`,
+    `Real Estate (Land / Flats). What happened: ${reason} Why it matters: policy and demand shifts can affect prices. What to consider: verify local market and rate updates. Source: CREDAI - https://credai.org/`
   ];
 }
 
@@ -386,25 +397,26 @@ router.get('/insights', async (req, res) => {
   const conservativeGaps = getConservativeGaps(assets);
   const topGaps = conservativeGaps.slice(0, 2);
   const gapBullets = topGaps.map((gap) => {
-    const action = gap.status === 'above' ? 'Reduce' : 'Increase';
-    return `Top gap: ${gap.category} ${gap.currentPct.toFixed(1)}% vs ${gap.targetMin}-${gap.targetMax}% (conservative). ${action} focus.`;
+    const action = gap.status === 'above' ? 'review trimming future additions' : 'review whether you want to build this allocation gradually';
+    return `${gap.category}: now ${gap.currentPct.toFixed(1)}% of assets versus a conservative range of ${gap.targetMin}-${gap.targetMax}%. What to do next: ${action}.`;
   });
   if (!gapBullets.length) {
-    gapBullets.push('No major gaps vs conservative ranges. Focus on maintaining balance.');
+    gapBullets.push('Allocation check: no major gap against conservative ranges right now. What to do next: stay diversified and review changes before making large additions.');
   }
 
   const conservativeSummary =
-    'Conservative summary: allocation is tilted to a few buckets while Cash/Deposits, Market Investments, Gold, and Retirement Funds may be below conservative ranges.';
+    'Portfolio balance: a few buckets still dominate your assets. What to do next: review whether cash, long-term retirement, and diversification buckets need gradual strengthening.';
 
   const liabilityBullet = totalLiabilities > 0
-    ? `Liabilities focus: total outstanding ${Math.round(totalLiabilities).toLocaleString()} across ${liabilities.length} loans. Prioritize reduction after the top allocation gaps.`
-    : 'Liabilities focus: no outstanding liabilities detected.';
+    ? `Liabilities: outstanding balance is ${Math.round(totalLiabilities).toLocaleString()} across ${liabilities.length} loan(s). What to do next: compare debt reduction versus fresh investing before committing new money.`
+    : 'Liabilities: no outstanding liabilities detected. What to do next: focus on allocation quality, liquidity, and diversification.';
 
   const defaultDisclaimer =
     'These insights are AI-generated using publicly available country-level information and your portfolio data. ' +
     'They are for awareness only and can be incomplete or incorrect. Please research further and consult a financial advisor before making decisions.';
 
   const cacheRaw = getUserSetting(accountUserId, 'ai_insights_cache');
+  const forceRefresh = String(req.query.force_refresh || '') === '1';
   let cache = null;
   try {
     cache = cacheRaw ? JSON.parse(cacheRaw) : null;
@@ -412,7 +424,13 @@ router.get('/insights', async (req, res) => {
     cache = null;
   }
   const cachedAt = cache?.cached_at ? new Date(cache.cached_at).getTime() : 0;
-  const within24h = cachedAt && Date.now() - cachedAt < 24 * 60 * 60 * 1000;
+  const within24h = cachedAt && Date.now() - cachedAt < AI_CACHE_TTL_MS;
+  const cacheDisplayAsOf = cache?.cached_at || nowIso();
+
+  if (forceRefresh) {
+    deleteUserSetting(accountUserId, 'ai_insights_cache');
+    cache = null;
+  }
 
   const personalBullets = [
     gapBullets[0],
@@ -422,6 +440,7 @@ router.get('/insights', async (req, res) => {
   ].filter(Boolean);
 
   if (
+    !forceRefresh &&
     within24h &&
     Array.isArray(cache?.personal_bullets) &&
     Array.isArray(cache?.news_bullets) &&
@@ -431,7 +450,7 @@ router.get('/insights', async (req, res) => {
       personal_bullets: cache.personal_bullets,
       news_bullets: cache.news_bullets,
       disclaimer: defaultDisclaimer,
-      as_of: cache?.as_of || nowIso(),
+      as_of: cacheDisplayAsOf,
       cached: true,
       portfolio
     });
@@ -460,7 +479,8 @@ router.get('/insights', async (req, res) => {
       personal_bullets: personalBullets,
       news_bullets: result.bullets,
       disclaimer: defaultDisclaimer,
-      as_of: result.as_of || nowIso()
+      as_of: nowIso(),
+      source_as_of: nowIso()
     };
     setUserSetting(accountUserId, 'ai_insights_cache', JSON.stringify({
       ...payload,
@@ -487,7 +507,8 @@ router.get('/insights', async (req, res) => {
         personal_bullets: personalBullets,
         news_bullets: fallback.bullets,
         disclaimer: defaultDisclaimer,
-        as_of: fallback.as_of || nowIso()
+        as_of: nowIso(),
+        source_as_of: nowIso()
       };
       setUserSetting(accountUserId, 'ai_insights_cache', JSON.stringify({
         ...payload,
@@ -499,12 +520,12 @@ router.get('/insights', async (req, res) => {
         warning: timedOut ? 'news_timeout_nonweb_fallback' : 'news_error_nonweb_fallback'
       });
     } catch (_fallbackErr) {
-      if (Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
+      if (!forceRefresh && within24h && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
         return res.status(200).json({
           personal_bullets: personalBullets,
           news_bullets: cache.news_bullets,
           disclaimer: defaultDisclaimer,
-          as_of: cache?.as_of || nowIso(),
+          as_of: cacheDisplayAsOf,
           cached: true,
           warning: timedOut ? 'news_timeout_using_cached' : 'news_error_using_cached',
           error: errText,

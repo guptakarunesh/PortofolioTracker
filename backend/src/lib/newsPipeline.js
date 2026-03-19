@@ -1,0 +1,443 @@
+import { db, nowIso } from './db.js';
+import {
+  CURATED_NEWS_CATEGORIES,
+  CURATED_NEWS_SOURCES,
+  NEWS_MAX_AGE_HOURS,
+  categoryByKey,
+  sourceByKey,
+  sourceByName,
+  sourceByUrl
+} from './newsSources.js';
+
+const INGEST_MODEL_FALLBACK = 'gpt-5-nano';
+const INSIGHT_MODEL_FALLBACK = 'gpt-5-nano';
+const NEWS_RETENTION_DAYS = 7;
+
+function safeJsonParse(raw, fallback = null) {
+  try {
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (_e) {
+    return fallback;
+  }
+}
+
+function normalizeWhitespace(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeCategory(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  return CURATED_NEWS_CATEGORIES.find((item) => item.key === raw)?.key || 'other_savings';
+}
+
+function normalizeUrl(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid'].forEach((key) =>
+      url.searchParams.delete(key)
+    );
+    url.hash = '';
+    return url.toString();
+  } catch (_e) {
+    return raw;
+  }
+}
+
+function titleKey(value = '') {
+  return normalizeWhitespace(String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' '));
+}
+
+function contentHash(item) {
+  return `${item.category}|${item.source_key}|${titleKey(item.title)}`.slice(0, 512);
+}
+
+function parseIsoDate(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const dt = new Date(raw);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt;
+}
+
+function withinFreshWindow(dateValue, maxAgeHours = NEWS_MAX_AGE_HOURS) {
+  const dt = parseIsoDate(dateValue);
+  if (!dt) return false;
+  return Date.now() - dt.getTime() <= maxAgeHours * 60 * 60 * 1000;
+}
+
+function dedupeItems(items = []) {
+  const seen = new Map();
+  for (const item of items) {
+    const key = item.canonical_url || item.content_hash;
+    const current = seen.get(key);
+    if (!current) {
+      seen.set(key, item);
+      continue;
+    }
+    if ((item.source_priority || 0) > (current.source_priority || 0)) {
+      seen.set(key, item);
+      continue;
+    }
+    if ((item.published_at || '') > (current.published_at || '')) {
+      seen.set(key, item);
+    }
+  }
+  return [...seen.values()];
+}
+
+function pruneOldNews() {
+  const cutoff = new Date(Date.now() - NEWS_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare('DELETE FROM news_items WHERE published_at < ?').run(cutoff);
+}
+
+function logIngestRun({ status = 'ok', source = 'pipeline', itemCount = 0, message = '', metadata = {}, startedAt, finishedAt }) {
+  db.prepare(`
+    INSERT INTO news_ingest_runs (status, source, item_count, message, metadata, started_at, finished_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    status,
+    source,
+    Number(itemCount || 0),
+    String(message || ''),
+    JSON.stringify(metadata || {}),
+    String(startedAt || nowIso()),
+    String(finishedAt || nowIso())
+  );
+}
+
+function upsertNewsItem(item) {
+  db.prepare(`
+    INSERT INTO news_items (
+      source_key, source_name, source_domain, category, investment_label, title, summary,
+      canonical_url, published_at, fetched_at, trust_score, is_official, source_priority,
+      content_hash, metadata, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(canonical_url) DO UPDATE SET
+      source_key = excluded.source_key,
+      source_name = excluded.source_name,
+      source_domain = excluded.source_domain,
+      category = excluded.category,
+      investment_label = excluded.investment_label,
+      title = excluded.title,
+      summary = excluded.summary,
+      published_at = excluded.published_at,
+      fetched_at = excluded.fetched_at,
+      trust_score = excluded.trust_score,
+      is_official = excluded.is_official,
+      source_priority = excluded.source_priority,
+      content_hash = excluded.content_hash,
+      metadata = excluded.metadata,
+      updated_at = excluded.updated_at
+  `).run(
+    item.source_key,
+    item.source_name,
+    item.source_domain,
+    item.category,
+    item.investment_label,
+    item.title,
+    item.summary,
+    item.canonical_url,
+    item.published_at,
+    item.fetched_at,
+    item.trust_score,
+    item.is_official ? 1 : 0,
+    item.source_priority,
+    item.content_hash,
+    JSON.stringify(item.metadata || {}),
+    nowIso(),
+    nowIso()
+  );
+}
+
+export function getCuratedNews({ maxAgeHours = NEWS_MAX_AGE_HOURS, limit = 24 } = {}) {
+  const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString();
+  return db
+    .prepare(
+      `
+      SELECT id, source_key, source_name, source_domain, category, investment_label, title, summary,
+             canonical_url, published_at, fetched_at, trust_score, is_official, source_priority, metadata
+      FROM news_items
+      WHERE published_at >= ?
+      ORDER BY is_official DESC, source_priority DESC, published_at DESC
+      LIMIT ?
+    `
+    )
+    .all(cutoff, limit)
+    .map((row) => ({ ...row, metadata: safeJsonParse(row.metadata, {}) }));
+}
+
+function buildSourceInstructions() {
+  return CURATED_NEWS_SOURCES.map((source) => {
+    const officialText = source.official ? 'official/regulatory' : 'publisher';
+    return `- ${source.name} (${officialText}, domains: ${source.domains.join(', ')})`;
+  }).join('\n');
+}
+
+function buildCategoryInstructions() {
+  return CURATED_NEWS_CATEGORIES.map((category) => `- ${category.key}: ${category.label}`).join('\n');
+}
+
+async function callOpenAIResponses({ apiKey, model, useWebSearch, promptText, country = 'IN' }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), useWebSearch ? 60_000 : 25_000);
+  const body = {
+    model,
+    reasoning: { effort: 'low' },
+    tools: useWebSearch
+      ? [
+          {
+            type: 'web_search',
+            search_context_size: 'low',
+            user_location: { type: 'approximate', country }
+          }
+        ]
+      : [],
+    input: [
+      {
+        role: 'user',
+        content: [{ type: 'input_text', text: promptText }]
+      }
+    ]
+  };
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body),
+    signal: controller.signal
+  }).finally(() => clearTimeout(timeout));
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(raw || `OpenAI request failed (${response.status})`);
+  }
+
+  const parsed = JSON.parse(raw);
+  const outputText =
+    (typeof parsed?.output_text === 'string' && parsed.output_text) ||
+    (Array.isArray(parsed?.output)
+      ? parsed.output
+          .filter((item) => item?.type === 'message')
+          .flatMap((item) => item?.content || [])
+          .filter((chunk) => chunk?.type === 'output_text')
+          .map((chunk) => chunk?.text)
+          .join('\n')
+      : '');
+
+  if (!outputText) {
+    throw new Error('OpenAI response missing output text');
+  }
+  return JSON.parse(outputText);
+}
+
+function normalizeIngestedItem(rawItem = {}) {
+  const url = normalizeUrl(rawItem.url || rawItem.canonical_url || '');
+  const source =
+    sourceByKey(rawItem.source_key || '') ||
+    sourceByName(rawItem.source_name || '') ||
+    sourceByUrl(url);
+  if (!source) return null;
+
+  const category = normalizeCategory(rawItem.category);
+  const publishedAt = parseIsoDate(rawItem.published_at);
+  if (!publishedAt || !withinFreshWindow(publishedAt.toISOString())) return null;
+
+  const title = normalizeWhitespace(rawItem.title || '');
+  if (!title || !url) return null;
+
+  const categoryConfig = categoryByKey(category);
+  const summary = normalizeWhitespace(rawItem.summary || rawItem.snippet || rawItem.why_it_matters || '');
+
+  const item = {
+    source_key: source.key,
+    source_name: source.name,
+    source_domain: source.domains[0],
+    category,
+    investment_label: categoryConfig.investmentLabel,
+    title,
+    summary,
+    canonical_url: url,
+    published_at: publishedAt.toISOString(),
+    fetched_at: nowIso(),
+    trust_score: source.trustScore,
+    is_official: source.official,
+    source_priority: source.priority,
+    metadata: {
+      review_prompt: categoryConfig.reviewPrompt,
+      guidance: categoryConfig.guidance
+    }
+  };
+  item.content_hash = contentHash(item);
+  return item;
+}
+
+export async function ingestCuratedNews({
+  apiKey,
+  ingestModel = process.env.OPENAI_NEWS_INGEST_MODEL || process.env.OPENAI_NEWS_MODEL || INGEST_MODEL_FALLBACK,
+  country = 'IN',
+  forceRefresh = false
+} = {}) {
+  const startedAt = nowIso();
+  pruneOldNews();
+  const existing = getCuratedNews({ limit: 60 });
+  if (!forceRefresh && existing.length >= 10) {
+    logIngestRun({
+      status: 'skipped',
+      source: 'pipeline',
+      itemCount: 0,
+      message: 'fresh_news_already_present',
+      metadata: { fresh_count: existing.length },
+      startedAt,
+      finishedAt: nowIso()
+    });
+    return { ok: true, skipped: true, inserted: 0, total_fresh_items: existing.length };
+  }
+  if (!apiKey) {
+    logIngestRun({
+      status: 'error',
+      source: 'pipeline',
+      itemCount: 0,
+      message: 'openai_api_key_missing',
+      metadata: { fresh_count: existing.length },
+      startedAt,
+      finishedAt: nowIso()
+    });
+    return { ok: false, error: 'openai_api_key_missing', inserted: 0, total_fresh_items: existing.length };
+  }
+
+  const prompt = [
+    'Role: Curated India personal-finance news ingestion service.',
+    'Task: find fresh, high-signal India-relevant items from the last 48 hours only.',
+    'Return STRICT JSON with key "items" as an array.',
+    'Each item must contain: source_name, url, title, published_at, category, summary.',
+    'Use only these sources:',
+    buildSourceInstructions(),
+    'Use only these categories:',
+    buildCategoryInstructions(),
+    'Rules:',
+    '- Only include items with a visible publish timestamp in the last 48 hours.',
+    '- Prefer official sources for policy, retirement, compliance, and rule changes.',
+    '- Prefer Reuters and major Indian finance publishers for fast market-moving coverage.',
+    '- Deduplicate near-identical stories.',
+    '- Focus on actionable retail-investor context across bank savings, stocks, gold/metals, retirement, real estate, and other savings.',
+    '- Return 12 to 18 items when available.',
+    `Country focus: ${country}`
+  ].join('\n');
+
+  try {
+    const out = await callOpenAIResponses({
+      apiKey,
+      model: ingestModel,
+      useWebSearch: true,
+      promptText: prompt,
+      country
+    });
+
+    const rawItems = Array.isArray(out?.items) ? out.items : [];
+    const normalized = dedupeItems(rawItems.map(normalizeIngestedItem).filter(Boolean));
+    const tx = db.transaction(() => {
+      normalized.forEach(upsertNewsItem);
+    });
+    tx();
+    pruneOldNews();
+    const totalFreshItems = getCuratedNews({ limit: 60 }).length;
+    logIngestRun({
+      status: 'ok',
+      source: 'pipeline',
+      itemCount: normalized.length,
+      message: 'ingest_completed',
+      metadata: { total_fresh_items: totalFreshItems },
+      startedAt,
+      finishedAt: nowIso()
+    });
+    return {
+      ok: true,
+      inserted: normalized.length,
+      total_fresh_items: totalFreshItems
+    };
+  } catch (error) {
+    logIngestRun({
+      status: 'error',
+      source: 'pipeline',
+      itemCount: 0,
+      message: String(error?.message || error),
+      metadata: {},
+      startedAt,
+      finishedAt: nowIso()
+    });
+    throw error;
+  }
+}
+
+function fallbackBulletForItem(item) {
+  const guidance = item?.metadata?.guidance || categoryByKey(item.category).guidance;
+  return `[${item.investment_label}] What happened: ${item.title}. Why it matters: ${item.summary || 'recent market or policy context may affect this bucket.'} What to consider: ${guidance}. Source: ${item.source_name} - ${item.canonical_url}.`;
+}
+
+export async function buildInsightNewsBullets({
+  apiKey,
+  items = [],
+  country = 'IN',
+  currency = 'INR',
+  portfolio = {},
+  model = process.env.OPENAI_NEWS_MODEL || process.env.OPENAI_MODEL || INSIGHT_MODEL_FALLBACK
+} = {}) {
+  const curated = dedupeItems(items).slice(0, 12);
+  if (!curated.length) {
+    return { bullets: [], source: 'empty' };
+  }
+
+  if (!apiKey) {
+    return { bullets: curated.slice(0, 5).map(fallbackBulletForItem), source: 'rule_based' };
+  }
+
+  const prompt = [
+    'Role: Personal finance explainer for Indian retail investors.',
+    'Use only the curated news items provided below. Do not add any external facts.',
+    'Use very simple language for a normal middle-class saver or investor.',
+    'Never give buy/sell advice. Help the user decide what to review next.',
+    'Return STRICT JSON with key "bullets" as an array of exactly 5 strings.',
+    'Each bullet must be at most 42 words.',
+    'Bullet format: [Investment Type] What happened: short fact. Why it matters: short impact. What to consider: short practical review point. Source: Site Name - URL.',
+    'Do not use the words Bullish, Bearish, Neutral, or Wallet Impact.',
+    `Country: ${country}`,
+    `Currency: ${currency}`,
+    `Portfolio context: ${JSON.stringify(portfolio)}`,
+    `Curated news items: ${JSON.stringify(curated)}`
+  ].join('\n');
+
+  const out = await callOpenAIResponses({
+    apiKey,
+    model,
+    useWebSearch: false,
+    promptText: prompt,
+    country
+  });
+
+  const bullets = Array.isArray(out?.bullets) ? out.bullets.map((item) => normalizeWhitespace(item)).filter(Boolean).slice(0, 5) : [];
+  if (bullets.length !== 5) {
+    return { bullets: curated.slice(0, 5).map(fallbackBulletForItem), source: 'rule_based_invalid_ai' };
+  }
+  return { bullets, source: 'ai_from_curated_news' };
+}
+
+export async function ensureCuratedNews({
+  apiKey,
+  country = 'IN',
+  forceRefresh = false,
+  minFreshItems = 8
+} = {}) {
+  const current = getCuratedNews({ limit: 60 });
+  if (!forceRefresh && current.length >= minFreshItems) {
+    return { items: current, refreshed: false, count: current.length };
+  }
+
+  await ingestCuratedNews({ apiKey, country, forceRefresh });
+  const refreshed = getCuratedNews({ limit: 60 });
+  return { items: refreshed, refreshed: true, count: refreshed.length };
+}

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
+import { buildInsightNewsBullets, ensureCuratedNews } from '../lib/newsPipeline.js';
 
 const router = Router();
 const AI_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -24,48 +25,6 @@ const CONSERVATIVE_RANGES = {
   'Other Assets': [0, 8]
 };
 
-const APPROVED_SOURCE_RULES = [
-  { label: 'Reuters', patterns: [/reuters/i, /reuters\.com/i] },
-  { label: 'The Economic Times', patterns: [/economic times/i, /economictimes\.com/i] },
-  { label: 'Moneycontrol', patterns: [/moneycontrol/i, /moneycontrol\.com/i] },
-  { label: 'Mint', patterns: [/\bmint\b/i, /livemint\.com/i] },
-  { label: 'Business Standard', patterns: [/business standard/i, /business-standard\.com/i] },
-  { label: 'RBI', patterns: [/\brbi\b/i, /rbi\.org\.in/i] },
-  { label: 'SEBI', patterns: [/\bsebi\b/i, /sebi\.gov\.in/i] },
-  { label: 'EPFO', patterns: [/\bepfo\b/i, /epfindia\.gov\.in/i] },
-  { label: 'PFRDA', patterns: [/\bpfrda\b/i, /pfrda\.org\.in/i] },
-  { label: 'PIB', patterns: [/\bpib\b/i, /pib\.gov\.in/i] }
-];
-
-const STALE_MONTH_MAP = {
-  jan: 0,
-  january: 0,
-  feb: 1,
-  february: 1,
-  mar: 2,
-  march: 2,
-  apr: 3,
-  april: 3,
-  may: 4,
-  jun: 5,
-  june: 5,
-  jul: 6,
-  july: 6,
-  aug: 7,
-  august: 7,
-  sep: 8,
-  sept: 8,
-  september: 8,
-  oct: 9,
-  october: 9,
-  nov: 10,
-  november: 10,
-  dec: 11,
-  december: 11
-};
-
-const NEWS_MAX_AGE_MS = 48 * 60 * 60 * 1000;
-
 function getUserSetting(userId, key) {
   const row = db
     .prepare('SELECT value FROM user_settings WHERE user_id = ? AND key = ? LIMIT 1')
@@ -87,60 +46,6 @@ function setUserSetting(userId, key, value) {
 
 function deleteUserSetting(userId, key) {
   db.prepare('DELETE FROM user_settings WHERE user_id = ? AND key = ?').run(userId, key);
-}
-
-function escapeRegex(value = '') {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function detectApprovedSource(bullet = '') {
-  return APPROVED_SOURCE_RULES.find((rule) => rule.patterns.some((pattern) => pattern.test(String(bullet || '')))) || null;
-}
-
-function collectBulletDates(text = '') {
-  const raw = String(text || '');
-  const dates = [];
-  const pushDate = (year, monthIndex, day) => {
-    const dt = new Date(Date.UTC(Number(year), Number(monthIndex), Number(day), 12, 0, 0));
-    if (!Number.isNaN(dt.getTime())) dates.push(dt);
-  };
-
-  for (const match of raw.matchAll(/\b(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})\b/g)) {
-    const monthIndex = STALE_MONTH_MAP[String(match[2] || '').toLowerCase()];
-    if (monthIndex != null) pushDate(match[3], monthIndex, match[1]);
-  }
-  for (const match of raw.matchAll(/\b([A-Za-z]{3,9})\s+(\d{1,2})[,\-\s]+(\d{4})\b/g)) {
-    const monthIndex = STALE_MONTH_MAP[String(match[1] || '').toLowerCase()];
-    if (monthIndex != null) pushDate(match[3], monthIndex, match[2]);
-  }
-  for (const match of raw.matchAll(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/g)) {
-    pushDate(match[3], Number(match[2]) - 1, match[1]);
-  }
-
-  return dates;
-}
-
-function isBulletFreshEnough(bullet = '', now = Date.now()) {
-  const dates = collectBulletDates(bullet);
-  if (!dates.length) return true;
-  return dates.every((date) => now - date.getTime() <= NEWS_MAX_AGE_MS);
-}
-
-function sanitizeGeneratedBullets(rawBullets = [], fallbackReason = 'Live 48h news is currently unavailable.') {
-  const fallbackBullets = unavailableNewsBullets(fallbackReason);
-  const now = Date.now();
-
-  return rawBullets.slice(0, 5).map((bullet, index) => {
-    const text = String(bullet || '').trim();
-    const source = detectApprovedSource(text);
-    const usesLegacyTone = /\b(wallet impact|bullish|bearish|neutral)\b/i.test(text);
-    const freshEnough = isBulletFreshEnough(text, now);
-    const hasSourceSegment = /\bsource:\s*[^-]+-\s*https?:\/\//i.test(text);
-    if (!text || !source || usesLegacyTone || !freshEnough || !hasSourceSegment) {
-      return fallbackBullets[index] || fallbackBullets[0];
-    }
-    return text;
-  });
 }
 
 function normalizeCountry(value = '') {
@@ -263,149 +168,6 @@ function getConservativeGaps(assets) {
     .sort((a, b) => Number(b.gapPct || 0) - Number(a.gapPct || 0));
 }
 
-async function callOpenAI({
-  apiKey,
-  model,
-  country,
-  currency,
-  portfolio,
-  useWebSearch = true,
-  forceNewsUnavailable = false
-}) {
-  const controller = new AbortController();
-  const webTimeoutMs = Math.max(20_000, Number(process.env.AI_WEB_TIMEOUT_MS || 60_000));
-  const nonWebTimeoutMs = Math.max(10_000, Number(process.env.AI_NONWEB_TIMEOUT_MS || 20_000));
-  const timeout = setTimeout(() => controller.abort(), useWebSearch ? webTimeoutMs : nonWebTimeoutMs);
-  const payload = {
-    model,
-    // Keep reasoning minimal: this is a brief popup.
-    reasoning: { effort: 'low' },
-    tools: useWebSearch
-      ? [
-          {
-            type: 'web_search',
-            search_context_size: 'low',
-            user_location: { type: 'approximate', country: country || 'IN' }
-          }
-        ]
-      : [],
-    input: [
-      {
-        role: 'system',
-        content: [
-          {
-            type: 'input_text',
-            text:
-              "Role: Personal Finance News Analyst for Indian Retail Investors.\n" +
-              "You MUST:\n" +
-              "- Never provide personalized investment advice or buy/sell instructions.\n" +
-              "- Avoid recommending specific tickers, funds, or products.\n" +
-              "- Use very simple language a normal middle-class saver or investor can understand quickly.\n" +
-              "- Focus on helping the user decide what to review next, not what to buy or sell.\n" +
-              "- Use only specific catalysts (policy changes, rate moves, regulation, price shocks).\n" +
-              "- Prioritize India news first, then global news affecting India.\n" +
-              "- Focus on last 48 hours only.\n" +
-              "- Never mention or imply news older than 48 hours.\n" +
-              "- If recent news cannot be verified, clearly say live 48h news is unavailable.\n" +
-              "- Use only these preferred sources when citing news: Reuters, The Economic Times, Moneycontrol, Mint, Business Standard, RBI, SEBI, EPFO, PFRDA, PIB.\n" +
-              "- Prefer RBI, SEBI, EPFO, PFRDA, and PIB for rule changes or official announcements.\n" +
-              "- Prefer Reuters for fast macro, banking, metals, and market-moving updates.\n" +
-              "- Prefer Economic Times, Moneycontrol, Mint, and Business Standard for retail-friendly India coverage.\n" +
-              "- Output STRICT JSON (no markdown) with keys: bullets (array), disclaimer (string), as_of (ISO-8601 string).\n" +
-              "- Output EXACTLY 5 bullets.\n" +
-              "- Each bullet must be max 42 words.\n" +
-              "- Bullet format: [Investment Type] What happened: short fact. Why it matters: short impact. What to consider: short practical review point. Source: Site Name - URL.\n" +
-              "- Do not use the words Bullish, Bearish, or Neutral.\n" +
-              "- No long explanations, opinions, jargon, or generic macro commentary.\n" +
-              (forceNewsUnavailable
-                ? "- Web news is unavailable. Still output exactly 5 bullets in the same format, and clearly say data is unavailable and user should verify trusted sources manually."
-                : "")
-          }
-        ]
-      },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'input_text',
-            text:
-              `User market country: ${country || 'Unknown'}\n` +
-              `Display currency: ${currency || 'INR'}\n\n` +
-              `Coverage focus:\n` +
-              `Stocks, ETFs, Mutual Funds, FDs, Savings/RDs, EPF/NPS, Insurance, Gold/Silver, Bonds, and Real Estate (land/flats).\n\n` +
-              `Portfolio context (for risk framing only, not advice):\n` +
-              JSON.stringify(portfolio) +
-              `\n\nTask:\n` +
-              `1) Provide exactly 5 bullets.\n` +
-              `2) Keep each bullet within 42 words.\n` +
-              `3) Keep it short, practical, and layman-friendly.\n` +
-              `4) Make every bullet useful for a person deciding what part of their portfolio to review next.`
-          }
-        ]
-      }
-    ]
-  };
-
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload),
-    signal: controller.signal
-  }).finally(() => clearTimeout(timeout));
-
-  const raw = await response.text();
-  if (!response.ok) {
-    throw new Error(raw || `OpenAI request failed (${response.status})`);
-  }
-
-  let parsed = null;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (_e) {
-    throw new Error('OpenAI response was not valid JSON');
-  }
-
-  const outputText =
-    (typeof parsed?.output_text === 'string' && parsed.output_text) ||
-    (Array.isArray(parsed?.output)
-      ? parsed.output
-          .filter((item) => item?.type === 'message')
-          .flatMap((item) => item?.content || [])
-          .filter((chunk) => chunk?.type === 'output_text')
-          .map((chunk) => chunk?.text)
-          .join('\n')
-      : '');
-
-  if (!outputText || typeof outputText !== 'string') {
-    throw new Error('OpenAI response missing output text');
-  }
-
-  let out = null;
-  try {
-    out = JSON.parse(outputText);
-  } catch (_e) {
-    throw new Error('OpenAI output text was not valid JSON');
-  }
-
-  const bullets = Array.isArray(out?.bullets)
-    ? out.bullets.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 5)
-    : [];
-  if (bullets.length !== 5) {
-    throw new Error('OpenAI output must include exactly 5 bullets');
-  }
-  const disclaimer = typeof out?.disclaimer === 'string' ? out.disclaimer : '';
-  const asOf = typeof out?.as_of === 'string' ? out.as_of : nowIso();
-
-  return {
-    bullets: sanitizeGeneratedBullets(bullets),
-    disclaimer,
-    as_of: asOf
-  };
-}
-
 function unavailableNewsBullets(reason = 'Live news fetch unavailable right now.') {
   return [
     `Stocks / ETFs / Mutual Funds. What happened: ${reason} Why it matters: stock and fund moves may be missed. What to consider: check index, sector, and fund updates manually. Source: NSE India - https://www.nseindia.com/`,
@@ -418,11 +180,6 @@ function unavailableNewsBullets(reason = 'Live news fetch unavailable right now.
 
 router.get('/insights', async (req, res) => {
   const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
-  const configuredModel = String(
-    process.env.OPENAI_NEWS_MODEL || process.env.OPENAI_MODEL || 'gpt-5-nano'
-  ).trim();
-  const model = configuredModel === 'gpt-5' ? 'gpt-5-nano' : configuredModel;
-
   const accountUserId = req.accountUserId;
   const storedCountry = getUserSetting(accountUserId, 'country') || '';
   const country = storedCountry || 'India';
@@ -571,13 +328,21 @@ router.get('/insights', async (req, res) => {
   }
 
   try {
-    const result = await callOpenAI({
+    const curatedNewsState = await ensureCuratedNews({
       apiKey,
-      model,
+      country: countryCode,
+      forceRefresh
+    });
+    const curatedItems = Array.isArray(curatedNewsState?.items) ? curatedNewsState.items : [];
+    if (!curatedItems.length) {
+      throw new Error('no_curated_news_available');
+    }
+    const result = await buildInsightNewsBullets({
+      apiKey,
+      items: curatedItems,
       country: countryCode,
       currency: preferredCurrency || 'INR',
-      portfolio: newsPromptContext,
-      useWebSearch: true
+      portfolio: newsPromptContext
     });
     const payload = {
       personal_bullets: personalBullets,
@@ -596,51 +361,22 @@ router.get('/insights', async (req, res) => {
     });
   } catch (e) {
     const errText = String(e?.message || e);
-    const timedOut = errText.toLowerCase().includes('aborted') || errText.toLowerCase().includes('timeout');
-    try {
-      const fallback = await callOpenAI({
-        apiKey,
-        model,
-        country: countryCode,
-        currency: preferredCurrency || 'INR',
-        portfolio: newsPromptContext,
-        useWebSearch: false,
-        forceNewsUnavailable: true
-      });
-      const payload = {
-        personal_bullets: personalBullets,
-        news_bullets: fallback.bullets,
-        disclaimer: defaultDisclaimer,
-        as_of: nowIso(),
-        source_as_of: nowIso()
-      };
-      setUserSetting(accountUserId, 'ai_insights_cache', JSON.stringify({
-        ...payload,
-        cached_at: nowIso()
-      }));
+    if (!forceRefresh && within24h && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
       return res.status(200).json({
-        ...payload,
-        portfolio,
-        warning: timedOut ? 'news_timeout_nonweb_fallback' : 'news_error_nonweb_fallback'
+        personal_bullets: personalBullets,
+        news_bullets: cache.news_bullets,
+        disclaimer: defaultDisclaimer,
+        as_of: cacheDisplayAsOf,
+        cached: true,
+        warning: 'news_error_using_cached',
+        error: errText,
+        portfolio
       });
-    } catch (_fallbackErr) {
-      if (!forceRefresh && within24h && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
-        return res.status(200).json({
-          personal_bullets: personalBullets,
-          news_bullets: cache.news_bullets,
-          disclaimer: defaultDisclaimer,
-          as_of: cacheDisplayAsOf,
-          cached: true,
-          warning: timedOut ? 'news_timeout_using_cached' : 'news_error_using_cached',
-          error: errText,
-          portfolio
-        });
-      }
     }
     return res.status(200).json({
       personal_bullets: personalBullets,
       news_bullets: unavailableNewsBullets(
-        timedOut ? 'Live 48h news timed out.' : 'Live 48h news is currently unavailable.'
+        errText.toLowerCase().includes('timeout') ? 'Live 48h news timed out.' : 'Live 48h news is currently unavailable.'
       ),
       disclaimer: defaultDisclaimer,
       as_of: nowIso(),

@@ -473,6 +473,38 @@ CREATE TABLE IF NOT EXISTS performance_snapshots (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS news_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_key TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  source_domain TEXT NOT NULL,
+  category TEXT NOT NULL,
+  investment_label TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT,
+  canonical_url TEXT NOT NULL UNIQUE,
+  published_at TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  trust_score INTEGER NOT NULL DEFAULT 0,
+  is_official INTEGER NOT NULL DEFAULT 0,
+  source_priority INTEGER NOT NULL DEFAULT 0,
+  content_hash TEXT NOT NULL,
+  metadata TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS news_ingest_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  status TEXT NOT NULL DEFAULT 'ok',
+  source TEXT NOT NULL DEFAULT 'pipeline',
+  item_count INTEGER NOT NULL DEFAULT 0,
+  message TEXT,
+  metadata TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS legal_documents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   doc_type TEXT NOT NULL,
@@ -751,6 +783,11 @@ CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id);
 CREATE INDEX IF NOT EXISTS idx_asset_trackers_user_id ON asset_trackers(user_id);
 CREATE INDEX IF NOT EXISTS idx_performance_snapshots_user_q ON performance_snapshots(user_id, quarter_start);
+CREATE INDEX IF NOT EXISTS idx_news_items_published_at ON news_items(published_at);
+CREATE INDEX IF NOT EXISTS idx_news_items_category ON news_items(category);
+CREATE INDEX IF NOT EXISTS idx_news_items_source_key ON news_items(source_key);
+CREATE INDEX IF NOT EXISTS idx_news_items_content_hash ON news_items(content_hash);
+CREATE INDEX IF NOT EXISTS idx_news_ingest_runs_started_at ON news_ingest_runs(started_at);
 CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON user_settings(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_consent_log_user_id ON consent_log(user_id);

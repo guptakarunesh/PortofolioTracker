@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
 import { decryptString, hashLookup } from '../lib/crypto.js';
 import { createSessionToken, hashPin, hashToken, verifyPin } from '../lib/auth.js';
+import { ingestCuratedNews } from '../lib/newsPipeline.js';
 import requireSupportAuth from '../middleware/requireSupportAuth.js';
 
 const apiRouter = Router();
@@ -539,7 +540,7 @@ apiRouter.get('/users/:id/history', (req, res) => {
   return res.json({ auth_events: authEvents, security_events: securityEvents, support_actions: supportActions });
 });
 
-apiRouter.post('/users/:id/actions', (req, res) => {
+apiRouter.post('/users/:id/actions', async (req, res) => {
   const targetUserId = Number(req.params.id);
   if (!targetUserId) return res.status(400).json({ error: 'invalid_user_id' });
 
@@ -694,6 +695,23 @@ apiRouter.post('/users/:id/actions', (req, res) => {
         ok: true,
         snapshots_upserted: normalized.length,
         quarter_starts: normalized.map((row) => row.quarterStart)
+      };
+    } else if (action === 'clear_ai_insights_cache') {
+      const cleared = db.prepare("DELETE FROM user_settings WHERE user_id = ? AND key = 'ai_insights_cache'").run(targetUserId);
+      result = { ok: true, cleared_entries: Number(cleared.changes || 0) };
+    } else if (action === 'refresh_curated_news') {
+      const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+      const out = await ingestCuratedNews({
+        apiKey,
+        country: String(payload.country || 'IN').trim() || 'IN',
+        forceRefresh: true
+      });
+      db.prepare("DELETE FROM user_settings WHERE key = 'ai_insights_cache'").run();
+      result = {
+        ok: true,
+        inserted: Number(out.inserted || 0),
+        total_fresh_items: Number(out.total_fresh_items || 0),
+        cleared_ai_caches: true
       };
     } else {
       return res.status(400).json({ error: 'unsupported_action' });

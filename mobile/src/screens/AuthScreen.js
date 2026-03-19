@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, Linking, Modal, ScrollView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import PillButton from '../components/PillButton';
-import { api, buildApiUrl } from '../api/client';
+import { api } from '../api/client';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -104,11 +104,13 @@ export default function AuthScreen({
   onVerifyOtp,
   loading = false,
   externalMessage = '',
-  biometricReady = false
+  biometricReady = false,
+  variant = 'fresh',
+  initialMobile = ''
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
-  const [mode, setMode] = useState('login');
+  const [mode, setMode] = useState(variant === 'fresh' ? 'register' : 'login');
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
   const [otp, setOtp] = useState('');
@@ -121,6 +123,7 @@ export default function AuthScreen({
   const [message, setMessage] = useState('');
   const [biometricMessage, setBiometricMessage] = useState('');
   const [privacyInfoVisible, setPrivacyInfoVisible] = useState(false);
+  const [legalDocVisible, setLegalDocVisible] = useState(null);
 
   useEffect(() => {
     api
@@ -150,6 +153,21 @@ export default function AuthScreen({
     setMessage('');
     setBiometricMessage('');
   }, [mode]);
+
+  useEffect(() => {
+    if (variant === 'fresh') {
+      setMode('register');
+      return;
+    }
+    if (variant === 'returning') {
+      setMode('login');
+      setMobile(String(initialMobile || '').replace(/\D/g, '').slice(0, 10));
+      return;
+    }
+    if (!mobile && initialMobile) {
+      setMobile(String(initialMobile || '').replace(/\D/g, '').slice(0, 10));
+    }
+  }, [initialMobile, mobile, variant]);
 
   const canRegister = useMemo(() => consentPrivacy && consentTerms, [consentPrivacy, consentTerms]);
   const requiresOtp = mode === 'login' || mode === 'register';
@@ -234,6 +252,80 @@ export default function AuthScreen({
   };
 
   const effectiveMessage = message || externalMessage;
+  const isReturningVariant = variant === 'returning';
+  const isLightNewVariant = variant === 'light-new';
+  const legalDocContent =
+    legalDocVisible === 'privacy'
+      ? {
+          title: t('Privacy Policy'),
+          version: privacyVersion,
+          sections: [
+            {
+              heading: t('Scope'),
+              body: t('Networth Manager handles your account, portfolio, security, reminder, and family-sharing data to operate the app securely and lawfully.')
+            },
+            {
+              heading: t('Data We Collect'),
+              body: t('We collect two-letter initials, your mobile number, consent records, portfolio data you enter, selected security telemetry, and notification data needed to run the service.')
+            },
+            {
+              heading: t('What We Do Not Collect'),
+              body: t('We do not collect bank passwords, internet banking credentials, card CVV, SMS inbox content, or fingerprint and Face ID templates.')
+            },
+            {
+              heading: t('Why We Process Data'),
+              body: t('We use data to create and secure your account, show your assets and liabilities, power reminders, protect sensitive fields, and support limited AI insights.')
+            },
+            {
+              heading: t('Security and Storage'),
+              body: t('Data is protected in transit, selected sensitive fields are encrypted at rest, and full reveal of sensitive details requires your Security PIN.')
+            },
+            {
+              heading: t('Sharing'),
+              body: t('We do not sell personal data. Data is shared only with authorized family members, required service providers, or authorities when legally required.')
+            },
+            {
+              heading: t('Your Controls'),
+              body: t('You can export your data, edit or delete records, reset PINs via OTP, manage device trust, and delete your account.')
+            }
+          ]
+        }
+      : legalDocVisible === 'terms'
+        ? {
+            title: t('Terms of Service'),
+            version: termsVersion,
+            sections: [
+              {
+                heading: t('Service Description'),
+                body: t('Networth Manager is a personal finance record-keeping and planning app for assets, liabilities, reminders, family sharing, and AI-generated informational insights.')
+              },
+              {
+                heading: t('What the Service Is Not'),
+                body: t('The app does not provide investment, tax, legal, or insurance advice and does not guarantee returns, safety, or suitability of decisions.')
+              },
+              {
+                heading: t('Account Responsibilities'),
+                body: t('You must provide accurate registration details and remain responsible for activity under your account and linked family access.')
+              },
+              {
+                heading: t('Security Obligations'),
+                body: t('Login may require OTP or trusted-device checks, and sensitive fields remain masked until unlocked with your Security PIN.')
+              },
+              {
+                heading: t('Family Sharing'),
+                body: t('Family access is permission-based. You are responsible for inviting trusted people and keeping roles appropriate.')
+              },
+              {
+                heading: t('Notifications and AI'),
+                body: t('Reminder alerts are best-effort, and AI insights are informational only. You must independently verify important information before acting.')
+              },
+              {
+                heading: t('Subscription and Liability'),
+                body: t('Some features require an active subscription. To the extent permitted by law, we are not liable for indirect loss arising from user decisions, incorrect entries, or third-party outages.')
+              }
+            ]
+          }
+        : null;
 
   return (
     <View style={styles.authShell}>
@@ -250,20 +342,24 @@ export default function AuthScreen({
           />
         </View>
         <Text style={[styles.cardTitle, { color: theme.text }]}>
-          {mode === 'register'
+          {isReturningVariant
+            ? t('Welcome Back')
+            : mode === 'register'
             ? t('Create Your Account')
             : otpRequested || mobile.trim().length === 10
               ? t('Welcome Back')
               : t('Sign In Securely')}
         </Text>
         <Text style={[styles.cardSubtitle, { color: theme.muted }]}>
-          {mode === 'register'
+          {isReturningVariant
+            ? t('Encrypted, protected, and visible only to you.')
+            : mode === 'register'
             ? t('Encrypted, protected, and visible only to you.')
             : otpRequested || mobile.trim().length === 10
               ? t('Continue with OTP or your enrolled biometrics.')
               : t('Use your mobile number to continue securely.')}
         </Text>
-        {mode === 'register' ? (
+        {(mode === 'register' || isLightNewVariant) ? (
           <Pressable style={styles.privacyInfoLinkWrap} onPress={() => setPrivacyInfoVisible(true)}>
             <Text style={[styles.privacyInfoLink, { color: theme.accent }]}>{t('Know how your privacy works?')}</Text>
           </Pressable>
@@ -291,7 +387,7 @@ export default function AuthScreen({
 
         {mode === 'register' ? (
           <>
-            <Text style={[styles.label, { color: theme.muted }]}>{t('Initials (2 letters)')}</Text>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Your Initials (2 letters)')}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
               value={fullName}
@@ -323,7 +419,7 @@ export default function AuthScreen({
                   {consentPrivacy ? <Text style={styles.checkboxTick}>✓</Text> : null}
                 </View>
                 <Text style={[styles.consentText, { color: theme.muted }]}>{t('I agree to the ')}</Text>
-                <Pressable onPress={() => Linking.openURL(buildApiUrl('/legal/privacy')).catch(() => {})}>
+                <Pressable onPress={() => setLegalDocVisible('privacy')}>
                   <Text style={[styles.linkText, { color: theme.accent }]}>{t('Privacy Policy')}</Text>
                 </Pressable>
               </Pressable>
@@ -332,7 +428,7 @@ export default function AuthScreen({
                   {consentTerms ? <Text style={styles.checkboxTick}>✓</Text> : null}
                 </View>
                 <Text style={[styles.consentText, { color: theme.muted }]}>{t('I agree to the ')}</Text>
-                <Pressable onPress={() => Linking.openURL(buildApiUrl('/legal/terms')).catch(() => {})}>
+                <Pressable onPress={() => setLegalDocVisible('terms')}>
                   <Text style={[styles.linkText, { color: theme.accent }]}>{t('Terms of Service')}</Text>
                 </Pressable>
               </Pressable>
@@ -404,13 +500,38 @@ export default function AuthScreen({
         </View>
       </View>
       <View style={styles.legalRow}>
-        <Pressable onPress={() => Linking.openURL(buildApiUrl('/legal/terms')).catch(() => {})}>
+        <Pressable onPress={() => setLegalDocVisible('terms')}>
           <Text style={[styles.legalLink, { color: theme.muted }]}>{t('Terms')}</Text>
         </Pressable>
-        <Pressable onPress={() => Linking.openURL(buildApiUrl('/legal/privacy')).catch(() => {})}>
+        <Pressable onPress={() => setLegalDocVisible('privacy')}>
           <Text style={[styles.legalLink, { color: theme.muted }]}>{t('Privacy Policy')}</Text>
         </Pressable>
       </View>
+      <Modal visible={!!legalDocVisible} transparent animationType="slide" onRequestClose={() => setLegalDocVisible(null)}>
+        <View style={styles.infoModalBackdrop}>
+          <View style={[styles.infoModalCard, styles.legalModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.legalModalHeader}>
+              <View>
+                <Text style={[styles.infoModalTitle, { color: '#0f6b78' }]}>{legalDocContent?.title || ''}</Text>
+                <Text style={[styles.legalModalMeta, { color: theme.muted }]}>
+                  {t('Version {version}', { version: legalDocContent?.version || '' })}
+                </Text>
+              </View>
+              <Pressable onPress={() => setLegalDocVisible(null)} style={[styles.legalModalClose, { borderColor: theme.border, backgroundColor: theme.inputBg }]}>
+                <Text style={[styles.legalModalCloseText, { color: theme.text }]}>{t('Close')}</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.infoModalBody} contentContainerStyle={styles.legalModalBodyContent} showsVerticalScrollIndicator={false}>
+              {(legalDocContent?.sections || []).map((section) => (
+                <View key={section.heading} style={[styles.legalSectionCard, { borderColor: theme.border, backgroundColor: theme.background }]}>
+                  <Text style={[styles.legalSectionTitle, { color: theme.text }]}>{section.heading}</Text>
+                  <Text style={[styles.legalSectionBody, { color: theme.muted }]}>{section.body}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       <Modal visible={privacyInfoVisible} transparent animationType="fade" onRequestClose={() => setPrivacyInfoVisible(false)}>
         <View style={styles.infoModalBackdrop}>
           <View style={[styles.infoModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -660,6 +781,51 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 18,
     maxHeight: '78%'
+  },
+  legalModalCard: {
+    maxHeight: '82%'
+  },
+  legalModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 12
+  },
+  legalModalMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  legalModalClose: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  legalModalCloseText: {
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  legalModalBodyContent: {
+    paddingBottom: 8,
+    gap: 12
+  },
+  legalSectionCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  legalSectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 6
+  },
+  legalSectionBody: {
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '500'
   },
   infoModalTitle: {
     textAlign: 'center',

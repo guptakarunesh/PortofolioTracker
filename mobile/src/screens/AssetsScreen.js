@@ -18,12 +18,10 @@ const CATEGORY_OPTIONS = [
   'Other Assets'
 ];
 
-const HOLDER_OPTIONS = ['Self', 'Joint', 'Either or Survivor', 'Nominee Tagged'];
 const REACH_OPTIONS = ['Branch', 'RM', 'Customer Care', 'Portal'];
 
 const blankForm = {
   category: CATEGORY_OPTIONS[0],
-  holder_type: HOLDER_OPTIONS[0],
   reach_via: REACH_OPTIONS[0],
   name: '',
   relationship_mobile: '',
@@ -68,7 +66,6 @@ export default function AssetsScreen({
   const [messageKind, setMessageKind] = useState('info');
   const [fieldErrors, setFieldErrors] = useState({});
   const [showCategoryOptions, setShowCategoryOptions] = useState(false);
-  const [showHolderOptions, setShowHolderOptions] = useState(false);
   const [showReachOptions, setShowReachOptions] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [revealVisible, setRevealVisible] = useState(false);
@@ -124,7 +121,6 @@ export default function AssetsScreen({
     setEditingId(null);
     setFieldErrors({});
     setShowCategoryOptions(false);
-    setShowHolderOptions(false);
     setShowReachOptions(false);
   };
 
@@ -154,7 +150,6 @@ export default function AssetsScreen({
     setEditingId(item.id);
     setForm({
       category: item.category || CATEGORY_OPTIONS[0],
-      holder_type: item.holder_type || HOLDER_OPTIONS[0],
       reach_via: item.reach_via || REACH_OPTIONS[0],
       name: item.institution || item.name || '',
       relationship_mobile: '',
@@ -165,7 +160,6 @@ export default function AssetsScreen({
       notes_for_family: ''
     });
     setShowCategoryOptions(false);
-    setShowHolderOptions(false);
     setShowReachOptions(false);
     setFieldErrors({});
     scrollToField();
@@ -264,7 +258,6 @@ export default function AssetsScreen({
       category: form.category,
       name: form.name.trim(),
       institution: form.name.trim(),
-      holder_type: form.holder_type,
       reach_via: form.reach_via,
       tracking_url: form.tracking_url?.trim() || '',
       current_value: Number(form.current_value || 0),
@@ -422,47 +415,6 @@ export default function AssetsScreen({
           editable={!readOnly}
         />
         {!!fieldErrors.name ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.name}</Text> : null}
-
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Holder Type')}</Text>
-        <Pressable
-          style={[
-            styles.dropdownTrigger,
-            { borderColor: theme.border, backgroundColor: theme.inputBg }
-          ]}
-          disabled={readOnly}
-          onPress={() => setShowHolderOptions((v) => !v)}
-        >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.holder_type || 'Holder Type')}</Text>
-          <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showHolderOptions ? '▲' : '▼'}</Text>
-        </Pressable>
-        {showHolderOptions ? (
-          <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            {HOLDER_OPTIONS.map((holderType) => (
-              <Pressable
-                key={holderType}
-                style={[
-                  styles.dropdownItem,
-                  { borderBottomColor: theme.border },
-                  form.holder_type === holderType && { backgroundColor: theme.accentSoft }
-                ]}
-                onPress={() => {
-                  setForm((f) => ({ ...f, holder_type: holderType }));
-                  setShowHolderOptions(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.dropdownItemText,
-                    { color: theme.text },
-                    form.holder_type === holderType && { color: theme.accent, fontWeight: '700' }
-                  ]}
-                >
-                  {t(holderType)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
 
         <Text style={[styles.label, { color: theme.muted }]}>{t('How to reach this institution')}</Text>
         <HelpLine
@@ -711,9 +663,6 @@ export default function AssetsScreen({
               </View>
             </View>
             <View style={styles.metaBlock}>
-              {hasInfo(item.holder_type) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Holder: {value}', { value: t(item.holder_type) })}</Text>
-              ) : null}
               {hasInfo(item.reach_via) ? (
                 <Text style={[styles.sub, { color: theme.muted }]}>{t('Reach via: {value}', { value: t(item.reach_via) })}</Text>
               ) : null}

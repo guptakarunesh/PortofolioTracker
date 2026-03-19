@@ -30,7 +30,6 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import PerformanceScreen from './src/screens/PerformanceScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import AccountScreen from './src/screens/AccountScreen';
-import LaunchScreen from './src/screens/LaunchScreen';
 import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import FamilyScreen from './src/screens/FamilyScreen';
 import OnboardingModal from './src/components/OnboardingModal';
@@ -52,6 +51,8 @@ const FX_SYMBOLS = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
 const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials_v1';
 const BIOMETRIC_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 3; // 3 days
 const AUTH_SESSION_TOKEN_KEY = 'auth_session_token_v1';
+const AUTH_INTRO_SEEN_KEY = 'auth_intro_seen_v1';
+const LAST_KNOWN_USER_MOBILE_KEY = 'last_known_user_mobile_v1';
 const ONBOARDING_SKIPPED_KEY = 'onboarding_skipped_v1';
 const REMINDER_NOTIFICATION_CACHE_KEY = 'reminder_notification_cache_v1';
 const BRAND_ICON = require('./src/assets/app-icon.png');
@@ -216,6 +217,50 @@ function SupportIcon({ stroke }) {
       />
       <Circle cx="12" cy="15.5" r="1.1" fill={stroke} />
       <Path d="M10.8 10.4a1.6 1.6 0 1 1 2.4 1.4c-.5.3-.9.8-.9 1.4v.2" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function LogoutIcon({ stroke }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M14 4h2.2A2.8 2.8 0 0 1 19 6.8v10.4A2.8 2.8 0 0 1 16.2 20H14"
+        stroke={stroke}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M10 16.5 14.5 12 10 7.5"
+        stroke={stroke}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path d="M14.2 12H5" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function NoLinkIcon({ stroke }) {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9.8 8.2 8.3 6.7a3.3 3.3 0 0 0-4.7 4.7l1.5 1.5a3.3 3.3 0 0 0 4.7 0l1.4-1.4"
+        stroke={stroke}
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="m14.2 15.8 1.5 1.5a3.3 3.3 0 1 0 4.7-4.7l-1.5-1.5a3.3 3.3 0 0 0-4.7 0l-1.4 1.4"
+        stroke={stroke}
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line x1="7" y1="17" x2="17" y2="7" stroke={stroke} strokeWidth={2.2} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -418,15 +463,14 @@ export default function App() {
   const isDarkTheme = themeKey === 'black';
   const [language, setLanguage] = useState('en');
   const t = React.useCallback((key, vars) => translate(language, key, vars), [language]);
-  const [launchVisible, setLaunchVisible] = useState(true);
-  const launchOpacity = React.useRef(new Animated.Value(1)).current;
-  const appOpacity = React.useRef(new Animated.Value(0)).current;
-  const launchTransitionStartedRef = React.useRef(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [user, setUser] = useState(null);
   const [sessionRestoring, setSessionRestoring] = useState(true);
+  const [authIntroSeen, setAuthIntroSeen] = useState(false);
+  const [authInitialExposureActive, setAuthInitialExposureActive] = useState(false);
+  const [lastKnownUserMobile, setLastKnownUserMobile] = useState('');
   const [hideSensitive, setHideSensitive] = useState(true);
   const [pinSetupRequired, setPinSetupRequired] = useState(false);
   const [pinSetupVisible, setPinSetupVisible] = useState(false);
@@ -878,22 +922,6 @@ export default function App() {
     [openReminderActionPopup, user]
   );
 
-  const finishLaunchTransition = React.useCallback(() => {
-    if (launchTransitionStartedRef.current) return;
-    launchTransitionStartedRef.current = true;
-    Animated.parallel([
-      Animated.timing(launchOpacity, { toValue: 0, duration: 1200, useNativeDriver: true }),
-      Animated.timing(appOpacity, { toValue: 1, duration: 1200, useNativeDriver: true })
-    ]).start(() => setLaunchVisible(false));
-  }, [appOpacity, launchOpacity]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      finishLaunchTransition();
-    }, 7000);
-    return () => clearTimeout(timer);
-  }, [finishLaunchTransition]);
-
   useEffect(() => {
     if (Platform.OS !== 'android') return;
     Notifications.setNotificationChannelAsync('reminders', {
@@ -997,7 +1025,19 @@ export default function App() {
     let cancelled = false;
     const bootstrapSession = async () => {
       try {
-        const savedToken = String((await SecureStore.getItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => null)) || '').trim();
+        const [savedTokenRaw, savedIntroSeenRaw, savedLastMobileRaw] = await Promise.all([
+          SecureStore.getItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => null),
+          SecureStore.getItemAsync(AUTH_INTRO_SEEN_KEY).catch(() => null),
+          SecureStore.getItemAsync(LAST_KNOWN_USER_MOBILE_KEY).catch(() => null)
+        ]);
+        const savedToken = String(savedTokenRaw || '').trim();
+        const savedIntroSeen = String(savedIntroSeenRaw || '').trim() === '1';
+        const savedLastMobile = String(savedLastMobileRaw || '').trim();
+        if (!cancelled) {
+          setAuthIntroSeen(savedIntroSeen);
+          setAuthInitialExposureActive(!savedIntroSeen);
+          setLastKnownUserMobile(savedLastMobile);
+        }
         if (!savedToken) {
           setAuthToken(null);
           return;
@@ -1066,7 +1106,13 @@ export default function App() {
   const handleAuthSuccess = async (payload, options = {}) => {
     setAuthToken(payload.token);
     await SecureStore.setItemAsync(AUTH_SESSION_TOKEN_KEY, String(payload?.token || '')).catch(() => {});
+    const resolvedMobile = String(payload?.user?.mobile || '').trim();
+    if (resolvedMobile) {
+      await SecureStore.setItemAsync(LAST_KNOWN_USER_MOBILE_KEY, resolvedMobile).catch(() => {});
+      setLastKnownUserMobile(resolvedMobile);
+    }
     setUser(payload.user);
+    setAuthInitialExposureActive(false);
     setAuthError('');
     setActiveTab('dashboard');
     setPinSetupVisible(false);
@@ -1168,6 +1214,9 @@ export default function App() {
     setAccessRole('admin');
     setAccountOwner(null);
     setIsAccountOwner(true);
+    setAuthInitialExposureActive(false);
+    setAuthIntroSeen(true);
+    await SecureStore.setItemAsync(AUTH_INTRO_SEEN_KEY, '1').catch(() => {});
     clearNativePhoneOtp();
   };
 
@@ -1507,6 +1556,10 @@ export default function App() {
     setPinSetupError('');
   };
   const roleLabel = String(accessRole || 'admin').toLowerCase() === 'admin' ? t('Admin') : t('Family');
+  const accountShortName = String(user?.full_name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)[0] || t('Account');
   const requestMainScroll = React.useCallback((targetY = 0) => {
     const scroller = contentScrollRef.current;
     if (!scroller || typeof scroller.scrollTo !== 'function') return;
@@ -1548,6 +1601,18 @@ export default function App() {
     setSupportChatLoading(false);
   }, [user?.id]);
 
+  useEffect(() => {
+    if (sessionRestoring || user || authIntroSeen) return;
+    setAuthIntroSeen(true);
+    SecureStore.setItemAsync(AUTH_INTRO_SEEN_KEY, '1').catch(() => {});
+  }, [authIntroSeen, sessionRestoring, user]);
+
+  const authLayoutVariant = authInitialExposureActive
+    ? 'fresh'
+    : biometricEnrolled || Boolean(lastKnownUserMobile)
+      ? 'returning'
+      : 'light-new';
+
   const mainContent = sessionRestoring ? (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
@@ -1576,22 +1641,58 @@ export default function App() {
           alwaysBounceVertical
         >
           <View style={styles.authHero}>
-            <View style={[styles.authHeroPanel, { backgroundColor: theme.accent }]}>
+            <View
+              style={[
+                styles.authHeroPanel,
+                authLayoutVariant === 'returning' && styles.authHeroPanelCompact,
+                authLayoutVariant === 'light-new' && styles.authHeroPanelLight,
+                { backgroundColor: theme.accent }
+              ]}
+            >
               <View style={styles.authHeroBlend}>
                 <View style={[styles.authHeroGlow, styles.authHeroGlowLeft, { backgroundColor: '#10b981' }]} />
                 <View style={[styles.authHeroGlow, styles.authHeroGlowRight, { backgroundColor: '#2563eb' }]} />
               </View>
-              <View style={styles.authHeroContent}>
+              <View
+                style={[
+                  styles.authHeroContent,
+                  authLayoutVariant === 'returning' && styles.authHeroContentCompact,
+                  authLayoutVariant === 'light-new' && styles.authHeroContentLight
+                ]}
+              >
                 <View style={[styles.authLogoBadge, styles.authHeroLogoBadge, { backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.24)' }]}>
                   <Image source={BRAND_ICON} style={styles.headerLogoLarge} resizeMode="cover" />
                 </View>
-                <Text style={styles.authHeroTitle}>{t('Take Control of Your Wealth')}</Text>
-                <Text style={styles.authHeroLead}>
-                  {t('Your wealth data stays private, encrypted, protected, and visible only to you.')}
+                <Text
+                  style={[
+                    styles.authHeroTitle,
+                    authLayoutVariant === 'returning' && styles.authHeroTitleCompact,
+                    authLayoutVariant === 'light-new' && styles.authHeroTitleLight
+                  ]}
+                >
+                  {authLayoutVariant === 'returning' ? t('Welcome Back') : t('Take Control of Your Wealth')}
+                </Text>
+                <Text style={[styles.authHeroLead, authLayoutVariant === 'light-new' && styles.authHeroLeadLight]}>
+                  {authLayoutVariant === 'returning'
+                    ? t('Encrypted, protected, and visible only to you.')
+                    : t('Your wealth data stays private, encrypted, protected, and visible only to you.')}
                 </Text>
               </View>
             </View>
           </View>
+          {authLayoutVariant !== 'returning' ? (
+            <View style={styles.authUspSection}>
+              <View style={[styles.authUspStrip, { backgroundColor: '#eef5ff', borderColor: '#c7dafc' }]}>
+                <View style={[styles.authUspIconChip, { backgroundColor: '#183b72' }]}>
+                  <NoLinkIcon stroke="#ffffff" />
+                </View>
+                <View style={styles.authUspCopy}>
+                  <Text style={styles.authUspTitle}>{t('No bank linking. No automatic data pulling.')}</Text>
+                  <Text style={styles.authUspBody}>{t('Track only what you choose, how you choose.')}</Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
           <View style={styles.authFormSection}>
             <AuthScreen
               onRegister={handleRegister}
@@ -1601,9 +1702,12 @@ export default function App() {
               biometricReady={biometricEnrolled}
               loading={authLoading}
               externalMessage={authError}
+              variant={authLayoutVariant}
+              initialMobile={lastKnownUserMobile}
             />
           </View>
-          <View style={styles.authAssuranceSection}>
+          {authLayoutVariant === 'fresh' ? (
+            <View style={styles.authAssuranceSection}>
             <View style={[styles.authAssuranceCard, styles.authAssuranceCardGlossy, { backgroundColor: '#eef5ff', borderColor: '#7db2ff' }]}>
               <View style={[styles.authAssuranceIconChip, styles.authAssuranceIconChipGlossy, { backgroundColor: '#2563eb' }]}>
                 <LockIcon stroke="#ffffff" />
@@ -1637,7 +1741,8 @@ export default function App() {
                 </Text>
               </View>
             </View>
-          </View>
+            </View>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1665,14 +1770,25 @@ export default function App() {
                 </View>
                 <View style={styles.accountMeta}>
                   <Text style={[styles.accountCapsuleText, { color: theme.text }]} numberOfLines={1}>
-                    {user.full_name || t('Account')}
+                    {accountShortName}
                   </Text>
                   <Text style={[styles.accountRoleText, { color: theme.accent }]}>{roleLabel}</Text>
                 </View>
                 <Text style={[styles.accountChevron, { color: theme.accent }]}>{'\u203A'}</Text>
               </AnimatedPressable>
-              <View style={[styles.headerLogoBadge, { backgroundColor: theme.background, borderColor: theme.border }]}>
-                <Image source={BRAND_ICON} style={styles.headerLogoCompact} resizeMode="cover" />
+              <View style={styles.headerBrandActions}>
+                <View style={[styles.headerLogoBadge, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                  <Image source={BRAND_ICON} style={styles.headerLogoCompact} resizeMode="cover" />
+                </View>
+                <Pressable
+                  style={[styles.headerLogoutButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                  onPress={() => handleLogout().catch(() => {})}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('Logout')}
+                  hitSlop={8}
+                >
+                  <LogoutIcon stroke={theme.accent} />
+                </Pressable>
               </View>
             </View>
             <View style={styles.headerActions}>
@@ -1913,7 +2029,7 @@ export default function App() {
       <LanguageContext.Provider value={{ language, setLanguage, t }}>
         <ThemeContext.Provider value={{ theme, themeKey, setThemeKey }}>
           <View style={{ flex: 1 }}>
-          <Animated.View style={{ flex: 1, opacity: appOpacity }}>{mainContent}</Animated.View>
+          <View style={{ flex: 1 }}>{mainContent}</View>
           <Modal visible={aiVisible} transparent animationType="fade">
           <View style={styles.modalBackdrop}>
             <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setAiVisible(false)} />
@@ -2136,11 +2252,6 @@ export default function App() {
             t={t}
             theme={theme}
           />
-          {launchVisible ? (
-            <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: launchOpacity }]}>
-              <LaunchScreen dark={isDarkTheme} onDone={finishLaunchTransition} />
-            </Animated.View>
-          ) : null}
           </View>
         </ThemeContext.Provider>
       </LanguageContext.Provider>
@@ -2208,11 +2319,11 @@ const styles = StyleSheet.create({
   },
   authHero: {
     paddingHorizontal: 16,
-    paddingTop: 10
+    paddingTop: 8
   },
   authHeroPanel: {
-    minHeight: 320,
-    borderRadius: 30,
+    minHeight: 242,
+    borderRadius: 24,
     overflow: 'hidden',
     position: 'relative',
     justifyContent: 'center'
@@ -2226,44 +2337,113 @@ const styles = StyleSheet.create({
     opacity: 0.36
   },
   authHeroGlowLeft: {
-    width: 240,
-    height: 240,
-    left: -40,
-    top: -25
+    width: 180,
+    height: 180,
+    left: -28,
+    top: -18
   },
   authHeroGlowRight: {
-    width: 300,
-    height: 300,
-    right: -90,
-    top: -30
+    width: 225,
+    height: 225,
+    right: -68,
+    top: -22
   },
   authHeroContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 34,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
     alignItems: 'center'
   },
+  authHeroPanelLight: {
+    minHeight: 208,
+    borderRadius: 22
+  },
+  authHeroPanelCompact: {
+    borderRadius: 22
+  },
+  authHeroContentLight: {
+    paddingVertical: 20
+  },
+  authHeroContentCompact: {
+    paddingVertical: 18
+  },
   authHeroLogoBadge: {
-    width: 108,
-    height: 108,
-    borderRadius: 54
+    width: 94,
+    height: 94,
+    borderRadius: 47
   },
   authHeroTitle: {
-    marginTop: 8,
+    marginTop: 6,
     color: '#ffffff',
     textAlign: 'center',
-    fontSize: 40,
-    lineHeight: 44,
+    fontSize: 31,
+    lineHeight: 35,
     fontWeight: '800',
-    letterSpacing: -1.2
+    letterSpacing: -0.9
+  },
+  authHeroTitleCompact: {
+    fontSize: 27,
+    lineHeight: 31
+  },
+  authHeroTitleLight: {
+    fontSize: 28,
+    lineHeight: 32
   },
   authHeroLead: {
-    marginTop: 18,
+    marginTop: 12,
     color: 'rgba(255,255,255,0.94)',
     textAlign: 'center',
-    fontSize: 20,
-    lineHeight: 29,
+    fontSize: 16,
+    lineHeight: 23,
     fontWeight: '500',
-    maxWidth: 320
+    maxWidth: 304
+  },
+  authHeroLeadLight: {
+    marginTop: 10,
+    fontSize: 15,
+    lineHeight: 21,
+    maxWidth: 290
+  },
+  authUspSection: {
+    paddingHorizontal: 22,
+    marginTop: 14
+  },
+  authUspStrip: {
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2
+  },
+  authUspIconChip: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0
+  },
+  authUspCopy: {
+    flex: 1
+  },
+  authUspTitle: {
+    color: '#183b72',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900'
+  },
+  authUspBody: {
+    marginTop: 4,
+    color: '#4f6282',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600'
   },
   authAssuranceSection: {
     paddingHorizontal: 22,
@@ -2399,6 +2579,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12
   },
+  headerBrandActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0
+  },
   headerLogoBadge: {
     width: 54,
     height: 54,
@@ -2412,6 +2598,19 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10
+  },
+  headerLogoutButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0b1b2b',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2
   },
   aiBtn: {
     borderWidth: 1,
@@ -2434,16 +2633,16 @@ const styles = StyleSheet.create({
     fontSize: 12
   },
   accountCapsule: {
-    minHeight: 56,
+    minHeight: 50,
     flex: 1,
     borderRadius: 18,
     borderWidth: 1,
     paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingVertical: 8,
     justifyContent: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     shadowColor: '#0b1b2b',
     shadowOpacity: 0.06,
     shadowRadius: 8,
@@ -2452,7 +2651,7 @@ const styles = StyleSheet.create({
   },
   accountCapsuleText: {
     fontWeight: '900',
-    fontSize: 13,
+    fontSize: 12,
     letterSpacing: 0.3
   },
   accountMeta: {
@@ -2460,22 +2659,22 @@ const styles = StyleSheet.create({
     minWidth: 0
   },
   accountRoleText: {
-    marginTop: 2,
-    fontSize: 11,
+    marginTop: 1,
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
     textTransform: 'uppercase'
   },
   accountChevron: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '800',
-    lineHeight: 24,
-    marginLeft: 4
+    lineHeight: 20,
+    marginLeft: 2
   },
   accountAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1
@@ -2483,7 +2682,7 @@ const styles = StyleSheet.create({
   accountAvatarText: {
     color: '#ffffff',
     fontWeight: '900',
-    fontSize: 16,
+    fontSize: 14,
     letterSpacing: 0.4
   },
   title: {

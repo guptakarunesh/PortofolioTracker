@@ -14,14 +14,15 @@ function inferExpoHost() {
 
 const inferredHost = inferExpoHost();
 const isProd = process.env.NODE_ENV === 'production';
+const PUBLIC_API_BASE_URL = 'https://portofoliotracker-preprod.onrender.com';
+const LOCAL_API_BASE_URL = inferredHost
+  ? `${isProd ? 'https' : 'http'}://${inferredHost}:4000`
+  : Platform.OS === 'android'
+    ? `${isProd ? 'https' : 'http'}://10.0.2.2:4000`
+    : `${isProd ? 'https' : 'http'}://localhost:4000`;
 
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ||
-  (inferredHost
-    ? `${isProd ? 'https' : 'http'}://${inferredHost}:4000`
-    : Platform.OS === 'android'
-      ? `${isProd ? 'https' : 'http'}://10.0.2.2:4000`
-      : `${isProd ? 'https' : 'http'}://localhost:4000`);
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || PUBLIC_API_BASE_URL;
+const PUBLIC_LEGAL_BASE_URL = PUBLIC_API_BASE_URL;
 const FIREBASE_RECAPTCHA_TOKEN = String(process.env.EXPO_PUBLIC_FIREBASE_RECAPTCHA_TOKEN || '').trim();
 
 let authToken = null;
@@ -75,6 +76,14 @@ export function getAuthToken() {
 }
 
 export const buildApiUrl = (path) => `${API_BASE_URL}${path}`;
+export const buildLegalUrl = (path) => {
+  const base =
+    /:\/\/(10\.0\.2\.2|localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL) ||
+    /:\/\/192\.168\.\d+\.\d+(:\d+)?$/i.test(API_BASE_URL)
+      ? PUBLIC_LEGAL_BASE_URL
+      : API_BASE_URL;
+  return `${base}${path}`;
+};
 
 async function extractErrorPayload(response) {
   const fallback = `Request failed (${response.status})`;

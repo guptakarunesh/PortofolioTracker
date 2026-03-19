@@ -105,7 +105,7 @@ export default function AuthScreen({
   loading = false,
   externalMessage = '',
   biometricReady = false,
-  variant = 'fresh',
+  variant = 'light-new',
   initialMobile = ''
 }) {
   const { theme } = useTheme();

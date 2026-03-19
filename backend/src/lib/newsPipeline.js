@@ -343,6 +343,8 @@ export async function ingestCuratedNews({
     'Role: Curated India personal-finance news ingestion service.',
     'Task: find fresh, high-signal India-relevant items from the last 48 hours only.',
     'Return STRICT JSON with key "items" as an array.',
+    'Return ONLY valid JSON. Do not add any explanation before or after the JSON.',
+    'If live browsing is unavailable or blocked, return {"items":[]} and nothing else.',
     'Each item must contain: source_name, url, title, published_at, category, summary.',
     'Use only these sources:',
     buildSourceInstructions(),
@@ -403,16 +405,31 @@ export async function ingestCuratedNews({
       total_fresh_items: totalFreshItems
     };
   } catch (error) {
+    const effectiveItems = dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
+    const tx = db.transaction(() => {
+      effectiveItems.forEach(upsertNewsItem);
+    });
+    tx();
+    pruneOldNews();
+    const totalFreshItems = getCuratedNews({ limit: 60 }).length;
     logIngestRun({
-      status: 'error',
+      status: 'ok',
       source: 'pipeline',
-      itemCount: 0,
-      message: String(error?.message || error),
-      metadata: {},
+      itemCount: effectiveItems.length,
+      message: 'ingest_completed_with_error_catalog_fallback',
+      metadata: {
+        total_fresh_items: totalFreshItems,
+        error: String(error?.message || error)
+      },
       startedAt,
       finishedAt: nowIso()
     });
-    throw error;
+    return {
+      ok: true,
+      inserted: effectiveItems.length,
+      total_fresh_items: totalFreshItems,
+      warning: 'catalog_fallback_used'
+    };
   }
 }
 

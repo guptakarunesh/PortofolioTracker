@@ -24,6 +24,48 @@ const CONSERVATIVE_RANGES = {
   'Other Assets': [0, 8]
 };
 
+const APPROVED_SOURCE_RULES = [
+  { label: 'Reuters', patterns: [/reuters/i, /reuters\.com/i] },
+  { label: 'The Economic Times', patterns: [/economic times/i, /economictimes\.com/i] },
+  { label: 'Moneycontrol', patterns: [/moneycontrol/i, /moneycontrol\.com/i] },
+  { label: 'Mint', patterns: [/\bmint\b/i, /livemint\.com/i] },
+  { label: 'Business Standard', patterns: [/business standard/i, /business-standard\.com/i] },
+  { label: 'RBI', patterns: [/\brbi\b/i, /rbi\.org\.in/i] },
+  { label: 'SEBI', patterns: [/\bsebi\b/i, /sebi\.gov\.in/i] },
+  { label: 'EPFO', patterns: [/\bepfo\b/i, /epfindia\.gov\.in/i] },
+  { label: 'PFRDA', patterns: [/\bpfrda\b/i, /pfrda\.org\.in/i] },
+  { label: 'PIB', patterns: [/\bpib\b/i, /pib\.gov\.in/i] }
+];
+
+const STALE_MONTH_MAP = {
+  jan: 0,
+  january: 0,
+  feb: 1,
+  february: 1,
+  mar: 2,
+  march: 2,
+  apr: 3,
+  april: 3,
+  may: 4,
+  jun: 5,
+  june: 5,
+  jul: 6,
+  july: 6,
+  aug: 7,
+  august: 7,
+  sep: 8,
+  sept: 8,
+  september: 8,
+  oct: 9,
+  october: 9,
+  nov: 10,
+  november: 10,
+  dec: 11,
+  december: 11
+};
+
+const NEWS_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
 function getUserSetting(userId, key) {
   const row = db
     .prepare('SELECT value FROM user_settings WHERE user_id = ? AND key = ? LIMIT 1')
@@ -45,6 +87,60 @@ function setUserSetting(userId, key, value) {
 
 function deleteUserSetting(userId, key) {
   db.prepare('DELETE FROM user_settings WHERE user_id = ? AND key = ?').run(userId, key);
+}
+
+function escapeRegex(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function detectApprovedSource(bullet = '') {
+  return APPROVED_SOURCE_RULES.find((rule) => rule.patterns.some((pattern) => pattern.test(String(bullet || '')))) || null;
+}
+
+function collectBulletDates(text = '') {
+  const raw = String(text || '');
+  const dates = [];
+  const pushDate = (year, monthIndex, day) => {
+    const dt = new Date(Date.UTC(Number(year), Number(monthIndex), Number(day), 12, 0, 0));
+    if (!Number.isNaN(dt.getTime())) dates.push(dt);
+  };
+
+  for (const match of raw.matchAll(/\b(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})\b/g)) {
+    const monthIndex = STALE_MONTH_MAP[String(match[2] || '').toLowerCase()];
+    if (monthIndex != null) pushDate(match[3], monthIndex, match[1]);
+  }
+  for (const match of raw.matchAll(/\b([A-Za-z]{3,9})\s+(\d{1,2})[,\-\s]+(\d{4})\b/g)) {
+    const monthIndex = STALE_MONTH_MAP[String(match[1] || '').toLowerCase()];
+    if (monthIndex != null) pushDate(match[3], monthIndex, match[2]);
+  }
+  for (const match of raw.matchAll(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b/g)) {
+    pushDate(match[3], Number(match[2]) - 1, match[1]);
+  }
+
+  return dates;
+}
+
+function isBulletFreshEnough(bullet = '', now = Date.now()) {
+  const dates = collectBulletDates(bullet);
+  if (!dates.length) return true;
+  return dates.every((date) => now - date.getTime() <= NEWS_MAX_AGE_MS);
+}
+
+function sanitizeGeneratedBullets(rawBullets = [], fallbackReason = 'Live 48h news is currently unavailable.') {
+  const fallbackBullets = unavailableNewsBullets(fallbackReason);
+  const now = Date.now();
+
+  return rawBullets.slice(0, 5).map((bullet, index) => {
+    const text = String(bullet || '').trim();
+    const source = detectApprovedSource(text);
+    const usesLegacyTone = /\b(wallet impact|bullish|bearish|neutral)\b/i.test(text);
+    const freshEnough = isBulletFreshEnough(text, now);
+    const hasSourceSegment = /\bsource:\s*[^-]+-\s*https?:\/\//i.test(text);
+    if (!text || !source || usesLegacyTone || !freshEnough || !hasSourceSegment) {
+      return fallbackBullets[index] || fallbackBullets[0];
+    }
+    return text;
+  });
 }
 
 function normalizeCountry(value = '') {
@@ -211,6 +307,10 @@ async function callOpenAI({
               "- Focus on last 48 hours only.\n" +
               "- Never mention or imply news older than 48 hours.\n" +
               "- If recent news cannot be verified, clearly say live 48h news is unavailable.\n" +
+              "- Use only these preferred sources when citing news: Reuters, The Economic Times, Moneycontrol, Mint, Business Standard, RBI, SEBI, EPFO, PFRDA, PIB.\n" +
+              "- Prefer RBI, SEBI, EPFO, PFRDA, and PIB for rule changes or official announcements.\n" +
+              "- Prefer Reuters for fast macro, banking, metals, and market-moving updates.\n" +
+              "- Prefer Economic Times, Moneycontrol, Mint, and Business Standard for retail-friendly India coverage.\n" +
               "- Output STRICT JSON (no markdown) with keys: bullets (array), disclaimer (string), as_of (ISO-8601 string).\n" +
               "- Output EXACTLY 5 bullets.\n" +
               "- Each bullet must be max 42 words.\n" +
@@ -299,7 +399,11 @@ async function callOpenAI({
   const disclaimer = typeof out?.disclaimer === 'string' ? out.disclaimer : '';
   const asOf = typeof out?.as_of === 'string' ? out.as_of : nowIso();
 
-  return { bullets, disclaimer, as_of: asOf };
+  return {
+    bullets: sanitizeGeneratedBullets(bullets),
+    disclaimer,
+    as_of: asOf
+  };
 }
 
 function unavailableNewsBullets(reason = 'Live news fetch unavailable right now.') {

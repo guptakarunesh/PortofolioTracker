@@ -21,6 +21,35 @@ function safeJsonParse(raw, fallback = null) {
   }
 }
 
+function extractJsonCandidate(text = '') {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return String(fenced[1]).trim();
+
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start >= 0 && end > start) return raw.slice(start, end + 1);
+
+  const arrStart = raw.indexOf('[');
+  const arrEnd = raw.lastIndexOf(']');
+  if (arrStart >= 0 && arrEnd > arrStart) return `{"items":${raw.slice(arrStart, arrEnd + 1)}}`;
+
+  return raw;
+}
+
+function parseStrictOrRecoveredJson(text = '') {
+  const direct = safeJsonParse(text, null);
+  if (direct && typeof direct === 'object') return direct;
+
+  const candidate = extractJsonCandidate(text);
+  const recovered = safeJsonParse(candidate, null);
+  if (recovered && typeof recovered === 'object') return recovered;
+
+  throw new Error(`Model output was not valid JSON: ${String(text || '').slice(0, 160)}`);
+}
+
 function normalizeWhitespace(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
@@ -232,7 +261,7 @@ async function callOpenAIResponses({ apiKey, model, useWebSearch, promptText, co
   if (!outputText) {
     throw new Error('OpenAI response missing output text');
   }
-  return JSON.parse(outputText);
+  return parseStrictOrRecoveredJson(outputText);
 }
 
 function normalizeIngestedItem(rawItem = {}) {
@@ -329,6 +358,18 @@ export async function ingestCuratedNews({
     `Country focus: ${country}`
   ].join('\n');
 
+  const fallbackCatalog = CURATED_NEWS_SOURCES.flatMap((source) =>
+    source.categories.map((categoryKey) => ({
+      source_key: source.key,
+      source_name: source.name,
+      url: `https://${source.domains[0]}`,
+      title: `${source.name} latest update feed`,
+      published_at: nowIso(),
+      category: categoryKey,
+      summary: `Use ${source.name} for recent ${categoryByKey(categoryKey).label.toLowerCase()} developments when live article extraction is unavailable.`
+    }))
+  );
+
   try {
     const out = await callOpenAIResponses({
       apiKey,
@@ -340,8 +381,9 @@ export async function ingestCuratedNews({
 
     const rawItems = Array.isArray(out?.items) ? out.items : [];
     const normalized = dedupeItems(rawItems.map(normalizeIngestedItem).filter(Boolean));
+    const effectiveItems = normalized.length ? normalized : dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
     const tx = db.transaction(() => {
-      normalized.forEach(upsertNewsItem);
+      effectiveItems.forEach(upsertNewsItem);
     });
     tx();
     pruneOldNews();
@@ -349,15 +391,15 @@ export async function ingestCuratedNews({
     logIngestRun({
       status: 'ok',
       source: 'pipeline',
-      itemCount: normalized.length,
-      message: 'ingest_completed',
-      metadata: { total_fresh_items: totalFreshItems },
+      itemCount: effectiveItems.length,
+      message: normalized.length ? 'ingest_completed' : 'ingest_completed_with_catalog_fallback',
+      metadata: { total_fresh_items: totalFreshItems, model_items: normalized.length },
       startedAt,
       finishedAt: nowIso()
     });
     return {
       ok: true,
-      inserted: normalized.length,
+      inserted: effectiveItems.length,
       total_fresh_items: totalFreshItems
     };
   } catch (error) {

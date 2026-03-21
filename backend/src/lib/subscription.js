@@ -7,6 +7,30 @@ export function fetchSubscription(userId) {
   return db.prepare('SELECT * FROM subscriptions WHERE user_id = ?').get(userId);
 }
 
+export function upsertSubscriptionState({
+  userId,
+  plan = 'none',
+  status = 'expired',
+  startedAt = null,
+  currentPeriodEnd = null,
+  provider = null,
+  updatedAt = new Date().toISOString()
+}) {
+  db.prepare(`
+    INSERT INTO subscriptions (user_id, plan, status, started_at, current_period_end, provider, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      plan=excluded.plan,
+      status=excluded.status,
+      started_at=excluded.started_at,
+      current_period_end=excluded.current_period_end,
+      provider=excluded.provider,
+      updated_at=excluded.updated_at
+  `).run(userId, plan, status, startedAt, currentPeriodEnd, provider, updatedAt);
+
+  return fetchSubscription(userId);
+}
+
 export function ensureSubscriptionForUser(userId) {
   const existing = fetchSubscription(userId);
   if (existing) return existing;

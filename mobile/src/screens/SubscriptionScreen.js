@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, BackHandler, ScrollView, Platform, Linking, Modal } from 'react-native';
 import { WebView } from 'react-native-webview';
 import SectionCard from '../components/SectionCard';
@@ -6,6 +6,7 @@ import PillButton from '../components/PillButton';
 import { api } from '../api/client';
 import { formatDate } from '../utils/format';
 import { startCheckout, verifyCheckout } from '../payments';
+import { deriveGooglePlayOfferToken, initGooglePlayBilling } from '../payments/googlePlay';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -51,6 +52,7 @@ function formatStatusLabel(status) {
 function formatProviderLabel(provider) {
   const value = String(provider || '').trim().toLowerCase();
   if (!value || value === '-') return '-';
+  if (value === 'google_play') return 'Google Play';
   if (value === 'cashfree') return 'Cashfree';
   if (value === 'razorpay') return 'Razorpay';
   if (value === 'trial') return 'Trial';
@@ -94,14 +96,165 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState('');
   const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [googlePlayConfig, setGooglePlayConfig] = useState(null);
+  const [googlePlayReady, setGooglePlayReady] = useState(false);
+  const [googlePlayProducts, setGooglePlayProducts] = useState([]);
+  const [googlePlayBusy, setGooglePlayBusy] = useState(false);
+  const [googlePlayMode, setGooglePlayMode] = useState('inactive');
+  const billingSessionRef = useRef(null);
+  const googlePlayProductMap = googlePlayConfig?.productMap || {};
+  const googlePlayProductIds = useMemo(
+    () => Array.from(new Set(Object.values(googlePlayProductMap || {}).map((value) => String(value || '').trim()).filter(Boolean))),
+    [googlePlayProductMap]
+  );
+  const googlePlayProductsById = useMemo(
+    () => Object.fromEntries((googlePlayProducts || []).map((product) => [String(product?.id || ''), product])),
+    [googlePlayProducts]
+  );
+
+  const planDisplayPrice = (planKey) => {
+    const productId = String(googlePlayProductMap?.[planKey] || '').trim();
+    const product = productId ? googlePlayProductsById?.[productId] : null;
+    return String(product?.displayPrice || '').trim() || PLANS[planKey]?.price || '';
+  };
 
   const load = async () => {
     const payload = await api.getSubscriptionStatus();
     setStatus(payload);
   };
 
+  const refreshGooglePlayServerState = async (purchaseToken = '') => {
+    if (Platform.OS !== 'android' || !googlePlayConfig?.enabled) return null;
+    try {
+      return await api.syncGooglePlaySubscriptions(
+        purchaseToken ? { purchase_token: purchaseToken } : {}
+      );
+    } catch (_e) {
+      return null;
+    }
+  };
+
+  const handleGooglePlayPurchase = async (purchase) => {
+    const purchaseToken = String(purchase?.purchaseToken || '').trim();
+    const productId = String(purchase?.productId || '').trim();
+    if (!purchaseToken || !productId) {
+      setMessage(t('Google Play purchase is missing required token details.'));
+      return;
+    }
+
+    setGooglePlayBusy(true);
+    setMessage(t('Verifying Google Play purchase...'));
+    try {
+      const verified = await api.verifyGooglePlaySubscription({
+        product_id: productId,
+        purchase_token: purchaseToken
+      });
+      await billingSessionRef.current?.finishPurchase?.(purchase);
+      setReceipt({
+        orderId: verified?.latest_order_id || purchaseToken,
+        plan: verified?.plan || Object.entries(googlePlayProductMap || {}).find(([, mapped]) => String(mapped || '') === productId)?.[0] || '',
+        status: verified?.status || 'success',
+        currentPeriodEnd: verified?.current_period_end || null,
+        provider: 'google_play'
+      });
+      setSuccessModalVisible(true);
+      setMessage(t('Google Play purchase verified. Refreshing plan status...'));
+      await refreshGooglePlayServerState(purchaseToken);
+      await load();
+      onPurchased?.();
+    } catch (error) {
+      setMessage(error?.message || t('Could not verify Google Play purchase. Try restoring purchases once.'));
+    } finally {
+      setGooglePlayBusy(false);
+    }
+  };
+
+  const restoreGooglePlayPurchases = async () => {
+    if (!billingSessionRef.current?.getAvailablePurchases) return;
+    setGooglePlayBusy(true);
+    setMessage(t('Checking Google Play purchases...'));
+    try {
+      const purchases = await billingSessionRef.current.getAvailablePurchases();
+      const relevant = (purchases || []).filter((purchase) =>
+        googlePlayProductIds.includes(String(purchase?.productId || '').trim())
+      );
+      if (!relevant.length) {
+        await refreshGooglePlayServerState();
+        await load();
+        setMessage(t('No active Google Play purchases were found for this account.'));
+        return;
+      }
+      for (const purchase of relevant) {
+        await handleGooglePlayPurchase(purchase);
+      }
+      await refreshGooglePlayServerState();
+      await load();
+    } catch (error) {
+      setMessage(error?.message || t('Could not restore Google Play purchases right now.'));
+    } finally {
+      setGooglePlayBusy(false);
+    }
+  };
+
   useEffect(() => {
-    load().catch((e) => setMessage(e.message));
+    let mounted = true;
+
+    const initialize = async () => {
+      try {
+        await load();
+      } catch (e) {
+        if (mounted) setMessage(e.message);
+      }
+
+      if (Platform.OS !== 'android') return;
+
+      try {
+        const config = await api.getGooglePlaySubscriptionConfig();
+        if (!mounted) return;
+        setGooglePlayConfig(config);
+        if (!config?.enabled) {
+          setGooglePlayMode(config?.allowWebFallback ? 'web_fallback' : 'unavailable');
+          return;
+        }
+
+        const session = await initGooglePlayBilling({
+          onPurchaseSuccess: handleGooglePlayPurchase,
+          onPurchaseError: (error) => {
+            if (!mounted) return;
+            setGooglePlayBusy(false);
+            setMessage(error?.message || t('Google Play purchase was not completed.'));
+          }
+        });
+        if (!mounted) {
+          await session?.end?.();
+          return;
+        }
+        billingSessionRef.current = session;
+        if (!session?.available) {
+          setGooglePlayMode(config?.allowWebFallback ? 'web_fallback' : 'unavailable');
+          return;
+        }
+        setGooglePlayReady(true);
+        setGooglePlayMode('google_play');
+        const products = await session.fetchSubscriptions(Object.values(config?.productMap || {}));
+        if (mounted) setGooglePlayProducts(products || []);
+        await refreshGooglePlayServerState();
+        await load();
+      } catch (error) {
+        if (!mounted) return;
+        setGooglePlayMode('unavailable');
+        setMessage(error?.message || t('Google Play Billing could not be initialized on this device.'));
+      }
+    };
+
+    initialize();
+
+    return () => {
+      mounted = false;
+      const session = billingSessionRef.current;
+      billingSessionRef.current = null;
+      session?.end?.().catch?.(() => {});
+    };
   }, []);
 
   useEffect(() => {
@@ -253,6 +406,37 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
     setPendingOrder(null);
     setReceipt(null);
     setManualVerifyVisible(false);
+
+    const playProductId = String(googlePlayProductMap?.[plan] || '').trim();
+    if (Platform.OS === 'android' && playProductId) {
+      if (googlePlayReady && billingSessionRef.current?.requestSubscription) {
+        setGooglePlayBusy(true);
+        try {
+          const currentPurchaseToken =
+            String(status?.provider_details?.product_id || '') === playProductId
+              ? String(status?.provider_details?.purchase_token || '').trim()
+              : '';
+          const offerToken = deriveGooglePlayOfferToken(googlePlayProductsById?.[playProductId]);
+          await billingSessionRef.current.requestSubscription({
+            productId: playProductId,
+            obfuscatedAccountId: user?.id ? `user_${user.id}` : undefined,
+            currentPurchaseToken,
+            offerToken
+          });
+          setMessage(t('Complete the Google Play purchase to continue.'));
+          return;
+        } catch (error) {
+          setGooglePlayBusy(false);
+          if (googlePlayConfig?.allowWebFallback !== true) {
+            throw error;
+          }
+          setMessage(t('Google Play Billing is unavailable here. Falling back to test checkout.'));
+        }
+      } else if (googlePlayMode === 'unavailable' && googlePlayConfig?.allowWebFallback !== true) {
+        throw new Error(t('Google Play Billing is required on Android for subscriptions in this build.'));
+      }
+    }
+
     const outcome = await startCheckout(plan, {
       user,
       fallback: async () => {
@@ -454,6 +638,34 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
         {status?.current_period_end ? (
           <Text style={[styles.subtle, { color: theme.muted }]}>{t('Expires: {date}', { date: formatDate(status.current_period_end) })}</Text>
         ) : null}
+        {status?.provider ? (
+          <Text style={[styles.subtle, { color: theme.muted }]}>
+            {t('Provider: {value}', { value: t(formatProviderLabel(status.provider)) })}
+          </Text>
+        ) : null}
+        {status?.provider_details?.provider_state ? (
+          <Text style={[styles.subtle, { color: theme.muted }]}>
+            {t('Store status: {value}', { value: String(status.provider_details.provider_state).replace(/_/g, ' ') })}
+          </Text>
+        ) : null}
+        {status?.provider === 'google_play' && status?.provider_details?.auto_renew_enabled === false ? (
+          <Text style={[styles.subtle, { color: theme.muted }]}>
+            {t('Auto-renew is off. Access continues until the current end date unless Google Play changes it earlier.')}
+          </Text>
+        ) : null}
+        {status?.provider_details?.manage_url ? (
+          <View style={styles.pendingActions}>
+            <PillButton label={t('Manage in Play Store')} kind="ghost" onPress={() => Linking.openURL(status.provider_details.manage_url).catch(() => {})} />
+            {Platform.OS === 'android' ? (
+              <PillButton
+                label={googlePlayBusy ? t('Refreshing...') : t('Refresh Play Status')}
+                kind="ghost"
+                disabled={googlePlayBusy}
+                onPress={() => restoreGooglePlayPurchases()}
+              />
+            ) : null}
+          </View>
+        ) : null}
       </SectionCard>
 
       <SectionCard title={t('What You Get')}>
@@ -474,6 +686,15 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
         <Text style={[styles.subtle, { color: theme.muted }]}>
           {t('Current active plan: {value}', { value: t(formatPlanLabel(status?.plan)) })}
         </Text>
+        {Platform.OS === 'android' && googlePlayConfig?.enabled ? (
+          <Text style={[styles.subtle, { color: theme.muted }]}>
+            {googlePlayMode === 'google_play'
+              ? t('Android subscriptions are handled through Google Play for trusted billing, renewal, cancellation, and refund status updates.')
+              : googlePlayConfig?.allowWebFallback
+                ? t('Google Play Billing is unavailable on this build. Internal fallback checkout is enabled for testing only.')
+                : t('Google Play Billing is required on Android for this subscription flow.')}
+          </Text>
+        ) : null}
         <View style={styles.planGrid}>
           <View style={[styles.planCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <Text style={[styles.planTitle, { color: theme.text }]}>{t('Basic')}</Text>
@@ -482,7 +703,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 {t('Active variant: {value}', { value: t(resolveTierVariant(status, 'basic')) })}
               </Text>
             ) : null}
-            <Text style={[styles.planPrice, { color: theme.accent }]}>{t(PLANS.basic_monthly.price)}</Text>
+            <Text style={[styles.planPrice, { color: theme.accent }]}>{t(planDisplayPrice('basic_monthly'))}</Text>
             <Text style={[styles.planNote, { color: theme.muted }]}>{t('Best for tracking essentials.')}</Text>
             <PillButton
               kind={basicMonthlyActive ? 'status' : 'ghost'}
@@ -490,7 +711,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
               label={basicMonthlyActive ? t('Active - Monthly') : t('Buy Monthly')}
               onPress={() => purchase('basic_monthly').catch((e) => setMessage(e.message))}
             />
-            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{t(PLANS.basic_yearly.price)}</Text>
+            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{t(planDisplayPrice('basic_yearly'))}</Text>
             <View style={styles.discountRow}>
               <Text style={[styles.discountBadge, { backgroundColor: theme.accentSoft, color: theme.accent }]}>
                 {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.basic.monthly, PLAN_META.basic.yearly) })}
@@ -510,7 +731,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 {t('Active variant: {value}', { value: t(resolveTierVariant(status, 'premium')) })}
               </Text>
             ) : null}
-            <Text style={[styles.planPrice, { color: theme.accent }]}>{t(PLANS.premium_monthly.price)}</Text>
+            <Text style={[styles.planPrice, { color: theme.accent }]}>{t(planDisplayPrice('premium_monthly'))}</Text>
             <Text style={[styles.planNote, { color: theme.muted }]}>{t('Unlock targets, reminders, and net worth trend.')}</Text>
             <PillButton
               kind={premiumMonthlyActive ? 'status' : 'ghost'}
@@ -518,7 +739,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
               label={premiumMonthlyActive ? t('Active - Monthly') : t('Buy Monthly')}
               onPress={() => purchase('premium_monthly').catch((e) => setMessage(e.message))}
             />
-            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{t(PLANS.premium_yearly.price)}</Text>
+            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{t(planDisplayPrice('premium_yearly'))}</Text>
             <View style={styles.discountRow}>
               <Text style={[styles.discountBadge, { backgroundColor: theme.accentSoft, color: theme.accent }]}>
                 {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.premium.monthly, PLAN_META.premium.yearly) })}

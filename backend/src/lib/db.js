@@ -576,6 +576,32 @@ CREATE TABLE IF NOT EXISTS payment_checkout_sessions (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS store_subscription_receipts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  provider TEXT NOT NULL,
+  package_name TEXT,
+  plan TEXT,
+  product_id TEXT NOT NULL,
+  purchase_token TEXT NOT NULL UNIQUE,
+  linked_purchase_token TEXT,
+  latest_order_id TEXT,
+  subscription_state TEXT,
+  local_status TEXT,
+  acknowledgement_state TEXT,
+  auto_renew_enabled INTEGER,
+  expiry_time TEXT,
+  started_at TEXT,
+  cancellation_reason TEXT,
+  is_test_purchase INTEGER NOT NULL DEFAULT 0,
+  raw_payload TEXT,
+  line_item_payload TEXT,
+  last_verified_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS app_notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -799,6 +825,11 @@ CREATE INDEX IF NOT EXISTS idx_payment_history_user_id ON payment_history(user_i
 CREATE INDEX IF NOT EXISTS idx_payment_history_time ON payment_history(purchased_at);
 CREATE INDEX IF NOT EXISTS idx_checkout_sessions_user_id ON payment_checkout_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_checkout_sessions_order_id ON payment_checkout_sessions(order_id);
+CREATE INDEX IF NOT EXISTS idx_store_receipts_user_id ON store_subscription_receipts(user_id);
+CREATE INDEX IF NOT EXISTS idx_store_receipts_provider ON store_subscription_receipts(provider);
+CREATE INDEX IF NOT EXISTS idx_store_receipts_product_id ON store_subscription_receipts(product_id);
+CREATE INDEX IF NOT EXISTS idx_store_receipts_order_id ON store_subscription_receipts(latest_order_id);
+CREATE INDEX IF NOT EXISTS idx_store_receipts_verified_at ON store_subscription_receipts(last_verified_at);
 CREATE INDEX IF NOT EXISTS idx_family_owner_user_id ON family_members(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_family_member_user_id ON family_members(member_user_id);
 CREATE INDEX IF NOT EXISTS idx_family_invites_owner_user_id ON family_invites(owner_user_id);

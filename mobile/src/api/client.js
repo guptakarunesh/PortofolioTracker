@@ -300,6 +300,12 @@ export const api = {
   getSubscriptionStatus: () => apiRequest('/api/subscription/status'),
   getSubscriptionHistory: () => apiRequest('/api/subscription/history'),
   getSubscriptionReceipt: (id) => apiRequest(`/api/subscription/history/${encodeURIComponent(id)}/receipt`),
+  getGooglePlaySubscriptionConfig: () => apiRequest('/api/subscription/google-play/config'),
+  verifyGooglePlaySubscription: (payload) =>
+    apiRequest('/api/subscription/google-play/verify', { method: 'POST', body: JSON.stringify(payload) }),
+  syncGooglePlaySubscriptions: (payload = {}) =>
+    apiRequest('/api/subscription/google-play/sync', { method: 'POST', body: JSON.stringify(payload) }),
+  cancelGooglePlaySubscription: () => apiRequest('/api/subscription/google-play/cancel', { method: 'POST' }),
   createCashfreeOrder: (payload) =>
     apiRequest('/api/subscription/cashfree/order', { method: 'POST', body: JSON.stringify(payload) }),
   verifyCashfreePayment: (payload) =>
@@ -317,5 +323,6 @@ export const api = {
   getSupportChatHistory: (limit = 500) =>
     apiRequest(`/api/auth/support-chat/history?limit=${encodeURIComponent(Math.max(1, Number(limit || 500)))}`),
 
-  getAiInsights: () => apiRequest('/api/ai/insights')
+  getAiInsights: (options = {}) =>
+    apiRequest(`/api/ai/insights${options?.forceRefresh ? '?force_refresh=1' : ''}`)
 };

@@ -4,11 +4,22 @@ import {
   ensureSubscriptionForUser,
   fetchSubscription,
   getSubscriptionLimits,
-  isSubscriptionActive
+  isSubscriptionActive,
+  upsertSubscriptionState
 } from '../lib/subscription.js';
 import { createCheckoutSession } from '../lib/payments.js';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../lib/razorpay.js';
 import { createCashfreeOrder, verifyCashfreeOrderPaid } from '../lib/cashfree.js';
+import {
+  acknowledgeGooglePlaySubscription,
+  buildGooglePlayManageUrl,
+  cancelGooglePlaySubscription,
+  getGooglePlayPublicConfig,
+  resolveGooglePlayProductIdForPlan,
+  resolvePlanForGooglePlayProduct,
+  revokeGooglePlaySubscription,
+  verifyGooglePlaySubscription
+} from '../lib/googlePlayBilling.js';
 
 const router = Router();
 
@@ -259,10 +270,215 @@ const getCheckoutSessionByOrder = db.prepare(
 const markCheckoutSessionVerified = db.prepare(
   `UPDATE payment_checkout_sessions SET status = 'verified', updated_at = ? WHERE order_id = ?`
 );
+const upsertStoreReceipt = db.prepare(`
+  INSERT INTO store_subscription_receipts (
+    user_id, provider, package_name, plan, product_id, purchase_token, linked_purchase_token, latest_order_id,
+    subscription_state, local_status, acknowledgement_state, auto_renew_enabled, expiry_time, started_at,
+    cancellation_reason, is_test_purchase, raw_payload, line_item_payload, last_verified_at, created_at, updated_at
+  ) VALUES (?, 'google_play', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(purchase_token) DO UPDATE SET
+    user_id=excluded.user_id,
+    package_name=excluded.package_name,
+    plan=excluded.plan,
+    product_id=excluded.product_id,
+    linked_purchase_token=excluded.linked_purchase_token,
+    latest_order_id=excluded.latest_order_id,
+    subscription_state=excluded.subscription_state,
+    local_status=excluded.local_status,
+    acknowledgement_state=excluded.acknowledgement_state,
+    auto_renew_enabled=excluded.auto_renew_enabled,
+    expiry_time=excluded.expiry_time,
+    started_at=excluded.started_at,
+    cancellation_reason=excluded.cancellation_reason,
+    is_test_purchase=excluded.is_test_purchase,
+    raw_payload=excluded.raw_payload,
+    line_item_payload=excluded.line_item_payload,
+    last_verified_at=excluded.last_verified_at,
+    updated_at=excluded.updated_at
+`);
+const getLatestStoreReceiptForUser = db.prepare(
+  `SELECT * FROM store_subscription_receipts WHERE user_id = ? AND provider = 'google_play' ORDER BY last_verified_at DESC, updated_at DESC LIMIT 1`
+);
+const getStoreReceiptByToken = db.prepare(
+  `SELECT * FROM store_subscription_receipts WHERE purchase_token = ? OR linked_purchase_token = ? LIMIT 1`
+);
+const getUserStoreReceipts = db.prepare(
+  `SELECT * FROM store_subscription_receipts WHERE user_id = ? AND provider = 'google_play' ORDER BY last_verified_at DESC, updated_at DESC`
+);
+const getPaymentHistoryByProviderTxn = db.prepare(
+  `SELECT id FROM payment_history WHERE provider = ? AND provider_txn_id = ? LIMIT 1`
+);
+const insertPaymentHistory = db.prepare(`
+  INSERT INTO payment_history (
+    user_id, plan, amount_inr, period, provider, provider_txn_id, purchased_at, valid_until, status
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+function parseGoogleAccountUserId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const normalized = raw.startsWith('user_') ? raw.slice(5) : raw;
+  const id = Number(normalized);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function buildGooglePlayStatusSummary(receipt) {
+  if (!receipt) return null;
+  return {
+    provider: 'google_play',
+    product_id: receipt.product_id || null,
+    purchase_token: receipt.purchase_token || null,
+    latest_order_id: receipt.latest_order_id || null,
+    provider_state: receipt.subscription_state || null,
+    auto_renew_enabled: receipt.auto_renew_enabled === null || receipt.auto_renew_enabled === undefined ? null : Boolean(receipt.auto_renew_enabled),
+    cancellation_reason: receipt.cancellation_reason || null,
+    manage_url: receipt.product_id ? buildGooglePlayManageUrl(receipt.product_id) : null,
+    last_verified_at: receipt.last_verified_at || null
+  };
+}
+
+function maybeRecordGooglePlayHistory({ userId, plan, verification, providerTxnId }) {
+  const txnId = String(providerTxnId || '').trim();
+  if (!txnId || !userId || !plan) return;
+  const existing = getPaymentHistoryByProviderTxn.get('google_play', txnId);
+  if (existing?.id) return;
+  const config = PLAN_CONFIG[plan];
+  insertPaymentHistory.run(
+    userId,
+    plan,
+    config?.amount || 0,
+    config?.period || 'subscription',
+    'google_play',
+    txnId,
+    verification.startTime || nowIso(),
+    verification.expiryTime || nowIso(),
+    verification.localStatus || 'active'
+  );
+}
+
+function persistGooglePlayVerification({ userId, plan, purchaseToken, verification }) {
+  const verifiedAt = nowIso();
+  upsertStoreReceipt.run(
+    userId,
+    verification.packageName || null,
+    plan,
+    verification.productId,
+    purchaseToken,
+    verification.linkedPurchaseToken || null,
+    verification.latestOrderId || null,
+    verification.subscriptionState || null,
+    verification.localStatus || 'expired',
+    verification.acknowledgementState || null,
+    verification.autoRenewEnabled === null || verification.autoRenewEnabled === undefined ? null : verification.autoRenewEnabled ? 1 : 0,
+    verification.expiryTime || null,
+    verification.startTime || null,
+    verification.cancellationReason || null,
+    verification.isTestPurchase ? 1 : 0,
+    JSON.stringify(verification.raw || {}),
+    JSON.stringify(verification.lineItem || {}),
+    verifiedAt,
+    verifiedAt,
+    verifiedAt
+  );
+
+  const current = fetchSubscription(userId);
+  const shouldReplaceEntitlement =
+    verification.localStatus === 'active' ||
+    verification.localStatus === 'pending' ||
+    verification.localStatus === 'on_hold' ||
+    verification.localStatus === 'paused' ||
+    current?.provider === 'google_play' ||
+    current?.plan === plan;
+
+  if (shouldReplaceEntitlement) {
+    upsertSubscriptionState({
+      userId,
+      plan: verification.localStatus === 'expired' ? plan : plan,
+      status: verification.localStatus || 'expired',
+      startedAt: verification.startTime || current?.started_at || verifiedAt,
+      currentPeriodEnd: verification.expiryTime || current?.current_period_end || null,
+      provider: 'google_play',
+      updatedAt: verifiedAt
+    });
+  }
+
+  if (verification.latestOrderId && ['active', 'pending', 'on_hold', 'paused'].includes(String(verification.localStatus || ''))) {
+    maybeRecordGooglePlayHistory({
+      userId,
+      plan,
+      verification,
+      providerTxnId: verification.latestOrderId
+    });
+  }
+
+  return getLatestStoreReceiptForUser.get(userId);
+}
+
+async function verifyAndPersistGooglePlayPurchase({ userId, plan, productId, purchaseToken }) {
+  const verification = await verifyGooglePlaySubscription({ productId, purchaseToken });
+  const mappedPlan = resolvePlanForGooglePlayProduct(verification.productId);
+  const effectivePlan = mappedPlan || plan;
+  if (!effectivePlan) {
+    const err = new Error('google_play_product_not_mapped');
+    err.code = 'google_play_product_not_mapped';
+    throw err;
+  }
+  if (plan && effectivePlan !== plan) {
+    const err = new Error('google_play_plan_mismatch');
+    err.code = 'google_play_plan_mismatch';
+    throw err;
+  }
+  const boundUserId = parseGoogleAccountUserId(verification.obfuscatedExternalAccountId);
+  if (boundUserId && Number(boundUserId) !== Number(userId)) {
+    const err = new Error('google_play_account_mismatch');
+    err.code = 'google_play_account_mismatch';
+    throw err;
+  }
+
+  let acknowledgement = null;
+  if (!verification.acknowledged && ['active', 'pending', 'on_hold', 'paused'].includes(String(verification.localStatus || ''))) {
+    try {
+      acknowledgement = await acknowledgeGooglePlaySubscription({
+        purchaseToken,
+        productId: verification.productId
+      });
+      verification.acknowledged = true;
+      verification.acknowledgementState = 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED';
+    } catch (error) {
+      acknowledgement = { acknowledged: false, error: error?.message || 'ack_failed' };
+    }
+  }
+
+  const receipt = persistGooglePlayVerification({
+    userId,
+    plan: effectivePlan,
+    purchaseToken,
+    verification
+  });
+
+  return {
+    plan: effectivePlan,
+    purchase: verification,
+    acknowledgement,
+    receipt,
+    manage_url: buildGooglePlayManageUrl(verification.productId)
+  };
+}
+
+function decodeGooglePlayNotification(reqBody) {
+  const data = String(reqBody?.message?.data || '').trim();
+  if (!data) return null;
+  try {
+    return JSON.parse(Buffer.from(data, 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
 
 router.get('/status', (req, res) => {
   const userId = req.accountUserId || req.userId;
   const row = ensureSubscriptionForUser(userId);
+  const storeReceipt = getLatestStoreReceiptForUser.get(userId);
   const trialRow = db
     .prepare(`SELECT purchased_at, valid_until FROM payment_history WHERE user_id = ? AND plan = 'trial_premium' ORDER BY purchased_at ASC LIMIT 1`)
     .get(userId);
@@ -275,6 +491,8 @@ router.get('/status', (req, res) => {
     status: active ? 'active' : row?.status || 'expired',
     started_at: row?.started_at || null,
     current_period_end: row?.current_period_end || null,
+    provider: row?.provider || null,
+    provider_details: buildGooglePlayStatusSummary(storeReceipt),
     trial_start: trialRow?.purchased_at || null,
     trial_end: trialRow?.valid_until || null,
     limits,
@@ -304,6 +522,176 @@ router.get('/history/:id/receipt', (req, res) => {
   }
   const user = db.prepare('SELECT full_name, mobile FROM users WHERE id = ? LIMIT 1').get(userId);
   return res.json(buildGstReceiptRow({ row, user }));
+});
+
+router.get('/google-play/config', requireOwner, (_req, res) => {
+  return res.json(getGooglePlayPublicConfig());
+});
+
+router.post('/google-play/verify', requireOwner, async (req, res) => {
+  const userId = req.accountUserId || req.userId;
+  const { plan, product_id: productIdRaw, purchase_token: purchaseToken } = req.body || {};
+  const productId = String(productIdRaw || resolveGooglePlayProductIdForPlan(plan) || '').trim();
+  if (!purchaseToken || !productId) {
+    return res.status(400).json({ error: 'google_play_missing_fields', message: 'product_id and purchase_token are required.' });
+  }
+
+  try {
+    const result = await verifyAndPersistGooglePlayPurchase({
+      userId,
+      plan: String(plan || '').trim() || null,
+      productId,
+      purchaseToken: String(purchaseToken).trim()
+    });
+    return res.json({
+      ok: true,
+      provider: 'google_play',
+      plan: result.plan,
+      status: result.purchase.localStatus,
+      provider_state: result.purchase.subscriptionState,
+      acknowledged: result.purchase.acknowledged,
+      auto_renew_enabled: result.purchase.autoRenewEnabled,
+      current_period_end: result.purchase.expiryTime || null,
+      latest_order_id: result.purchase.latestOrderId || null,
+      manage_url: result.manage_url,
+      cancellation_reason: result.purchase.cancellationReason || null,
+      is_test_purchase: result.purchase.isTestPurchase
+    });
+  } catch (e) {
+    const code = String(e?.code || '');
+    if (['google_play_missing_fields', 'google_play_product_not_mapped'].includes(code)) {
+      return res.status(400).json({ error: code, message: e.message });
+    }
+    if (['google_play_plan_mismatch', 'google_play_account_mismatch'].includes(code)) {
+      return res.status(409).json({ error: code, message: e.message });
+    }
+    if (code === 'google_play_not_configured') {
+      return res.status(503).json({ error: code, message: 'Google Play Billing is not configured on the server.' });
+    }
+    return res.status(500).json({ error: code || 'google_play_verify_failed', message: e?.message || 'Google Play verification failed.' });
+  }
+});
+
+router.post('/google-play/sync', requireOwner, async (req, res) => {
+  const userId = req.accountUserId || req.userId;
+  const purchaseToken = String(req.body?.purchase_token || '').trim();
+  const existingRows = purchaseToken ? [getStoreReceiptByToken.get(purchaseToken, purchaseToken)].filter(Boolean) : getUserStoreReceipts.all(userId);
+
+  if (!existingRows.length) {
+    return res.json({ ok: true, synced: [] });
+  }
+
+  const synced = [];
+  for (const row of existingRows) {
+    try {
+      const result = await verifyAndPersistGooglePlayPurchase({
+        userId,
+        plan: row.plan || null,
+        productId: row.product_id,
+        purchaseToken: row.purchase_token
+      });
+      synced.push({
+        purchase_token: row.purchase_token,
+        plan: result.plan,
+        status: result.purchase.localStatus,
+        provider_state: result.purchase.subscriptionState,
+        current_period_end: result.purchase.expiryTime || null,
+        auto_renew_enabled: result.purchase.autoRenewEnabled
+      });
+    } catch (error) {
+      synced.push({
+        purchase_token: row.purchase_token,
+        error: error?.code || 'google_play_sync_failed',
+        message: error?.message || 'Failed to sync purchase.'
+      });
+    }
+  }
+
+  return res.json({ ok: true, synced });
+});
+
+router.post('/google-play/cancel', requireOwner, async (req, res) => {
+  const userId = req.accountUserId || req.userId;
+  const receipt = getLatestStoreReceiptForUser.get(userId);
+  if (!receipt?.purchase_token || !receipt?.product_id) {
+    return res.status(404).json({ error: 'google_play_subscription_not_found' });
+  }
+
+  try {
+    await cancelGooglePlaySubscription({ purchaseToken: receipt.purchase_token });
+    const result = await verifyAndPersistGooglePlayPurchase({
+      userId,
+      plan: receipt.plan || null,
+      productId: receipt.product_id,
+      purchaseToken: receipt.purchase_token
+    });
+    return res.json({
+      ok: true,
+      status: result.purchase.localStatus,
+      provider_state: result.purchase.subscriptionState,
+      current_period_end: result.purchase.expiryTime || null,
+      manage_url: result.manage_url
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e?.code || 'google_play_cancel_failed', message: e?.message || 'Could not cancel Google Play subscription.' });
+  }
+});
+
+router.post('/google-play/revoke', requireOwner, async (req, res) => {
+  const userId = req.accountUserId || req.userId;
+  const receipt = getLatestStoreReceiptForUser.get(userId);
+  if (!receipt?.purchase_token || !receipt?.product_id) {
+    return res.status(404).json({ error: 'google_play_subscription_not_found' });
+  }
+
+  try {
+    await revokeGooglePlaySubscription({ purchaseToken: receipt.purchase_token });
+    const result = await verifyAndPersistGooglePlayPurchase({
+      userId,
+      plan: receipt.plan || null,
+      productId: receipt.product_id,
+      purchaseToken: receipt.purchase_token
+    });
+    return res.json({
+      ok: true,
+      status: result.purchase.localStatus,
+      provider_state: result.purchase.subscriptionState,
+      current_period_end: result.purchase.expiryTime || null
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e?.code || 'google_play_revoke_failed', message: e?.message || 'Could not revoke Google Play subscription.' });
+  }
+});
+
+router.post('/google-play/notifications', async (req, res) => {
+  const expectedToken = String(process.env.GOOGLE_PLAY_RTDN_TOKEN || '').trim();
+  if (!expectedToken || String(req.headers['x-google-play-rtdn-token'] || '').trim() !== expectedToken) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  try {
+    const notification = decodeGooglePlayNotification(req.body);
+    const subscriptionNotice = notification?.subscriptionNotification || null;
+    const purchaseToken = String(subscriptionNotice?.purchaseToken || '').trim();
+    const productId = String(subscriptionNotice?.subscriptionId || '').trim();
+    if (!purchaseToken || !productId) {
+      return res.json({ ok: true, ignored: true });
+    }
+
+    const existing = getStoreReceiptByToken.get(purchaseToken, purchaseToken);
+    const verified = await verifyGooglePlaySubscription({ purchaseToken, productId });
+    const userId = existing?.user_id || parseGoogleAccountUserId(verified.obfuscatedExternalAccountId);
+    const plan = existing?.plan || resolvePlanForGooglePlayProduct(verified.productId);
+
+    if (!userId || !plan) {
+      return res.json({ ok: true, ignored: true, reason: 'user_or_plan_unresolved' });
+    }
+
+    persistGooglePlayVerification({ userId, plan, purchaseToken, verification: verified });
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e?.code || 'google_play_notification_failed', message: e?.message || 'Could not process Google Play notification.' });
+  }
 });
 
 router.post('/purchase', requireOwner, (req, res) => {

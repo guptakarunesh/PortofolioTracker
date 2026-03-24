@@ -7,6 +7,12 @@ node_modules/
 mobile/.expo/
 mobile/google-services.json
 mobile/GoogleService-Info.plist
+mobile/android/app/google-services.json
+mobile/android/app/debug.keystore
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/app/.cxx/
 
 dist/
 mobile/dist/
@@ -22,3 +28,16 @@ yarn-debug.log*
 yarn-error.log*
 
 .DS_Store
+
+# Local workspace / reference material
+AGENTS.md
+MultiProject.code-workspace
+PARALLEL_DEVELOPMENT.md
+scripts/
+worthio_codex_master_prompt.md
+worthio_dark_light_theme_kit/
+worthio_final_approved_kit/
+mobile/src/assets/mainbgwithlogoontop.png
+mobile/src/assets/worthio-app-background.png
+mobile/src/assets/worthio-splash-frame-1.png
+mobile/src/assets/worthio-splash-frame-2.png

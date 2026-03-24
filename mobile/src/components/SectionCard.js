@@ -1,11 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme';
+import { BRAND } from '../brand';
 
 export default function SectionCard({ title, children, titleStyle }) {
   const { theme } = useTheme();
+  const isLight = theme.key === 'light';
   return (
-    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, shadowColor: theme.text }]}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: isLight ? theme.card : theme.cardAlt,
+          borderColor: theme.border,
+          shadowColor: isLight ? BRAND.colors.bgDeep : '#000000'
+        }
+      ]}
+    >
       {title ? <Text style={[styles.title, { color: theme.text }, titleStyle]}>{title}</Text> : null}
       {children}
     </View>
@@ -14,7 +25,7 @@ export default function SectionCard({ title, children, titleStyle }) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,

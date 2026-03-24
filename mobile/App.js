@@ -5,10 +5,12 @@ import {
   StyleSheet,
   Text,
   View,
+  ActivityIndicator,
   Pressable,
   Modal,
   TextInput,
   Image,
+  ImageBackground,
   Animated,
   useWindowDimensions,
   Alert,
@@ -21,7 +23,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
-import Svg, { Path, Line, Circle, Text as SvgText } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Path, Line, Circle, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AssetsScreen from './src/screens/AssetsScreen';
 import LiabilitiesScreen from './src/screens/LiabilitiesScreen';
@@ -32,6 +34,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import FamilyScreen from './src/screens/FamilyScreen';
+import WorthioSplash from './src/screens/LaunchScreen';
 import OnboardingModal from './src/components/OnboardingModal';
 import PillButton from './src/components/PillButton';
 import { api, getAuthToken, setAuthToken } from './src/api/client';
@@ -39,14 +42,17 @@ import {
   canUseNativePhoneAuth,
   clearNativePhoneOtp,
   completeNativePhoneOtp,
+  formatNativePhoneAuthError,
+  isNativePhoneAuthNetworkError,
   startNativePhoneOtp
 } from './src/firebase/nativePhoneAuth';
 import { FAQ_ITEMS } from './src/constants/faqs';
-import { ThemeContext, THEMES } from './src/theme';
+import { ThemeContext, THEMES, normalizeThemeKey } from './src/theme';
 import { LanguageContext, translate } from './src/i18n';
+import { BRAND } from './src/brand';
 
-const ACCENT = '#0f766e';
-const ACCENT_DARK = '#5eead4';
+const ACCENT = BRAND.colors.accentBlue;
+const ACCENT_DARK = BRAND.colors.accentGreen;
 const FX_SYMBOLS = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
 const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials_v1';
 const BIOMETRIC_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 3; // 3 days
@@ -55,7 +61,11 @@ const AUTH_INTRO_SEEN_KEY = 'auth_intro_seen_v1';
 const LAST_KNOWN_USER_MOBILE_KEY = 'last_known_user_mobile_v1';
 const ONBOARDING_SKIPPED_KEY = 'onboarding_skipped_v1';
 const REMINDER_NOTIFICATION_CACHE_KEY = 'reminder_notification_cache_v1';
-const BRAND_ICON = require('./src/assets/app-icon.png');
+const BRAND_ICON = require('./src/assets/networth-icon.png');
+const HEADER_BRAND_ICON = require('./src/assets/app-icon.png');
+const AUTH_HEADER_LOCKUP = require('./src/assets/worthio-logo-lockup-header.png');
+const AUTH_LAUNCH_SPLASH = require('./src/assets/worthio-splash-screen.png');
+const AUTH_LOGON_BACKGROUND = require('./src/assets/worthio-logon-background.png');
 const REMINDER_NOTIFICATION_TYPE = 'reminder_due';
 
 Notifications.setNotificationHandler({
@@ -77,7 +87,7 @@ const TABS = [
   { key: 'account', labelKey: 'Account' }
 ];
 const PRIMARY_TAB_KEYS = ['dashboard', 'assets', 'loans', 'settings', 'reminders'];
-const PREMIUM_TAB_KEYS = new Set(['settings', 'performance', 'reminders']);
+const PREMIUM_TAB_KEYS = new Set(['settings', 'reminders']);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const TAB_ICONS = {
@@ -221,6 +231,14 @@ function SupportIcon({ stroke }) {
   );
 }
 
+function PremiumBadgeIcon() {
+  return (
+    <View style={styles.navPremiumBadge}>
+      <Text style={styles.navPremiumBadgeText}>★</Text>
+    </View>
+  );
+}
+
 function LogoutIcon({ stroke }) {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
@@ -262,6 +280,26 @@ function NoLinkIcon({ stroke }) {
       />
       <Line x1="7" y1="17" x2="17" y2="7" stroke={stroke} strokeWidth={2.2} strokeLinecap="round" />
     </Svg>
+  );
+}
+
+function WorthioShellBackground() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <LinearGradient id="worthioAppShellGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%" stopColor="#0B1F3A" />
+            <Stop offset="58%" stopColor="#10284A" />
+            <Stop offset="100%" stopColor="#132844" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100" height="100" fill="url(#worthioAppShellGradient)" />
+        <Circle cx="86" cy="14" r="24" fill="rgba(10,132,255,0.08)" />
+        <Circle cx="92" cy="92" r="26" fill="rgba(0,200,150,0.10)" />
+        <Circle cx="6" cy="78" r="22" fill="rgba(46,211,247,0.06)" />
+      </Svg>
+    </View>
   );
 }
 
@@ -372,6 +410,8 @@ function ScreenRenderer({
           hideSensitive={hideSensitive}
           preferredCurrency={preferredCurrency}
           fxRates={fxRates}
+          subscriptionStatus={subscriptionStatus}
+          onOpenSubscription={onOpenSubscription}
           readOnly={readOnly}
           onRequestScrollTo={onRequestScrollTo}
         />
@@ -458,15 +498,18 @@ function ScreenRenderer({
 
 export default function App() {
   const { height: screenHeight } = useWindowDimensions();
-  const [themeKey, setThemeKey] = useState('teal');
-  const theme = THEMES[themeKey] || THEMES.teal;
-  const isDarkTheme = themeKey === 'black';
+  const [themeKey, setThemeKey] = useState('worthio');
+  const normalizedThemeKey = normalizeThemeKey(themeKey);
+  const theme = THEMES[normalizedThemeKey] || THEMES.worthio;
+  const isDarkTheme = normalizedThemeKey === 'worthio';
   const [language, setLanguage] = useState('en');
   const t = React.useCallback((key, vars) => translate(language, key, vars), [language]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [user, setUser] = useState(null);
+  const [otpFlowProvider, setOtpFlowProvider] = useState(null);
+  const [showSplash, setShowSplash] = useState(true);
   const [sessionRestoring, setSessionRestoring] = useState(true);
   const [authIntroSeen, setAuthIntroSeen] = useState(false);
   const [authInitialExposureActive, setAuthInitialExposureActive] = useState(false);
@@ -488,6 +531,7 @@ export default function App() {
   const [supportChatLoading, setSupportChatLoading] = useState(false);
   const [supportHistoryLoading, setSupportHistoryLoading] = useState(false);
   const [supportChatMessages, setSupportChatMessages] = useState([]);
+  const [premiumPrompt, setPremiumPrompt] = useState(null);
   const [onboardingVisible, setOnboardingVisible] = useState(false);
   const [onboardingIndex, setOnboardingIndex] = useState(0);
   const [onboardingTargets, setOnboardingTargets] = useState({});
@@ -569,6 +613,25 @@ export default function App() {
     [t]
   );
   const supportFaqs = React.useMemo(() => FAQ_ITEMS.map((item) => ({ ...item })), []);
+  const premiumPromptContent = React.useMemo(() => {
+    const targetsStep = onboardingSteps.find((step) => step.targetKey === 'tab_settings');
+    const remindersStep = onboardingSteps.find((step) => step.targetKey === 'tab_reminders');
+    const aiStep = onboardingSteps.find((step) => step.targetKey === 'ai_button');
+    return {
+      settings: {
+        title: t('Targets'),
+        body: targetsStep?.body || t('Add yearly goals for the categories that matter. The dashboard will show how close you are to target.')
+      },
+      reminders: {
+        title: t('Reminders'),
+        body: remindersStep?.body || t('Track bills, renewals, and follow-ups here. Stay ahead of due dates from one screen.')
+      },
+      ai: {
+        title: t('AI Insights'),
+        body: aiStep?.body || t('Get a quick summary of your portfolio here. Use it when you want the main takeaways fast.')
+      }
+    };
+  }, [onboardingSteps, t]);
 
   const setOnboardingTargetRef = (key, node) => {
     if (!key) return;
@@ -610,15 +673,16 @@ export default function App() {
   }, []);
 
   const openAiInsights = async () => {
-    setAiVisible(true);
     setAiError('');
-    setAiPayload(null);
-
     if (!user) return;
-    if (!premiumActive) return;
+    if (!premiumActive) {
+      setPremiumPrompt(premiumPromptContent.ai);
+      return;
+    }
+    setAiVisible(true);
     try {
       setAiLoading(true);
-      const data = await api.getAiInsights();
+      const data = await api.getAiInsights({ forceRefresh: __DEV__ });
       setAiPayload(data || null);
     } catch (e) {
       setAiError(String(e?.message || e));
@@ -985,8 +1049,8 @@ export default function App() {
       setPreferredCurrency(String(settings?.preferred_currency || 'INR'));
       const lang = String(settings?.language || 'en').toLowerCase();
       setLanguage(lang === 'hi' ? 'hi' : 'en');
-      if (settings?.ui_theme && THEMES[settings.ui_theme]) {
-        setThemeKey(settings.ui_theme);
+      if (settings?.ui_theme) {
+        setThemeKey(normalizeThemeKey(settings.ui_theme));
       }
       const biometric = String(settings?.biometric_login_enabled || '').toLowerCase();
       setBiometricEnrolled(biometric === '1' || biometric === 'true' || biometric === 'yes');
@@ -1134,7 +1198,8 @@ export default function App() {
     try {
       setAuthLoading(true);
       setAuthError('');
-      const result = canUseNativePhoneAuth()
+      const shouldUseNativeOtp = otpFlowProvider === 'native' && canUseNativePhoneAuth();
+      const result = shouldUseNativeOtp
         ? await (async () => {
             const verified = await completeNativePhoneOtp(payload?.otp);
             return api.register({
@@ -1143,6 +1208,7 @@ export default function App() {
             });
           })()
         : await api.register(payload);
+      setOtpFlowProvider(null);
       await handleAuthSuccess(result);
     } catch (e) {
       setAuthError(e.message);
@@ -1157,11 +1223,27 @@ export default function App() {
       setAuthLoading(true);
       setAuthError('');
       if (canUseNativePhoneAuth()) {
-        return await startNativePhoneOtp(payload?.mobile);
+        try {
+          const result = await startNativePhoneOtp(payload?.mobile);
+          setOtpFlowProvider('native');
+          return result;
+        } catch (nativeError) {
+          if (isNativePhoneAuthNetworkError(nativeError)) {
+            clearNativePhoneOtp();
+            const result = await api.sendLoginOtp(payload);
+            setOtpFlowProvider('backend');
+            return result;
+          }
+          const friendly = formatNativePhoneAuthError(nativeError);
+          setAuthError(friendly);
+          throw new Error(friendly);
+        }
       }
-      return await api.sendLoginOtp(payload);
+      const result = await api.sendLoginOtp(payload);
+      setOtpFlowProvider('backend');
+      return result;
     } catch (e) {
-      setAuthError(e.message);
+      setAuthError(formatNativePhoneAuthError(e));
       throw e;
     } finally {
       setAuthLoading(false);
@@ -1172,7 +1254,8 @@ export default function App() {
     try {
       setAuthLoading(true);
       setAuthError('');
-      const result = canUseNativePhoneAuth()
+      const shouldUseNativeOtp = otpFlowProvider === 'native' && canUseNativePhoneAuth();
+      const result = shouldUseNativeOtp
         ? await (async () => {
             const verified = await completeNativePhoneOtp(payload?.otp);
             return api.verifyLoginOtp({
@@ -1181,11 +1264,13 @@ export default function App() {
             });
           })()
         : await api.verifyLoginOtp(payload);
+      setOtpFlowProvider(null);
       await handleAuthSuccess(result);
       return result;
     } catch (e) {
-      setAuthError(e.message);
-      throw e;
+      const friendly = formatNativePhoneAuthError(e);
+      setAuthError(friendly);
+      throw new Error(friendly);
     } finally {
       setAuthLoading(false);
     }
@@ -1415,8 +1500,8 @@ export default function App() {
 
   const handleTabSelect = (key) => {
     if (PREMIUM_TAB_KEYS.has(key) && !premiumActive) {
-      setPrevTab(activeTab);
-      setActiveTab('subscription');
+      if (key === 'settings') setPremiumPrompt(premiumPromptContent.settings);
+      if (key === 'reminders') setPremiumPrompt(premiumPromptContent.reminders);
       return;
     }
     setActiveTab(key);
@@ -1433,20 +1518,29 @@ export default function App() {
 
   useEffect(() => {
     const step = onboardingSteps[onboardingIndex];
-    if (!onboardingVisible || !step?.targetKey) {
+    const targetKey = step?.targetKey;
+    const targetReady = targetKey ? Boolean(onboardingTargets[targetKey]) : false;
+    if (!onboardingVisible || !targetKey || (step?.tab && step.tab !== activeTab) || !targetReady) {
       onboardingZoom.stopAnimation();
       onboardingZoom.setValue(0);
       return undefined;
     }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(onboardingZoom, { toValue: 1, duration: 840, useNativeDriver: true }),
-        Animated.timing(onboardingZoom, { toValue: 0, duration: 840, useNativeDriver: true })
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [onboardingVisible, onboardingIndex, onboardingSteps, onboardingZoom]);
+    onboardingZoom.setValue(0);
+    let loop = null;
+    const timer = setTimeout(() => {
+      loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(onboardingZoom, { toValue: 1, duration: 840, useNativeDriver: true }),
+          Animated.timing(onboardingZoom, { toValue: 0, duration: 840, useNativeDriver: true })
+        ])
+      );
+      loop.start();
+    }, 120);
+    return () => {
+      clearTimeout(timer);
+      if (loop) loop.stop();
+    };
+  }, [onboardingVisible, onboardingIndex, onboardingSteps, onboardingZoom, activeTab, onboardingTargets]);
 
   const getOnboardingZoomStyle = React.useCallback(
     (targetKey) => {
@@ -1487,6 +1581,7 @@ export default function App() {
   }, [onboardingVisible, onboardingIndex, onboardingSteps, activeTab, user, screenHeight, measureOnboardingTarget]);
 
   const openSubscription = () => {
+    setPremiumPrompt(null);
     setPrevTab(activeTab);
     setActiveTab('subscription');
   };
@@ -1612,20 +1707,24 @@ export default function App() {
     : biometricEnrolled || Boolean(lastKnownUserMobile)
       ? 'returning'
       : 'light-new';
+  const authPreviewVariant = __DEV__ && !user ? 'returning' : authLayoutVariant;
+  const authHeroOffset = Math.max(92, Math.min(136, Math.round(screenHeight * 0.11)));
 
   const mainContent = sessionRestoring ? (
-    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.root, { backgroundColor: BRAND.colors.bgBase }]}>
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
+      <WorthioShellBackground />
       <View style={styles.authRestoreState}>
-        <View style={[styles.authLogoBadge, styles.authHeroLogoBadge, { backgroundColor: '#0f172a', borderColor: theme.border }]}>
-          <Image source={BRAND_ICON} style={styles.headerLogoLarge} resizeMode="cover" />
-        </View>
-        <Text style={[styles.title, styles.authTitle, styles.authHeaderCenter]}>{t('Restoring your secure session...')}</Text>
+        <ActivityIndicator size="small" color={BRAND.colors.accentCyan} />
+        <Text style={[styles.restoreTitle, { color: BRAND.colors.textPrimary }]}>{t('Restoring your secure session...')}</Text>
       </View>
     </SafeAreaView>
   ) : !user ? (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
+      <ImageBackground source={AUTH_LOGON_BACKGROUND} style={styles.authPageBackdrop} imageStyle={styles.authPageBackdropImage}>
+        <View style={styles.authPageBackdropOverlay} />
+      </ImageBackground>
       <KeyboardAvoidingView
         style={styles.body}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1633,125 +1732,50 @@ export default function App() {
       >
         <ScrollView
           style={styles.body}
-          contentContainerStyle={styles.authPageContent}
+          contentContainerStyle={[styles.authPageContent, { paddingTop: authHeroOffset }]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator
           alwaysBounceVertical
         >
-          <View style={styles.authHero}>
             <View
               style={[
-                styles.authHeroPanel,
-                authLayoutVariant === 'returning' && styles.authHeroPanelCompact,
-                authLayoutVariant === 'light-new' && styles.authHeroPanelLight,
-                { backgroundColor: theme.accent }
+                styles.authFormSection,
+                styles.authFormSectionRaised,
+                authLayoutVariant === 'fresh' ? styles.authFormSectionFresh : null
               ]}
             >
-              <View style={styles.authHeroBlend}>
-                <View style={[styles.authHeroGlow, styles.authHeroGlowLeft, { backgroundColor: '#10b981' }]} />
-                <View style={[styles.authHeroGlow, styles.authHeroGlowRight, { backgroundColor: '#2563eb' }]} />
-              </View>
-              <View
-                style={[
-                  styles.authHeroContent,
-                  authLayoutVariant === 'returning' && styles.authHeroContentCompact,
-                  authLayoutVariant === 'light-new' && styles.authHeroContentLight
-                ]}
-              >
-                <View style={[styles.authLogoBadge, styles.authHeroLogoBadge, { backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.24)' }]}>
-                  <Image source={BRAND_ICON} style={styles.headerLogoLarge} resizeMode="cover" />
-                </View>
-                <Text
-                  style={[
-                    styles.authHeroTitle,
-                    authLayoutVariant === 'returning' && styles.authHeroTitleCompact,
-                    authLayoutVariant === 'light-new' && styles.authHeroTitleLight
-                  ]}
-                >
-                  {authLayoutVariant === 'returning' ? t('Welcome Back') : t('Take Control of Your Wealth')}
-                </Text>
-                <Text style={[styles.authHeroLead, authLayoutVariant === 'light-new' && styles.authHeroLeadLight]}>
-                  {authLayoutVariant === 'returning'
-                    ? t('Encrypted, protected, and visible only to you.')
-                    : t('Your wealth data stays private, encrypted, protected, and visible only to you.')}
-                </Text>
-              </View>
+              <AuthScreen
+                onRegister={handleRegister}
+                onLoginWithBiometric={handleBiometricLogin}
+                onRequestOtp={handleOtpSend}
+                onVerifyOtp={handleOtpVerify}
+                biometricReady={biometricEnrolled || (__DEV__ && authPreviewVariant === 'returning')}
+                loading={authLoading}
+                externalMessage={authError}
+                variant={authPreviewVariant}
+                initialMobile={lastKnownUserMobile}
+              />
             </View>
-          </View>
-          {authLayoutVariant !== 'returning' ? (
-            <View style={styles.authUspSection}>
-              <View style={[styles.authUspStrip, { backgroundColor: '#eef5ff', borderColor: '#c7dafc' }]}>
-                <View style={[styles.authUspIconChip, { backgroundColor: '#183b72' }]}>
-                  <NoLinkIcon stroke="#ffffff" />
-                </View>
-                <View style={styles.authUspCopy}>
-                  <Text style={styles.authUspTitle}>{t('No bank linking. No automatic data pulling.')}</Text>
-                  <Text style={styles.authUspBody}>{t('Track only what you choose, how you choose.')}</Text>
-                </View>
-              </View>
-            </View>
-          ) : null}
-          <View style={styles.authFormSection}>
-            <AuthScreen
-              onRegister={handleRegister}
-              onLoginWithBiometric={handleBiometricLogin}
-              onRequestOtp={handleOtpSend}
-              onVerifyOtp={handleOtpVerify}
-              biometricReady={biometricEnrolled}
-              loading={authLoading}
-              externalMessage={authError}
-              variant={authLayoutVariant}
-              initialMobile={lastKnownUserMobile}
-            />
-          </View>
-          {authLayoutVariant === 'fresh' ? (
-            <View style={styles.authAssuranceSection}>
-            <View style={[styles.authAssuranceCard, styles.authAssuranceCardGlossy, { backgroundColor: '#eef5ff', borderColor: '#7db2ff' }]}>
-              <View style={[styles.authAssuranceIconChip, styles.authAssuranceIconChipGlossy, { backgroundColor: '#2563eb' }]}>
-                <LockIcon stroke="#ffffff" />
-              </View>
-              <View style={styles.authAssuranceCopy}>
-                <Text style={[styles.authAssuranceTitle, styles.authAssuranceTitleLeft, { color: theme.text }]}>{t('Encrypted & Private')}</Text>
-                <Text style={[styles.authAssuranceBody, styles.authAssuranceBodyLeft, { color: theme.muted }]}>
-                  {t('Your sensitive wealth data is encrypted so it stays protected and unreadable to others.')}
-                </Text>
-              </View>
-            </View>
-            <View style={[styles.authAssuranceCard, styles.authAssuranceCardGlossy, { backgroundColor: '#edfdf5', borderColor: '#62d99d' }]}>
-              <View style={[styles.authAssuranceIconChip, styles.authAssuranceIconChipGlossy, { backgroundColor: '#059669' }]}>
-                <FingerprintIcon stroke="#ffffff" />
-              </View>
-              <View style={styles.authAssuranceCopy}>
-                <Text style={[styles.authAssuranceTitle, styles.authAssuranceTitleLeft, { color: theme.text }]}>{t('Only You Can Unlock It')}</Text>
-                <Text style={[styles.authAssuranceBody, styles.authAssuranceBodyLeft, { color: theme.muted }]}>
-                  {t('Biometric login, OTP verification, and your Privacy PIN help ensure only you can access sensitive information.')}
-                </Text>
-              </View>
-            </View>
-            <View style={[styles.authAssuranceCard, styles.authAssuranceCardGlossy, { backgroundColor: '#fff9e8', borderColor: '#f5c84c' }]}>
-              <View style={[styles.authAssuranceIconChip, styles.authAssuranceIconChipGlossy, { backgroundColor: '#d97706' }]}>
-                <EyeToggleIcon stroke="#ffffff" closed />
-              </View>
-              <View style={styles.authAssuranceCopy}>
-                <Text style={[styles.authAssuranceTitle, styles.authAssuranceTitleLeft, { color: theme.text }]}>{t("We Can’t Simply Peek Inside")}</Text>
-                <Text style={[styles.authAssuranceBody, styles.authAssuranceBodyLeft, { color: theme.muted }]}>
-                  {t('Your private details are designed to stay under your control, not visible to staff, developers, or unauthorized viewers.')}
-                </Text>
-              </View>
-            </View>
-            </View>
-          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   ) : (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
+      {isDarkTheme ? <WorthioShellBackground /> : null}
       {activeTab === 'dashboard' ? (
         <View style={styles.header}>
-          <View style={[styles.headerUtilityCard, { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+          <View
+            style={[
+              styles.headerUtilityCard,
+              {
+                backgroundColor: isDarkTheme ? 'rgba(19,40,68,0.86)' : theme.card,
+                borderColor: isDarkTheme ? 'rgba(255,255,255,0.08)' : theme.border
+              }
+            ]}
+          >
             <View style={styles.headerMainRow}>
               <AnimatedPressable
                 ref={(node) => setOnboardingTargetRef('account_chip', node)}
@@ -1759,7 +1783,7 @@ export default function App() {
                 onLayout={() => measureOnboardingTarget('account_chip')}
                 style={[
                   styles.accountCapsule,
-                  { backgroundColor: theme.accentSoft, borderColor: theme.border },
+                  { backgroundColor: theme.inputBg, borderColor: theme.border },
                   getOnboardingZoomStyle('account_chip')
                 ]}
                 onPress={() => handleTabSelect('account')}
@@ -1772,22 +1796,28 @@ export default function App() {
                   <Text style={[styles.accountCapsuleText, { color: theme.text }]} numberOfLines={1}>
                     {accountShortName}
                   </Text>
-                  <Text style={[styles.accountRoleText, { color: theme.accent }]}>{roleLabel}</Text>
+                  <Text style={[styles.accountRoleText, { color: theme.info }]}>{roleLabel}</Text>
                 </View>
-                <Text style={[styles.accountChevron, { color: theme.accent }]}>{'\u203A'}</Text>
+                <Text style={[styles.accountChevron, { color: theme.info }]}>{'\u203A'}</Text>
               </AnimatedPressable>
               <View style={styles.headerBrandActions}>
-                <View style={[styles.headerLogoBadge, { backgroundColor: theme.background, borderColor: theme.border }]}>
-                  <Image source={BRAND_ICON} style={styles.headerLogoCompact} resizeMode="cover" />
+                <View style={[styles.headerLogoBadge, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+                  <Image source={HEADER_BRAND_ICON} style={styles.headerLogoCompact} resizeMode="cover" />
                 </View>
                 <Pressable
-                  style={[styles.headerLogoutButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                  style={[
+                    styles.headerLogoutButton,
+                    {
+                      backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.08)' : theme.inputBg,
+                      borderColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : theme.border
+                    }
+                  ]}
                   onPress={() => handleLogout().catch(() => {})}
                   accessibilityRole="button"
                   accessibilityLabel={t('Logout')}
                   hitSlop={8}
                 >
-                  <LogoutIcon stroke={theme.accent} />
+                  <LogoutIcon stroke={isDarkTheme ? '#FFFFFF' : theme.accent} />
                 </Pressable>
               </View>
             </View>
@@ -1796,13 +1826,19 @@ export default function App() {
                 ref={(node) => setOnboardingTargetRef('privacy_toggle', node)}
                 collapsable={false}
                 onLayout={() => measureOnboardingTarget('privacy_toggle')}
-                style={[styles.eyeToggleButton, { borderColor: theme.border, backgroundColor: theme.background }]}
+                style={[
+                  styles.eyeToggleButton,
+                  {
+                    borderColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : theme.border,
+                    backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.08)' : theme.inputBg
+                  }
+                ]}
                 onPress={togglePrivacy}
                 accessibilityRole="button"
                 accessibilityLabel={hideSensitive ? 'Show values' : 'Hide values'}
               >
-                <Text style={[styles.eyeToggleLabel, { color: theme.accent }]}>{t('Privacy')}</Text>
-                <EyeToggleIcon stroke={theme.accent} closed={hideSensitive} />
+                <Text style={[styles.eyeToggleLabel, { color: isDarkTheme ? '#FFFFFF' : theme.accent }]}>{t('Privacy')}</Text>
+                <EyeToggleIcon stroke={isDarkTheme ? '#FFFFFF' : theme.accent} closed={hideSensitive} />
               </Pressable>
               <AnimatedPressable
                 ref={(node) => setOnboardingTargetRef('ai_button', node)}
@@ -1810,24 +1846,24 @@ export default function App() {
                 onLayout={() => measureOnboardingTarget('ai_button')}
                 style={[
                   styles.aiBtn,
-                  { backgroundColor: theme.background, borderColor: theme.border },
+                  {
+                    backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.08)' : theme.inputBg,
+                    borderColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : theme.border
+                  },
                   getOnboardingZoomStyle('ai_button')
                 ]}
                 onPress={() => openAiInsights().catch(() => {})}
                 hitSlop={8}
               >
                 <View style={styles.aiBtnContent}>
-                  <AiBrainIcon stroke={theme.accent} badgeFill={theme.accent} badgeText={theme.card} />
-                  <Text style={[styles.aiBtnText, { color: theme.accent }]}>{t('AI Insights')}</Text>
+                  <View style={styles.aiBtnIconWrap}>
+                    <AiBrainIcon stroke={isDarkTheme ? '#FFFFFF' : theme.accent} badgeFill={isDarkTheme ? '#FFFFFF' : theme.accent} badgeText={isDarkTheme ? theme.background : theme.card} />
+                    {!premiumActive ? <PremiumBadgeIcon /> : null}
+                  </View>
+                  <Text style={[styles.aiBtnText, { color: isDarkTheme ? '#FFFFFF' : theme.accent }]}>{t('AI Insights')}</Text>
                 </View>
               </AnimatedPressable>
             </View>
-          </View>
-        </View>
-      ) : pageHeaderCopy && activeTab !== 'subscription' ? (
-        <View style={styles.header}>
-          <View style={[styles.pageTitleBar, { backgroundColor: theme.accent }]}>
-            <Text style={styles.pageTitleBarText}>{pageHeaderCopy.eyebrow}</Text>
           </View>
         </View>
       ) : null}
@@ -1865,11 +1901,11 @@ export default function App() {
             onCloseSubscription={closeSubscription}
             onCloseFamily={closeFamily}
             onThemeChange={(nextKey) => {
-              if (!THEMES[nextKey]) return;
-              setThemeKey(nextKey);
-              api.upsertSettings({ ui_theme: nextKey }).catch(() => {});
+              const mappedKey = normalizeThemeKey(nextKey);
+              setThemeKey(mappedKey);
+              api.upsertSettings({ ui_theme: mappedKey }).catch(() => {});
             }}
-            themeKey={themeKey}
+            themeKey={normalizedThemeKey}
             onRemindersChanged={triggerReminderSync}
             onRequestScrollTo={requestMainScroll}
             onOpenSupport={openSupport}
@@ -1892,7 +1928,27 @@ export default function App() {
             alwaysBounceVertical
           >
             {pageHeaderCopy && activeTab !== 'subscription' ? (
-              <View style={[styles.pageIntroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <View
+                style={[
+                  styles.pageIntroCard,
+                  {
+                    backgroundColor: isDarkTheme ? 'rgba(19,40,68,0.84)' : theme.card,
+                    borderColor: isDarkTheme ? 'rgba(255,255,255,0.08)' : theme.border
+                  }
+                ]}
+              >
+                <View style={styles.pageIntroAccent} pointerEvents="none">
+                  <Svg width="100%" height="100%" viewBox="0 0 100 8" preserveAspectRatio="none">
+                    <Defs>
+                      <LinearGradient id="worthioPageIntroAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <Stop offset="0%" stopColor={BRAND.colors.accentBlue} />
+                        <Stop offset="50%" stopColor={BRAND.colors.accentCyan} />
+                        <Stop offset="100%" stopColor={BRAND.colors.accentGreen} />
+                      </LinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="100" height="8" rx="4" fill="url(#worthioPageIntroAccent)" opacity="0.96" />
+                  </Svg>
+                </View>
                 <Text style={[styles.pageIntroEyebrow, { color: theme.accent }]}>{pageHeaderCopy.eyebrow}</Text>
                 <Text style={[styles.pageIntroTitle, { color: theme.text }]}>{pageHeaderCopy.title}</Text>
                 <Text style={[styles.pageIntroBody, { color: theme.muted }]}>{pageHeaderCopy.body}</Text>
@@ -1929,11 +1985,11 @@ export default function App() {
                 onCloseSubscription={closeSubscription}
                 onCloseFamily={closeFamily}
                 onThemeChange={(nextKey) => {
-                  if (!THEMES[nextKey]) return;
-                  setThemeKey(nextKey);
-                  api.upsertSettings({ ui_theme: nextKey }).catch(() => {});
+                  const mappedKey = normalizeThemeKey(nextKey);
+                  setThemeKey(mappedKey);
+                  api.upsertSettings({ ui_theme: mappedKey }).catch(() => {});
                 }}
-                themeKey={themeKey}
+                themeKey={normalizedThemeKey}
                 onRemindersChanged={triggerReminderSync}
                 onRequestScrollTo={requestMainScroll}
                 onOpenSupport={openSupport}
@@ -1972,7 +2028,15 @@ export default function App() {
       </Modal>
 
       {activeTab !== 'subscription' ? (
-        <View style={[styles.bottomNav, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+        <View
+          style={[
+            styles.bottomNav,
+            {
+              backgroundColor: isDarkTheme ? 'rgba(11,31,58,0.94)' : theme.card,
+              borderTopColor: isDarkTheme ? 'rgba(255,255,255,0.12)' : theme.border
+            }
+          ]}
+        >
           {PRIMARY_TAB_KEYS.map((key) => {
             const tab = TABS.find((t) => t.key === key);
             const active = activeTab === key;
@@ -1998,20 +2062,36 @@ export default function App() {
                 onLayout={onboardingKey ? () => measureOnboardingTarget(onboardingKey) : undefined}
                 style={[
                   styles.navItem,
-                  active && { backgroundColor: theme.accentSoft },
+                  active && {
+                    backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.10)' : theme.accentSoft,
+                    borderColor: isDarkTheme ? 'rgba(255,255,255,0.16)' : 'rgba(11,31,58,0.08)'
+                  },
                   getOnboardingZoomStyle(onboardingKey)
                 ]}
                 onPress={() => handleTabSelect(key)}
               >
                 <View style={styles.navTextWrap}>
-                  <Text style={[styles.navIcon, { color: active ? theme.accent : theme.muted }]}>{TAB_ICONS[key] || '•'}</Text>
+                  <View style={styles.navIconWrap}>
+                    <Text
+                      style={[
+                        styles.navIcon,
+                        {
+                          color: active
+                            ? (isDarkTheme ? '#FFFFFF' : theme.accent)
+                            : (isDarkTheme ? theme.textMuted || '#C9D4E5' : theme.muted)
+                        }
+                      ]}
+                    >
+                      {TAB_ICONS[key] || '•'}
+                    </Text>
+                    {locked ? <PremiumBadgeIcon /> : null}
+                  </View>
                   <Text style={[
                     styles.navText,
-                    { color: theme.muted },
-                    active && { color: theme.accent },
-                    locked && { color: theme.warn }
+                    { color: isDarkTheme ? (theme.textSecondary || '#C9D4E5') : theme.muted },
+                    active && { color: isDarkTheme ? '#FFFFFF' : theme.accent },
+                    locked && !active && { color: isDarkTheme ? '#D9E3F2' : theme.muted }
                   ]}>
-                    {locked ? <Text style={[styles.lockIcon, { color: theme.warn }]}>🔒 </Text> : null}
                     {label}
                   </Text>
                 </View>
@@ -2027,9 +2107,10 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <LanguageContext.Provider value={{ language, setLanguage, t }}>
-        <ThemeContext.Provider value={{ theme, themeKey, setThemeKey }}>
+        <ThemeContext.Provider value={{ theme, themeKey: normalizedThemeKey, setThemeKey }}>
           <View style={{ flex: 1 }}>
-          <View style={{ flex: 1 }}>{mainContent}</View>
+            {mainContent}
+            {showSplash ? <WorthioSplash dark onFinish={() => setShowSplash(false)} /> : null}
           <Modal visible={aiVisible} transparent animationType="fade">
           <View style={styles.modalBackdrop}>
             <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setAiVisible(false)} />
@@ -2049,12 +2130,6 @@ export default function App() {
                 {!user ? (
                   <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>
                     {t('Login to view AI-enabled portfolio insights and a brief news-aware context.')}
-                  </Text>
-                ) : null}
-
-                {user && !premiumActive ? (
-                  <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>
-                    {t('AI Insights is a premium feature. Upgrade to unlock a personal summary and a news-aware context.')}
                   </Text>
                 ) : null}
 
@@ -2088,7 +2163,7 @@ export default function App() {
                         <>
                           {personal.length ? (
                             <>
-                              <Text style={[styles.aiSectionTitle, { color: theme.text }]}>{t('Personal Summary')}</Text>
+                              <Text style={[styles.aiSectionTitle, { color: theme.text }]}>{t('What You May Want To Review')}</Text>
                               {personal.slice(0, 4).map((line, idx) => (
                                 <Text key={`p-${idx}-${String(line).slice(0, 20)}`} style={[styles.aiBulletText, { color: theme.text }]}>
                                   • {String(line)}
@@ -2099,7 +2174,7 @@ export default function App() {
                           {news.length ? (
                             <>
                               <Text style={[styles.aiSectionTitle, { color: theme.text, marginTop: 10 }]}>
-                                {t('News & Market Context')}
+                                {t('News & Market Context In Simple Terms')}
                               </Text>
                               {news.slice(0, 5).map((line, idx) => (
                                 <Text key={`n-${idx}-${String(line).slice(0, 20)}`} style={[styles.aiBulletText, { color: theme.text }]}>
@@ -2116,7 +2191,7 @@ export default function App() {
 
                 {premiumActive && !!aiPayload?.as_of ? (
                   <Text style={[styles.aiAsOf, { color: theme.muted }]}>
-                    {t('As of: {date}', { date: String(aiPayload.as_of).replace('T', ' ').slice(0, 19) })}
+                    {t('Updated: {date}', { date: String(aiPayload.as_of).replace('T', ' ').slice(0, 19) })}
                   </Text>
                 ) : null}
 
@@ -2124,15 +2199,27 @@ export default function App() {
                   {user && premiumActive ? (
                     <PillButton label={t('Refresh')} kind="ghost" onPress={() => openAiInsights().catch(() => {})} disabled={aiLoading} />
                   ) : null}
-                  {user && !premiumActive ? (
-                    <PillButton label={t('Upgrade')} kind="ghost" onPress={openSubscription} />
-                  ) : null}
                   <PillButton label={t('Close')} kind="ghost" onPress={() => setAiVisible(false)} />
                 </View>
               </ScrollView>
             </View>
           </View>
         </Modal>
+          <Modal visible={!!premiumPrompt} transparent animationType="fade" onRequestClose={() => setPremiumPrompt(null)}>
+            <View style={styles.modalBackdrop}>
+              <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setPremiumPrompt(null)} />
+              <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{premiumPrompt?.title || t('Premium Feature')}</Text>
+                <Text style={[styles.modalSub, { color: theme.muted }]}>
+                  {premiumPrompt?.body || t('This feature is available with Premium.')}
+                </Text>
+                <View style={styles.modalActions}>
+                  <PillButton label={t('Close')} kind="ghost" onPress={() => setPremiumPrompt(null)} />
+                  <PillButton label={t('Go Premium')} onPress={openSubscription} />
+                </View>
+              </View>
+            </View>
+          </Modal>
           {supportVisible ? (
             <SafeAreaView style={[styles.supportOverlay, { backgroundColor: theme.background }]}>
               <View style={[styles.supportPageHeader, { borderBottomColor: theme.border, backgroundColor: theme.card }]}>
@@ -2262,7 +2349,7 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#f7f9fc'
+    backgroundColor: BRAND.colors.bgBase
   },
   supportOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -2270,7 +2357,7 @@ const styles = StyleSheet.create({
     elevation: 1200
   },
   rootDark: {
-    backgroundColor: '#12161c'
+    backgroundColor: BRAND.colors.bgDeep
   },
   header: {
     paddingHorizontal: 16,
@@ -2293,6 +2380,14 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 12
   },
+  brandLogoHalo: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    shadowColor: BRAND.colors.accentBlue,
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4
+  },
   authHeaderCenter: {
     textAlign: 'center',
     alignSelf: 'center'
@@ -2303,10 +2398,30 @@ const styles = StyleSheet.create({
     borderRadius: 12
   },
   headerLogoLarge: {
-    width: 84,
-    height: 84,
-    borderRadius: 20,
+    width: 88,
+    height: 88,
     alignSelf: 'center'
+  },
+  authLockupWrap: {
+    width: 312,
+    height: 124,
+    alignSelf: 'center',
+    marginBottom: 2
+  },
+  authLockupWrapCompact: {
+    width: 252,
+    height: 100,
+    marginBottom: 8
+  },
+  authLockupImage: {
+    width: '100%',
+    height: '100%'
+  },
+  authLockupRestore: {
+    width: 228,
+    height: 92,
+    alignSelf: 'center',
+    marginBottom: 14
   },
   authSubtitle: {
     marginTop: 8,
@@ -2321,59 +2436,48 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8
   },
+  authPageBackdrop: {
+    ...StyleSheet.absoluteFillObject
+  },
+  authPageBackdropImage: {
+    resizeMode: 'cover'
+  },
+  authPageBackdropOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11,31,58,0.14)'
+  },
   authHeroPanel: {
-    minHeight: 242,
+    minHeight: 188,
     borderRadius: 24,
     overflow: 'hidden',
     position: 'relative',
     justifyContent: 'center'
   },
-  authHeroBlend: {
-    ...StyleSheet.absoluteFillObject
-  },
-  authHeroGlow: {
-    position: 'absolute',
-    borderRadius: 999,
-    opacity: 0.36
-  },
-  authHeroGlowLeft: {
-    width: 180,
-    height: 180,
-    left: -28,
-    top: -18
-  },
-  authHeroGlowRight: {
-    width: 225,
-    height: 225,
-    right: -68,
-    top: -22
+  authReturningPanel: {
+    borderWidth: 1
   },
   authHeroContent: {
     paddingHorizontal: 22,
-    paddingVertical: 24,
+    paddingVertical: 18,
     alignItems: 'center'
   },
   authHeroPanelLight: {
-    minHeight: 208,
+    minHeight: 176,
     borderRadius: 22
   },
   authHeroPanelCompact: {
+    minHeight: 180,
     borderRadius: 22
   },
   authHeroContentLight: {
-    paddingVertical: 20
+    paddingVertical: 16
   },
   authHeroContentCompact: {
-    paddingVertical: 18
-  },
-  authHeroLogoBadge: {
-    width: 94,
-    height: 94,
-    borderRadius: 47
+    paddingVertical: 16
   },
   authHeroTitle: {
-    marginTop: 6,
-    color: '#ffffff',
+    marginTop: 2,
+    color: BRAND.colors.textPrimary,
     textAlign: 'center',
     fontSize: 31,
     lineHeight: 35,
@@ -2390,11 +2494,11 @@ const styles = StyleSheet.create({
   },
   authHeroLead: {
     marginTop: 12,
-    color: 'rgba(255,255,255,0.94)',
+    color: BRAND.colors.textSecondary,
     textAlign: 'center',
     fontSize: 16,
     lineHeight: 23,
-    fontWeight: '500',
+    fontWeight: '600',
     maxWidth: 304
   },
   authHeroLeadLight: {
@@ -2405,7 +2509,7 @@ const styles = StyleSheet.create({
   },
   authUspSection: {
     paddingHorizontal: 22,
-    marginTop: 14
+    marginTop: -18
   },
   authUspStrip: {
     borderWidth: 1,
@@ -2415,7 +2519,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    shadowColor: '#0f172a',
+    shadowColor: BRAND.colors.bgDeep,
     shadowOpacity: 0.08,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
@@ -2433,25 +2537,32 @@ const styles = StyleSheet.create({
     flex: 1
   },
   authUspTitle: {
-    color: '#183b72',
+    color: BRAND.colors.textPrimary,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: '900'
   },
   authUspBody: {
     marginTop: 4,
-    color: '#4f6282',
+    color: '#E6EEF8',
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '600'
   },
   authAssuranceSection: {
     paddingHorizontal: 22,
-    paddingTop: 26,
+    paddingTop: 22,
+    paddingBottom: 18,
     gap: 28
   },
   authFormSection: {
-    marginTop: 30
+    marginTop: 18
+  },
+  authFormSectionRaised: {
+    marginTop: 150
+  },
+  authFormSectionFresh: {
+    marginTop: 150
   },
   authAssuranceCard: {
     borderWidth: 1,
@@ -2463,7 +2574,7 @@ const styles = StyleSheet.create({
     gap: 16
   },
   authAssuranceCardGlossy: {
-    shadowColor: '#0f172a',
+    shadowColor: BRAND.colors.bgDeep,
     shadowOpacity: 0.1,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
@@ -2480,7 +2591,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   authAssuranceIconChipGlossy: {
-    shadowColor: '#0f172a',
+    shadowColor: BRAND.colors.bgDeep,
     shadowOpacity: 0.16,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
@@ -2521,39 +2632,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     gap: 10,
-    shadowColor: '#0b1b2b',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4
+    shadowColor: BRAND.colors.bgDeep,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2
   },
   pageIntroCard: {
     borderWidth: 1,
     borderRadius: 22,
     paddingHorizontal: 16,
     paddingVertical: 15,
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     marginTop: 6,
     marginBottom: 12,
-    shadowColor: '#0b1b2b',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3
+    shadowColor: BRAND.colors.bgDeep,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+    overflow: 'hidden'
   },
-  pageTitleBar: {
-    minHeight: 44,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    justifyContent: 'center'
-  },
-  pageTitleBarText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 1,
-    textTransform: 'uppercase'
+  pageIntroAccent: {
+    width: 54,
+    height: 8,
+    borderRadius: 999,
+    marginBottom: 10
   },
   pageIntroEyebrow: {
     fontSize: 11,
@@ -2586,18 +2690,18 @@ const styles = StyleSheet.create({
     flexShrink: 0
   },
   headerLogoBadge: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0
+    flexShrink: 0,
+    overflow: 'hidden'
   },
   headerLogoCompact: {
-    width: 36,
-    height: 36,
-    borderRadius: 10
+    width: 46,
+    height: 46
   },
   headerLogoutButton: {
     width: 44,
@@ -2606,7 +2710,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0b1b2b',
+    shadowColor: BRAND.colors.bgDeep,
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -2614,9 +2718,10 @@ const styles = StyleSheet.create({
   },
   aiBtn: {
     borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 16,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     elevation: 10,
     flex: 1,
     alignItems: 'center',
@@ -2627,10 +2732,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8
   },
+  aiBtnIconWrap: {
+    position: 'relative',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   aiBtnText: {
     fontWeight: '900',
     letterSpacing: 0.3,
-    fontSize: 12
+    fontSize: 15,
+    lineHeight: 20
   },
   accountCapsule: {
     minHeight: 50,
@@ -2643,7 +2756,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    shadowColor: '#0b1b2b',
+    shadowColor: BRAND.colors.bgDeep,
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -2680,7 +2793,7 @@ const styles = StyleSheet.create({
     borderWidth: 1
   },
   accountAvatarText: {
-    color: '#ffffff',
+    color: BRAND.colors.textPrimary,
     fontWeight: '900',
     fontSize: 14,
     letterSpacing: 0.4
@@ -2688,41 +2801,43 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#0f2f4d'
+    color: BRAND.colors.textPrimary
   },
   authTitle: {
-    color: '#0d6f74'
+    color: BRAND.colors.accentCyan
   },
   titleDark: {
-    color: '#e7edf5'
+    color: BRAND.colors.textPrimary
   },
   subtitle: {
     fontSize: 13,
     marginTop: 2,
-    color: '#5d7a95',
+    color: BRAND.colors.textSecondary,
     fontWeight: '600'
   },
   subtitleDark: {
-    color: '#9db0c4'
+    color: BRAND.colors.textMuted
   },
   eyeToggleButton: {
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: 16,
     flex: 1,
-    height: 44,
-    paddingHorizontal: 10,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
-    shadowColor: '#0b1b2b',
+    shadowColor: BRAND.colors.bgDeep,
     shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2
   },
   eyeToggleLabel: {
-    fontSize: 12,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '700'
   },
   body: {
@@ -2739,6 +2854,7 @@ const styles = StyleSheet.create({
     paddingBottom: 84
   },
   authPageContent: {
+    flexGrow: 1,
     paddingBottom: 84
   },
   authRestoreState: {
@@ -2747,8 +2863,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24
   },
+  restoreTitle: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+    letterSpacing: -0.2
+  },
   authError: {
-    color: '#b3261e',
+    color: BRAND.colors.negative,
     marginTop: 8
   },
   modalBackdrop: {
@@ -2758,22 +2882,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20
   },
   modalCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#dbe3ee'
+    borderColor: '#D9E2EF'
   },
   modalCardDark: {
-    backgroundColor: '#1b222b',
-    borderColor: '#2e3b49'
+    backgroundColor: BRAND.colors.surface,
+    borderColor: BRAND.colors.surfaceBorder
   },
   aiModalCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#dbe3ee',
+    borderColor: '#D9E2EF',
     minHeight: 0
   },
   aiModalScroll: {
@@ -2847,12 +2971,16 @@ const styles = StyleSheet.create({
   },
   supportPageBackBtn: {
     borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8
+    borderRadius: 16,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   supportPageBackText: {
-    fontSize: 13,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '700'
   },
   supportPageTitle: {
@@ -2914,29 +3042,29 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontWeight: '800',
-    color: '#0f2f4d'
+    color: BRAND.colors.bgBase
   },
   modalSub: {
-    color: '#607d99',
+    color: '#64748B',
     marginTop: 4,
     marginBottom: 8
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: '#c9d8ea',
+    borderColor: '#D9E2EF',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: '#fff'
+    backgroundColor: '#FFFFFF'
   },
   modalInputDark: {
-    borderColor: '#2d3b4a',
-    backgroundColor: '#10161d',
-    color: '#e7edf5'
+    borderColor: BRAND.colors.surfaceBorder,
+    backgroundColor: BRAND.colors.bgSecondary,
+    color: BRAND.colors.textPrimary
   },
   pinError: {
     marginTop: 6,
-    color: '#b3261e'
+    color: BRAND.colors.negative
   },
   modalActions: {
     flexDirection: 'row',
@@ -2945,14 +3073,17 @@ const styles = StyleSheet.create({
     marginTop: 10
   },
   modalBtn: {
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12
+    borderRadius: 16,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   modalBtnGhost: {
     borderWidth: 1,
     borderColor: ACCENT,
-    backgroundColor: '#fff'
+    backgroundColor: '#FFFFFF'
   },
   modalBtnPrimary: {
     backgroundColor: ACCENT
@@ -2962,7 +3093,7 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   modalBtnPrimaryText: {
-    color: '#fff',
+    color: BRAND.colors.textPrimary,
     fontWeight: '700'
   },
   bottomNav: {
@@ -2970,38 +3101,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: '#d8e2ef',
-    backgroundColor: '#ffffff',
+    borderTopColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 10
   },
   bottomNavDark: {
-    backgroundColor: '#161d26',
-    borderTopColor: '#2d3b4a'
+    backgroundColor: BRAND.colors.surface,
+    borderTopColor: BRAND.colors.surfaceBorder
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 9,
-    borderRadius: 10
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'transparent'
   },
   navTextWrap: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2
   },
+  navIconWrap: {
+    position: 'relative',
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   navIcon: {
-    fontSize: 14,
-    lineHeight: 16
+    fontSize: 15,
+    lineHeight: 18
+  },
+  navPremiumBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -9,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#D4A72C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(11,31,58,0.28)'
+  },
+  navPremiumBadgeText: {
+    color: '#0B1F3A',
+    fontSize: 11,
+    lineHeight: 12,
+    fontWeight: '900'
   },
   navItemActive: {
-    backgroundColor: '#ebf8f6'
+    backgroundColor: 'rgba(0,200,150,0.14)'
   },
   navText: {
-    color: '#35526e',
+    color: '#334155',
     fontWeight: '800',
-    fontSize: 11,
+    fontSize: 12,
+    lineHeight: 15,
     textAlign: 'center'
   },
   hamburgerText: {
@@ -3012,7 +3172,7 @@ const styles = StyleSheet.create({
     color: ACCENT
   },
   navTextLocked: {
-    color: '#9a6b00'
+    color: '#B7791F'
   },
   lockIcon: {
     fontSize: 11
@@ -3025,18 +3185,19 @@ const styles = StyleSheet.create({
   },
   moreChip: {
     borderWidth: 1,
-    borderColor: '#d4dde8',
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#fff'
+    borderColor: '#D9E2EF',
+    borderRadius: 16,
+    minHeight: 44,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    backgroundColor: '#FFFFFF'
   },
   moreChipActive: {
     borderColor: ACCENT,
-    backgroundColor: '#ebf8f6'
+    backgroundColor: 'rgba(0,200,150,0.14)'
   },
   moreChipText: {
-    color: '#35526e',
+    color: '#334155',
     fontWeight: '700'
   },
   moreChipRow: {
@@ -3051,6 +3212,6 @@ const styles = StyleSheet.create({
     color: ACCENT
   },
   moreChipTextLocked: {
-    color: '#9a6b00'
+    color: '#B7791F'
   }
 });

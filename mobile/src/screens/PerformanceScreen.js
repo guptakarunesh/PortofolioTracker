@@ -1,15 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import SectionCard from '../components/SectionCard';
-import PillButton from '../components/PillButton';
 import { api } from '../api/client';
 import { formatAmountFromInr } from '../utils/format';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
+import { BRAND } from '../brand';
 
-const ASSETS_COLOR = '#0f766e';
-const LIABILITIES_COLOR = '#f97316';
-const NET_WORTH_COLOR = '#8b5cf6';
+const ASSETS_COLOR = BRAND.colors.positive;
+const LIABILITIES_COLOR = BRAND.colors.negative;
+const NET_WORTH_COLOR = BRAND.colors.accentCyan;
 
 function barWidth(value, maxValue) {
   if (!maxValue || maxValue <= 0) return '0%';
@@ -20,9 +20,7 @@ function barWidth(value, maxValue) {
 export default function PerformanceScreen({
   hideSensitive = false,
   preferredCurrency = 'INR',
-  fxRates = { INR: 1 },
-  premiumActive = false,
-  onOpenSubscription
+  fxRates = { INR: 1 }
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
@@ -49,17 +47,6 @@ export default function PerformanceScreen({
     return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
   };
   const rowsLatestFirst = [...rows].reverse();
-
-  if (!premiumActive) {
-    return (
-      <View>
-        <SectionCard title={t('Net Worth Trend (Premium)')}>
-          <Text style={[styles.sub, { color: theme.warn }]}>{t('Net worth trend is available with Premium.')}</Text>
-          <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
-        </SectionCard>
-      </View>
-    );
-  }
 
   return (
     <View>
@@ -125,19 +112,19 @@ export default function PerformanceScreen({
 }
 
 const styles = StyleSheet.create({
-  sub: { color: '#607d99', marginBottom: 10, lineHeight: 18 },
+  sub: { color: '#64748B', marginBottom: 10, lineHeight: 18 },
   legendRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  legendItem: { color: '#35526e', fontWeight: '800', fontSize: 12 },
+  legendItem: { color: '#334155', fontWeight: '800', fontSize: 12 },
   chartCol: {
     gap: 14
   },
   group: {
     borderWidth: 1,
-    borderColor: '#dbe6f2',
+    borderColor: '#D9E2EF',
     borderRadius: 14,
     padding: 12,
-    backgroundColor: '#f8fbff',
-    shadowColor: '#0f172a',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#08172A',
     shadowOpacity: 0.04,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -158,7 +145,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 14,
     borderRadius: 999,
-    backgroundColor: '#e6eef7',
+    backgroundColor: '#E2E8F0',
     overflow: 'hidden'
   },
   fill: {
@@ -168,7 +155,7 @@ const styles = StyleSheet.create({
   metricValue: {
     width: 108,
     textAlign: 'right',
-    color: '#35526e',
+    color: '#334155',
     fontSize: 11,
     fontWeight: '800'
   },
@@ -191,13 +178,13 @@ const styles = StyleSheet.create({
     color: NET_WORTH_COLOR
   },
   axisLabel: {
-    color: '#183750',
+    color: '#0B1F3A',
     fontSize: 13,
     fontWeight: '800'
   },
   axisSub: {
-    color: '#35526e',
+    color: '#334155',
     fontSize: 11
   },
-  message: { color: '#0f3557', marginBottom: 20, fontWeight: '600' }
+  message: { color: '#0B1F3A', marginBottom: 20, fontWeight: '600' }
 });

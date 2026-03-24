@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Linking, Pressable } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import SectionCard from '../components/SectionCard';
 import StatTile from '../components/StatTile';
 import PillButton from '../components/PillButton';
@@ -8,6 +9,7 @@ import { api, buildApiUrl, getAuthToken } from '../api/client';
 import { formatDate, formatAmountFromInr, formatPct } from '../utils/format';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
+import { BRAND } from '../brand';
 
 const ASSET_TARGET_CATEGORIES = [
   'Banking & Deposits',
@@ -19,12 +21,20 @@ const ASSET_TARGET_CATEGORIES = [
   'Other Assets'
 ];
 
-const PIE_COLORS = ['#0f766e', '#f59e0b', '#ef4444', '#a855f7', '#22c55e', '#f97316', '#eab308'];
-const ACCENT = '#0f766e';
+const PIE_COLORS = [
+  BRAND.colors.accentBlue,
+  BRAND.colors.accentCyan,
+  BRAND.colors.accentGreen,
+  '#4E6FA8',
+  '#5E93D1',
+  '#2AA885',
+  '#7FA7D9'
+];
+const ACCENT = BRAND.colors.accentBlue;
 const PANEL_OPTIONS = [
-  { key: 'allocation', label: 'Asset Mix' },
-  { key: 'targets', label: 'Target Progress' },
-  { key: 'performance', label: 'Net Worth Trend' }
+  { key: 'allocation', label: 'Allocation', helper: 'View how assets are distributed' },
+  { key: 'targets', label: 'Targets', helper: 'Track yearly target progress' },
+  { key: 'performance', label: 'Trend', helper: 'See net worth over time' }
 ];
 
 const targetSettingKey = (category) =>
@@ -39,9 +49,44 @@ const targetProgressColor = (pct) => {
   return `hsl(${hue}, 72%, 42%)`;
 };
 
+function BrandSummaryIntro({ theme, isLight }) {
+  return (
+    <View
+      style={[
+        styles.summaryIntroCard,
+        {
+          backgroundColor: isLight ? theme.cardAlt : theme.backgroundElevated,
+          borderColor: theme.border,
+          shadowColor: BRAND.colors.bgDeep
+        }
+      ]}
+    >
+      <View style={styles.summaryIntroTopRow}>
+        <View style={styles.summaryIntroAccent}>
+          <Svg width="100%" height="100%" viewBox="0 0 100 12" preserveAspectRatio="none">
+            <Defs>
+              <LinearGradient id="worthioDashboardGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <Stop offset="0%" stopColor={BRAND.colors.accentBlue} />
+                <Stop offset="45%" stopColor={BRAND.colors.accentCyan} />
+                <Stop offset="100%" stopColor={BRAND.colors.accentGreen} />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100" height="12" rx="6" fill="url(#worthioDashboardGradient)" opacity="0.95" />
+          </Svg>
+        </View>
+        <Text style={[styles.gradientBannerEyebrow, { color: theme.info }]}>WORTHIO VIEW</Text>
+      </View>
+      <View style={styles.summaryIntroCopy}>
+        <Text style={[styles.gradientBannerTitle, { color: theme.text }]}>Track growth with a clear view of your full worth.</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function DashboardScreen({ hideSensitive = false, preferredCurrency = 'INR', fxRates = { INR: 1 } }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const isLight = theme.key === 'light';
   const [data, setData] = useState(null);
   const [settings, setSettings] = useState({});
   const [error, setError] = useState('');
@@ -95,12 +140,16 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
 
   return (
     <View>
-      <SectionCard title={t('Net Worth Summary')}>
+      <SectionCard title={t('Net Worth Summary')} titleStyle={styles.sectionTitle}>
+        <BrandSummaryIntro theme={theme} isLight={isLight} />
+        <Text style={[styles.summaryLead, { color: theme.muted }]}>
+          {t('A calm view of your full worth across assets, liabilities, and net worth.')}
+        </Text>
         <View style={styles.row}>
-          <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} />
-          <StatTile label={t('Liabilities')} value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} />
+          <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} positive />
+          <StatTile label={t('Liabilities')} value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} positive={false} />
         </View>
-        <View style={{ marginTop: 10 }}>
+        <View style={styles.netWorthWrap}>
           <StatTile
             label={t('Net Worth')}
             value={displayAmount(data.netWorth, hideSensitive, currency, fxRates)}
@@ -109,7 +158,16 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
         </View>
         <Text style={[styles.muted, { color: theme.muted }]}>{t('Last updated: {date}', { date: formatDate(data.lastUpdated) })}</Text>
 
-        <View style={[styles.snapshotBox, { borderColor: theme.border, backgroundColor: theme.card }]}>
+        <View
+          style={[
+            styles.snapshotBox,
+            {
+              borderColor: theme.border,
+              backgroundColor: isLight ? theme.cardAlt : theme.backgroundElevated,
+              shadowColor: BRAND.colors.bgDeep
+            }
+          ]}
+        >
           <Pressable style={styles.snapshotHeader} onPress={() => setSnapshotExpanded((value) => !value)}>
             <View style={styles.snapshotHeaderTextWrap}>
               <Text style={[styles.snapshotTitle, { color: theme.text }]}>{t('Snapshot PDF Report')}</Text>
@@ -137,29 +195,66 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
         </View>
       </SectionCard>
 
-      <SectionCard title={t('Portfolio Highlights')}>
-        <View style={styles.chipRow}>
+      <SectionCard title={t('Portfolio Highlights')} titleStyle={styles.sectionTitle}>
+        <View
+          style={[
+            styles.segmentedControl,
+            {
+              backgroundColor: isLight ? theme.cardAlt : theme.backgroundElevated,
+              borderColor: theme.border
+            }
+          ]}
+        >
           {PANEL_OPTIONS.map((panel) => {
             const active = activePanel === panel.key;
             return (
               <Pressable
                 key={panel.key}
                 style={[
-                  styles.chip,
-                  { borderColor: active ? theme.accent : theme.border, backgroundColor: active ? theme.accentSoft : theme.card }
+                  styles.segment,
+                  active ? styles.segmentActive : null
                 ]}
                 onPress={() => setActivePanel(panel.key)}
               >
-                <Text style={[styles.chipText, { color: active ? theme.accent : theme.text }]}>{t(panel.label)}</Text>
+                {active ? (
+                  <View style={styles.segmentGradientFill} pointerEvents="none">
+                    <Svg width="100%" height="100%" viewBox="0 0 100 44" preserveAspectRatio="none">
+                      <Defs>
+                        <LinearGradient id={`worthioSegmentGradient-${panel.key}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                          <Stop offset="0%" stopColor="#1B6FCC" />
+                          <Stop offset="52%" stopColor="#24B2D6" />
+                          <Stop offset="100%" stopColor="#16AA8A" />
+                        </LinearGradient>
+                      </Defs>
+                      <Rect x="0" y="0" width="100" height="44" rx="14" fill={`url(#worthioSegmentGradient-${panel.key})`} />
+                    </Svg>
+                  </View>
+                ) : null}
+                <Text style={[styles.segmentText, { color: active ? '#FFFFFF' : theme.text }]} numberOfLines={1}>
+                  {t(panel.label)}
+                </Text>
               </Pressable>
             );
           })}
         </View>
+        <Text style={[styles.segmentHelper, { color: theme.muted }]}>
+          {t(PANEL_OPTIONS.find((panel) => panel.key === activePanel)?.helper || '')}
+        </Text>
 
         {activePanel === 'allocation' ? (
           <View style={styles.chartWrap}>
             {sortedAllocation.map((item, idx) => (
-              <View key={item.category} style={[styles.chartRow, { borderColor: theme.border, backgroundColor: theme.card }]}> 
+              <View
+                key={item.category}
+                style={[
+                  styles.chartRow,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: isLight ? theme.card : theme.backgroundElevated,
+                    shadowColor: BRAND.colors.bgDeep
+                  }
+                ]}
+              >
                 <View style={styles.chartLegendRow}>
                   <View style={[styles.legendDot, { backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }]} />
                   <Text style={[styles.allocLabel, { color: theme.text }]}>{t(item.category)}</Text>
@@ -188,7 +283,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
                 {t('Created from month-end snapshots captured after each month closes.')}
               </Text>
               {performancePoints.map((point) => (
-                <View key={`${point.label}-${point.netWorth}`} style={[styles.targetRow, { borderBottomColor: theme.border }]}> 
+              <View key={`${point.label}-${point.netWorth}`} style={[styles.targetRow, { borderBottomColor: theme.border }]}>
                   <View style={styles.targetHeadRow}>
                     <Text style={[styles.targetLabel, { color: theme.text }]}>{String(point.label || '-')}</Text>
                     <Text style={[styles.targetPct, { color: theme.accent }]}>{displayAmount(point.netWorth, hideSensitive, currency, fxRates)}</Text>
@@ -210,7 +305,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
         {activePanel === 'targets' ? (
           targetProgressRows.length ? (
             targetProgressRows.map((row) => (
-              <View key={row.category} style={[styles.targetRow, { borderBottomColor: theme.border }]}> 
+              <View key={row.category} style={[styles.targetRow, { borderBottomColor: theme.border }]}>
                 <View style={styles.targetHeadRow}>
                   <Text style={[styles.targetLabel, { color: theme.text }]}>{t(row.category)}</Text>
                   <Text style={[styles.targetPct, { color: targetProgressColor(row.pctClamped) }]}>{formatPct(row.pct)}</Text>
@@ -243,34 +338,111 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
 }
 
 const styles = StyleSheet.create({
+  summaryIntroCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2
+  },
+  summaryIntroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8
+  },
+  summaryIntroAccent: {
+    width: 54,
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden'
+  },
+  summaryIntroCopy: {
+    gap: 4
+  },
+  gradientBannerEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
+  gradientBannerTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '800'
+  },
+  summaryLead: {
+    marginBottom: 16,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600'
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.2
+  },
   row: {
     flexDirection: 'row',
     gap: 10
   },
-  chipRow: {
+  netWorthWrap: {
+    marginTop: 10
+  },
+  segmentedControl: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 14
-  },
-  chip: {
+    marginBottom: 10,
     borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8
+    borderRadius: 18,
+    padding: 6
   },
-  chipText: {
+  segment: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    position: 'relative'
+  },
+  segmentActive: {
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2
+  },
+  segmentGradientFill: {
+    ...StyleSheet.absoluteFillObject
+  },
+  segmentText: {
     fontWeight: '800',
-    fontSize: 12
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: 0.1
+  },
+  segmentHelper: {
+    marginBottom: 16,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600'
   },
   chartWrap: {
-    gap: 12
+    gap: 16
   },
   chartRow: {
     gap: 8,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 10
+    borderRadius: 20,
+    padding: 16,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2
   },
   chartLegendRow: {
     flexDirection: 'row',
@@ -292,11 +464,13 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   allocValue: {
-    textAlign: 'right'
+    textAlign: 'right',
+    fontWeight: '800'
   },
   allocPct: {
     width: 70,
-    textAlign: 'right'
+    textAlign: 'right',
+    fontWeight: '800'
   },
   targetRow: {
     paddingBottom: 12,
@@ -330,10 +504,14 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT
   },
   snapshotBox: {
-    marginTop: 14,
+    marginTop: 16,
     borderWidth: 1,
-    borderRadius: 14,
-    padding: 12
+    borderRadius: 20,
+    padding: 16,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2
   },
   snapshotHeader: {
     flexDirection: 'row',

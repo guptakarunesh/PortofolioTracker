@@ -21,7 +21,6 @@ const LOAN_TYPE_OPTIONS = [
 
 const HOLDER_OPTIONS = ['Self', 'Joint', 'Either or Survivor', 'Nominee Tagged'];
 const REACH_OPTIONS = ['Branch', 'RM', 'Customer Care', 'Portal'];
-
 const blankForm = {
   loan_type: LOAN_TYPE_OPTIONS[0],
   lender: '',
@@ -53,11 +52,14 @@ export default function LiabilitiesScreen({
   hideSensitive = false,
   preferredCurrency = 'INR',
   fxRates = { INR: 1 },
+  subscriptionStatus,
+  onOpenSubscription = () => {},
   readOnly = false,
   onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const isLight = theme.key === 'light';
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(blankForm);
   const [editingId, setEditingId] = useState(null);
@@ -67,12 +69,16 @@ export default function LiabilitiesScreen({
   const [showLoanTypeOptions, setShowLoanTypeOptions] = useState(false);
   const [showHolderOptions, setShowHolderOptions] = useState(false);
   const [showReachOptions, setShowReachOptions] = useState(false);
+  const [liabilitySortType, setLiabilitySortType] = useState('amount');
+  const [liabilitySortDirection, setLiabilitySortDirection] = useState('desc');
+  const [limitReached, setLimitReached] = useState(false);
   const [revealVisible, setRevealVisible] = useState(false);
   const [revealItem, setRevealItem] = useState(null);
   const [revealPin, setRevealPin] = useState('');
   const [revealData, setRevealData] = useState(null);
   const [revealError, setRevealError] = useState('');
   const [revealLoading, setRevealLoading] = useState(false);
+  const [expandedLiabilityId, setExpandedLiabilityId] = useState(null);
   const lenderInputRef = useRef(null);
   const relationshipMobileInputRef = useRef(null);
   const outstandingAmountInputRef = useRef(null);
@@ -243,6 +249,21 @@ export default function LiabilitiesScreen({
 
     const normalizedAccountRef = form.account_ref?.trim() || '';
     const normalizedNotes = form.notes_for_family?.trim() || '';
+    const basicPlanActive =
+      subscriptionStatus?.status === 'active' &&
+      ['basic_monthly', 'basic_yearly'].includes(String(subscriptionStatus?.plan || ''));
+    const maxLiabilities =
+      Number(subscriptionStatus?.limits?.maxLiabilities || 0) > 0
+        ? Number(subscriptionStatus?.limits?.maxLiabilities || 0)
+        : basicPlanActive
+          ? 5
+          : 0;
+    if (!editingId && maxLiabilities > 0 && items.length >= maxLiabilities) {
+      setLimitReached(true);
+      setMessage(t('Basic plan allows up to {count} liabilities. Upgrade to Premium for unlimited liabilities.', { count: maxLiabilities }));
+      setMessageKind('error');
+      return;
+    }
     const basePayload = {
       loan_type: form.loan_type,
       lender: form.lender,
@@ -271,10 +292,23 @@ export default function LiabilitiesScreen({
         setMessageKind('success');
       }
       setFieldErrors({});
+      setLimitReached(false);
       resetForm();
       await load();
     } catch (e) {
       const raw = String(e?.message || e);
+      let parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (_err) {
+        parsed = null;
+      }
+      if (parsed?.error === 'basic_limit_reached') {
+        setLimitReached(true);
+        setMessage(parsed.message);
+        setMessageKind('error');
+        return;
+      }
       setMessage(raw);
       setMessageKind('error');
     }
@@ -324,10 +358,49 @@ export default function LiabilitiesScreen({
     setMessageKind('info');
   };
 
+  const toggleExpanded = (id) => {
+    setExpandedLiabilityId((current) => (current === id ? null : id));
+  };
+
+  const toggleTypeSort = () => {
+    setLiabilitySortType('type');
+    setLiabilitySortDirection((current) => (liabilitySortType === 'type' && current === 'asc' ? 'desc' : 'asc'));
+  };
+
+  const toggleAmountSort = () => {
+    setLiabilitySortType('amount');
+    setLiabilitySortDirection((current) => (liabilitySortType === 'amount' && current === 'asc' ? 'desc' : 'asc'));
+  };
+
+  const sortedItems = [...items].sort((a, b) => {
+    if (liabilitySortType === 'type') {
+      return liabilitySortDirection === 'asc'
+        ? String(a.loan_type || '').localeCompare(String(b.loan_type || ''))
+        : String(b.loan_type || '').localeCompare(String(a.loan_type || ''));
+    }
+    return liabilitySortDirection === 'asc'
+      ? Number(a.outstanding_amount || 0) - Number(b.outstanding_amount || 0)
+      : Number(b.outstanding_amount || 0) - Number(a.outstanding_amount || 0);
+  });
+  const totalLiabilityValue = sortedItems.reduce((sum, item) => sum + Number(item.outstanding_amount || 0), 0);
+  const basicPlanActive =
+    subscriptionStatus?.status === 'active' &&
+    ['basic_monthly', 'basic_yearly'].includes(String(subscriptionStatus?.plan || ''));
+  const maxLiabilities =
+    Number(subscriptionStatus?.limits?.maxLiabilities || 0) > 0
+      ? Number(subscriptionStatus?.limits?.maxLiabilities || 0)
+      : basicPlanActive
+        ? 5
+        : 0;
+  const usageText = Number(maxLiabilities) > 0
+    ? t('Basic plan: {used}/{total} liabilities used', { used: items.length, total: maxLiabilities })
+    : t('Liabilities used: {used}', { used: items.length });
+
   return (
     <View>
       <SectionCard title={editingId ? t('Edit Liability') : t('Add Liability')}>
         {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{t('Subscription expired. View-only mode.')}</Text> : null}
+        <Text style={[styles.planUsageText, { color: theme.muted }]}>{usageText}</Text>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Type')}</Text>
         <Pressable
           onLayout={(event) => setFieldOffset('loan_type', event.nativeEvent.layout.y)}
@@ -346,7 +419,7 @@ export default function LiabilitiesScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.loan_type === type && { backgroundColor: theme.accentSoft }
+                  form.loan_type === type && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, loan_type: type }));
@@ -357,7 +430,7 @@ export default function LiabilitiesScreen({
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.loan_type === type && { color: theme.accent, fontWeight: '700' }
+                    form.loan_type === type && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t(type)}
@@ -405,7 +478,7 @@ export default function LiabilitiesScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.holder_type === holderType && { backgroundColor: theme.accentSoft }
+                  form.holder_type === holderType && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, holder_type: holderType }));
@@ -416,7 +489,7 @@ export default function LiabilitiesScreen({
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.holder_type === holderType && { color: theme.accent, fontWeight: '700' }
+                    form.holder_type === holderType && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t(holderType)}
@@ -447,7 +520,7 @@ export default function LiabilitiesScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.reach_via === reachVia && { backgroundColor: theme.accentSoft }
+                  form.reach_via === reachVia && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, reach_via: reachVia }));
@@ -458,7 +531,7 @@ export default function LiabilitiesScreen({
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.reach_via === reachVia && { color: theme.accent, fontWeight: '700' }
+                    form.reach_via === reachVia && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t(reachVia)}
@@ -588,59 +661,116 @@ export default function LiabilitiesScreen({
             <PillButton label={t('Cancel Edit')} kind="ghost" onPress={cancelEdit} disabled={readOnly} />
           </View>
         ) : null}
+        {limitReached ? (
+          <View style={styles.limitCtaRow}>
+            <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
+          </View>
+        ) : null}
       </SectionCard>
 
       <FeedbackBanner message={message} kind={messageKind} />
 
-      <SectionCard title={t('Current Liabilities')}>
-        {[...items]
-          .sort((a, b) => Number(b.outstanding_amount || 0) - Number(a.outstanding_amount || 0))
-          .map((item) => (
+      <SectionCard>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderTitleWrap}>
+            <Text style={[styles.sectionHeaderTitle, { color: theme.text }]}>{t('Current Liabilities')}</Text>
+            <Text style={[styles.sectionHeaderTotal, { color: theme.danger }]}>
+              {displayAmount(totalLiabilityValue, hideSensitive, preferredCurrency, fxRates)}
+            </Text>
+          </View>
+          <View style={styles.sortActionsRow}>
+            <Pressable
+              onPress={toggleTypeSort}
+              style={[
+                styles.sortIconButton,
+                { borderColor: theme.border, backgroundColor: theme.inputBg },
+                liabilitySortType === 'type' && {
+                  borderColor: isLight ? theme.accent : '#155EAF',
+                  backgroundColor: isLight ? theme.accent : '#155EAF'
+                }
+              ]}
+            >
+              <Text style={[styles.sortIconGlyph, { color: liabilitySortType === 'type' ? '#FFFFFF' : theme.muted }]}>
+                {liabilitySortDirection === 'asc' && liabilitySortType === 'type' ? 'A→Z' : 'Z→A'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={toggleAmountSort}
+              style={[
+                styles.sortIconButton,
+                { borderColor: theme.border, backgroundColor: theme.inputBg },
+                liabilitySortType === 'amount' && {
+                  borderColor: isLight ? theme.accent : '#155EAF',
+                  backgroundColor: isLight ? theme.accent : '#155EAF'
+                }
+              ]}
+            >
+              <Text style={[styles.sortIconGlyph, { color: liabilitySortType === 'amount' ? '#FFFFFF' : theme.muted }]}>
+                {liabilitySortDirection === 'asc' && liabilitySortType === 'amount' ? '↑₹' : '↓₹'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+        {Number(maxLiabilities) > 0 ? (
+          <View style={styles.planLimitRow}>
+            <Text style={[styles.planLimitText, { color: theme.warn }]}>{usageText}</Text>
+            <PillButton label={t('Upgrade')} kind="ghost" onPress={onOpenSubscription} />
+          </View>
+        ) : null}
+        {sortedItems.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            <View style={styles.rowHeader}>
+            <Pressable style={styles.rowHeader} onPress={() => toggleExpanded(item.id)}>
               <View style={styles.rowTitleWrap}>
                 <Text style={[styles.name, { color: theme.text }]}>{t(item.loan_type)}</Text>
                 <Text style={[styles.sub, { color: theme.muted }]}>{item.lender}</Text>
               </View>
-              <Text style={[styles.amount, { color: theme.danger }]}>
-                {displayAmount(item.outstanding_amount, hideSensitive, preferredCurrency, fxRates)}
-              </Text>
-            </View>
-            <View style={styles.metaBlock}>
-              {hasInfo(item.holder_type) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Holder: {value}', { value: t(item.holder_type) })}</Text>
-              ) : null}
-              {hasInfo(item.reach_via) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Reach via: {value}', { value: t(item.reach_via) })}</Text>
-              ) : null}
-              {hasInfo(item.relationship_mobile) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Relationship / Branch Manager: {value}', { value: item.relationship_mobile })}</Text>
-              ) : null}
-              {hasInfo(item.account_ref) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Account Ref: {value}', { value: item.account_ref })}</Text>
-              ) : null}
-              {hasInfo(item.notes) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Notes for Family: {value}', { value: item.notes })}</Text>
-              ) : null}
-              {hasInfo(item.updated_at) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>
-                  {t('Last Updated: {value}', { value: String(item.updated_at).replace('T', ' ').slice(0, 19) })}
+              <View style={styles.amountBlock}>
+                <Text style={[styles.amount, { color: theme.danger }]}>
+                  {displayAmount(item.outstanding_amount, hideSensitive, preferredCurrency, fxRates)}
                 </Text>
-              ) : null}
-              <Text style={[styles.sub, { color: theme.muted }]}>
-                {t('Updated By: {value}', { value: hasInfo(item.updated_by_initials) ? item.updated_by_initials : 'NA' })}
-              </Text>
-            </View>
-            <View style={styles.actionsRow}>
-              <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
-              <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
-              <PillButton
-                label={t('Delete')}
-                kind="ghost"
-                onPress={() => confirmRemove(item)}
-                disabled={readOnly}
-              />
-            </View>
+                <Text style={[styles.amountLabel, { color: theme.muted }]}>{t('Outstanding')}</Text>
+                <Text style={[styles.expandHint, { color: theme.muted }]}>{expandedLiabilityId === item.id ? '▲' : '▼'}</Text>
+              </View>
+            </Pressable>
+            {expandedLiabilityId === item.id ? (
+              <>
+                <View style={styles.metaBlock}>
+                  {hasInfo(item.holder_type) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Holder: {value}', { value: t(item.holder_type) })}</Text>
+                  ) : null}
+                  {hasInfo(item.reach_via) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Reach via: {value}', { value: t(item.reach_via) })}</Text>
+                  ) : null}
+                  {hasInfo(item.relationship_mobile) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Relationship / Branch Manager: {value}', { value: item.relationship_mobile })}</Text>
+                  ) : null}
+                  {hasInfo(item.account_ref) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Account Ref: {value}', { value: item.account_ref })}</Text>
+                  ) : null}
+                  {hasInfo(item.notes) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Notes for Family: {value}', { value: item.notes })}</Text>
+                  ) : null}
+                  {hasInfo(item.updated_at) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>
+                      {t('Last Updated: {value}', { value: String(item.updated_at).replace('T', ' ').slice(0, 19) })}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.sub, { color: theme.muted }]}>
+                    {t('Updated By: {value}', { value: hasInfo(item.updated_by_initials) ? item.updated_by_initials : 'NA' })}
+                  </Text>
+                </View>
+                <View style={styles.actionsRow}>
+                  <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
+                  <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
+                  <PillButton
+                    label={t('Delete')}
+                    kind="ghost"
+                    onPress={() => confirmRemove(item)}
+                    disabled={readOnly}
+                  />
+                </View>
+              </>
+            ) : null}
           </View>
         ))}
       </SectionCard>
@@ -691,7 +821,16 @@ export default function LiabilitiesScreen({
 }
 
 const styles = StyleSheet.create({
-  label: { color: '#35526e', fontWeight: '700', marginBottom: 5 },
+  label: { fontWeight: '700', marginBottom: 5 },
+  planUsageText: {
+    marginBottom: 10,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600'
+  },
+  limitCtaRow: {
+    marginTop: 8
+  },
   helpText: {
     fontSize: 11,
     lineHeight: 16,
@@ -712,8 +851,8 @@ const styles = StyleSheet.create({
   },
   dropdownTrigger: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -723,16 +862,16 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   dropdownText: {
-    color: '#183750'
+    color: '#0B1F3A'
   },
   dropdownArrow: {
-    color: '#607d99',
+    color: '#64748B',
     fontSize: 12
   },
   dropdownMenu: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden'
@@ -741,22 +880,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eef2f8'
+    borderBottomColor: '#D9E2EF'
   },
   dropdownItemActive: {
-    backgroundColor: '#e9f2ff'
+    backgroundColor: '#EEF7FF'
   },
   dropdownItemText: {
-    color: '#183750'
+    color: '#0B1F3A'
   },
   dropdownItemTextActive: {
-    color: '#0f5fb8',
+    color: '#0A84FF',
     fontWeight: '700'
   },
   input: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -785,8 +924,8 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top'
   },
   inputDisabled: {
-    backgroundColor: '#f2f4f7',
-    color: '#8aa0b6'
+    backgroundColor: '#E2E8F0',
+    color: '#64748B'
   },
   row: {
     flexDirection: 'column',
@@ -794,9 +933,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#e4ebf5',
+    borderColor: '#D9E2EF',
     borderRadius: 12,
-    backgroundColor: '#fbfdff',
+    backgroundColor: '#FFFFFF',
     marginBottom: 8,
     gap: 8
   },
@@ -809,6 +948,68 @@ const styles = StyleSheet.create({
   rowTitleWrap: {
     flex: 1
   },
+  planLimitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8
+  },
+  sectionHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.2
+  },
+  sectionHeaderTitleWrap: {
+    flex: 1,
+    paddingRight: 10
+  },
+  sectionHeaderTotal: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  sortIconButton: {
+    minWidth: 64,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sortActionsRow: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  sortIconGlyph: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900'
+  },
+  planLimitText: {
+    color: '#B7791F',
+    fontWeight: '700'
+  },
+  amountBlock: {
+    alignItems: 'flex-end'
+  },
+  amountLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2
+  },
+  expandHint: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 6
+  },
   metaBlock: {
     gap: 2
   },
@@ -819,10 +1020,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'flex-start'
   },
-  name: { color: '#0f3557', fontWeight: '700' },
-  sub: { color: '#607d99' },
-  amount: { color: '#b3261e', fontWeight: '800' },
-  readOnlyText: { color: '#9a6b00', fontWeight: '700', marginBottom: 8 },
+  name: { color: '#0B1F3A', fontWeight: '700' },
+  sub: { color: '#64748B' },
+  amount: { color: '#FF5A5F', fontWeight: '800' },
+  readOnlyText: { color: '#B7791F', fontWeight: '700', marginBottom: 8 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',

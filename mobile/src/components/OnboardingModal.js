@@ -69,15 +69,15 @@ export default function OnboardingModal({
             </Text>
             <View style={styles.topActions}>
               {safeIndex > 0 ? (
-                <Pressable onPress={onBack}>
+                <Pressable style={[styles.topActionButton, { borderColor: actionColor }]} onPress={onBack}>
                   <Text style={[styles.topActionText, { color: actionColor }]}>{t('Back')}</Text>
                 </Pressable>
               ) : null}
-              <Pressable onPress={onSkip}>
+              <Pressable style={[styles.topActionButton, { borderColor: skipColor }]} onPress={onSkip}>
                 <Text style={[styles.topActionText, { color: skipColor }]}>{t('Skip')}</Text>
               </Pressable>
-              <Pressable onPress={onNext}>
-                <Text style={[styles.nextText, { color: actionColor }]}>
+              <Pressable style={[styles.topActionButton, styles.topActionButtonPrimary, { backgroundColor: actionColor, borderColor: actionColor }]} onPress={onNext}>
+                <Text style={[styles.nextText, { color: '#FFFFFF' }]}>
                   {isLast ? t('Get Started') : t('Next')}
                 </Text>
               </Pressable>
@@ -141,7 +141,19 @@ const styles = StyleSheet.create({
   topActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14
+    gap: 8
+  },
+  topActionButton: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  topActionButtonPrimary: {
+    borderWidth: 0
   },
   stepMeta: {
     fontSize: 12,
@@ -149,11 +161,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2
   },
   topActionText: {
-    fontSize: 13,
+    fontSize: 14,
+    lineHeight: 18,
     fontWeight: '700'
   },
   nextText: {
-    fontSize: 13,
+    fontSize: 14,
+    lineHeight: 18,
     fontWeight: '800'
   },
   title: {

@@ -1,53 +1,72 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import { Animated, Image, StatusBar, StyleSheet } from 'react-native';
 
-export default function LaunchScreen({ dark, onDone = () => {} }) {
-  const doneRef = React.useRef(false);
-  const player = useVideoPlayer(require('../assets/networth_manager_premium_launch.mp4'), (instance) => {
-    instance.loop = false;
-    instance.muted = true;
-    instance.play();
-  });
+export default function WorthioSplash({ dark, onFinish = () => {} }) {
+  const rootOpacity = React.useRef(new Animated.Value(1)).current;
+  const scale = React.useRef(new Animated.Value(1.02)).current;
+  const translateY = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
-    const sub = player.addListener('playToEnd', () => {
-      if (doneRef.current) return;
-      doneRef.current = true;
-      onDone();
+    Animated.sequence([
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 900,
+        useNativeDriver: true
+      }),
+      Animated.delay(2500),
+      Animated.parallel([
+        Animated.timing(rootOpacity, {
+          toValue: 0,
+          duration: 850,
+          useNativeDriver: true
+        }),
+        Animated.timing(scale, {
+          toValue: 0.992,
+          duration: 850,
+          useNativeDriver: true
+        }),
+        Animated.timing(translateY, {
+          toValue: -10,
+          duration: 850,
+          useNativeDriver: true
+        })
+      ])
+    ]).start(({ finished }) => {
+      if (finished) onFinish();
     });
-    return () => sub.remove();
-  }, [onDone, player]);
+  }, [onFinish, rootOpacity, scale, translateY]);
+
+  const splashSource = require('../assets/worthio-splash-screen.png');
 
   return (
-    <View style={[styles.root, dark && styles.rootDark]}>
-      <VideoView
-        player={player}
-        style={styles.video}
-        contentFit="cover"
-        allowsPictureInPicture={false}
-        nativeControls={false}
-      />
-    </View>
+    <Animated.View
+      style={[
+        styles.root,
+        dark && styles.rootDark,
+        {
+          opacity: rootOpacity,
+          transform: [{ scale }, { translateY }]
+        }
+      ]}
+    >
+      <StatusBar barStyle="light-content" />
+      <Image source={splashSource} style={styles.image} resizeMode="cover" />
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
+    ...StyleSheet.absoluteFillObject,
     flex: 1,
-    backgroundColor: '#000',
-    overflow: 'hidden',
-    position: 'relative'
+    backgroundColor: '#0B1F3A',
+    zIndex: 2000,
+    elevation: 2000
   },
   rootDark: {
-    backgroundColor: '#000'
+    backgroundColor: '#0B1F3A'
   },
-  video: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  image: {
     width: '100%',
     height: '100%'
   }

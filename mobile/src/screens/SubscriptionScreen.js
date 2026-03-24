@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, BackHandler, ScrollView, Platform, Linking, Modal } from 'react-native';
 import { WebView } from 'react-native-webview';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { api } from '../api/client';
@@ -25,12 +26,19 @@ const COMPARISON = [
   { feature: 'Dashboard', basic: '✓', premium: '✓' },
   { feature: 'Assets', basic: 'Up to 10', premium: 'Unlimited' },
   { feature: 'Liabilities', basic: 'Up to 5', premium: 'Unlimited' },
-  { feature: 'Account Management', basic: '✓', premium: '✓' },
+  { feature: 'Net Worth Trend', basic: '✓', premium: '✓' },
   { feature: 'Family Share', basic: '✗', premium: '✓' },
   { feature: 'AI Insights', basic: '✗', premium: '✓' },
   { feature: 'Targets', basic: '✗', premium: '✓' },
-  { feature: 'Net Worth Trend', basic: '✗', premium: '✓' },
   { feature: 'Reminders', basic: '✗', premium: '✓' }
+];
+
+const PREMIUM_FEATURE_TAGS = [
+  'Family Share',
+  'AI Insights',
+  'Targets',
+  'Reminders',
+  'More Assets & Liabilities'
 ];
 
 function formatPlanLabel(plan) {
@@ -82,6 +90,45 @@ function resolveTierVariant(status, tier) {
   if (plan.endsWith('_monthly')) return 'Monthly';
   if (plan.endsWith('_yearly')) return 'Yearly';
   return null;
+}
+
+function StatusBadge({ label, tone = 'neutral', theme }) {
+  const stylesByTone = {
+    neutral: {
+      backgroundColor: theme.key === 'light' ? '#E7F1FF' : 'rgba(36,178,214,0.14)',
+      borderColor: theme.key === 'light' ? '#BFD8F7' : 'rgba(36,178,214,0.28)',
+      color: theme.key === 'light' ? '#155EAF' : '#C9F3FF'
+    },
+    positive: {
+      backgroundColor: theme.key === 'light' ? '#E6FAF3' : 'rgba(0,200,150,0.14)',
+      borderColor: theme.key === 'light' ? '#BCEBD9' : 'rgba(0,200,150,0.28)',
+      color: theme.key === 'light' ? '#117A5B' : '#CFFAE9'
+    }
+  };
+  const toneStyle = stylesByTone[tone] || stylesByTone.neutral;
+  return (
+    <View style={[styles.statusBadge, { backgroundColor: toneStyle.backgroundColor, borderColor: toneStyle.borderColor }]}>
+      <Text style={[styles.statusBadgeText, { color: toneStyle.color }]}>{label}</Text>
+    </View>
+  );
+}
+
+function PlanAccentBar({ premium = false }) {
+  const gradientId = premium ? 'worthioPlanAccentPremium' : 'worthioPlanAccentBasic';
+  return (
+    <View style={styles.planAccentBar}>
+      <Svg width="100%" height="100%" viewBox="0 0 100 10" preserveAspectRatio="none">
+        <Defs>
+          <LinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+            <Stop offset="0%" stopColor={premium ? '#0A84FF' : '#1B6FCC'} />
+            <Stop offset="52%" stopColor={premium ? '#2ED3F7' : '#24B2D6'} />
+            <Stop offset="100%" stopColor={premium ? '#00C896' : '#16AA8A'} />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100" height="10" rx="5" fill={`url(#${gradientId})`} />
+      </Svg>
+    </View>
+  );
 }
 
 export default function SubscriptionScreen({ onClose, onPurchased, user }) {
@@ -259,12 +306,20 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
 
   useEffect(() => {
     const onBack = () => {
+      if (checkoutVisible) {
+        setCheckoutVisible(false);
+        setCheckoutUrl('');
+        setPendingOrder(null);
+        setManualVerifyVisible(false);
+        setMessage(t('Payment was cancelled. You can try again.'));
+        return true;
+      }
       onClose?.();
       return true;
     };
     const handler = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => handler.remove();
-  }, [onClose]);
+  }, [checkoutVisible, onClose, t]);
 
   const parseIncomingUrl = (url) => {
     const raw = String(url || '');
@@ -490,6 +545,23 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
   };
 
   const onCheckoutNav = (url) => {
+    const raw = String(url || '').toLowerCase();
+    if (
+      raw &&
+      (raw.includes('user_dropped') ||
+        raw.includes('cancelled') ||
+        raw.includes('payment-failed') ||
+        raw.includes('payment_failed') ||
+        raw.includes('txstatus=cancelled') ||
+        raw.includes('txstatus=failed'))
+    ) {
+      setCheckoutVisible(false);
+      setCheckoutUrl('');
+      setPendingOrder(null);
+      setManualVerifyVisible(false);
+      setMessage(t('Payment was cancelled. You can try again.'));
+      return false;
+    }
     const payload = parseIncomingUrl(url);
     if (payload?.orderId) {
       finalizeFromReturn(payload);
@@ -521,6 +593,15 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
   const basicYearlyActive = isExactPlanActive(status, 'basic_yearly');
   const premiumMonthlyActive = isExactPlanActive(status, 'premium_monthly');
   const premiumYearlyActive = isExactPlanActive(status, 'premium_yearly');
+  const basicVariant = resolveTierVariant(status, 'basic');
+  const premiumVariant = resolveTierVariant(status, 'premium');
+
+  const getActionLabel = (tierVariant, targetVariant, fallback) => {
+    if (tierVariant && tierVariant !== targetVariant) {
+      return targetVariant === 'Monthly' ? t('Switch to Monthly') : t('Switch to Yearly');
+    }
+    return fallback;
+  };
 
   return (
     <ScrollView
@@ -532,24 +613,24 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
       alwaysBounceVertical
     >
       <View style={styles.headerRow}>
-        <Pressable style={styles.backRow} onPress={onClose}>
-          <Text style={[styles.backText, { color: theme.accent }]}>{t('Back')}</Text>
-        </Pressable>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('Manage Plan')}</Text>
-          <Text style={[styles.headerSub, { color: theme.muted }]}>{t('Upgrade or renew to unlock premium features.')}</Text>
+        <View style={styles.headerTitleRow}>
+          <Pressable style={[styles.backIconButton, { borderColor: theme.border, backgroundColor: theme.cardAlt || theme.card }]} onPress={onClose}>
+            <Text style={[styles.backChevron, { color: theme.accent }]}>‹</Text>
+          </Pressable>
+          <View style={styles.headerTitleBlock}>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>{t('Manage Plan')}</Text>
+            <Text style={[styles.headerSub, { color: theme.muted }]}>{t('Upgrade or renew to unlock premium features.')}</Text>
+          </View>
         </View>
-        <View style={styles.headerSpacer} />
       </View>
 
-      <Modal visible={checkoutVisible} animationType="slide" onRequestClose={() => setCheckoutVisible(false)}>
-        <View style={styles.checkoutHeader}>
-          <Pressable onPress={() => setCheckoutVisible(false)}>
-            <Text style={[styles.backText, { color: theme.accent }]}>{t('Back')}</Text>
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>{t('Cashfree Checkout')}</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+      <Modal visible={checkoutVisible} animationType="slide" onRequestClose={() => {
+        setCheckoutVisible(false);
+        setCheckoutUrl('');
+        setPendingOrder(null);
+        setManualVerifyVisible(false);
+        setMessage(t('Payment was cancelled. You can try again.'));
+      }}>
         {checkoutUrl ? (
           <WebView
             source={{ uri: checkoutUrl }}
@@ -625,24 +706,58 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
       ) : null}
 
       <SectionCard title={t('Your Subscription')}>
-        <View style={styles.statusRow}>
-          <View>
-            <Text style={[styles.subtle, { color: theme.muted }]}>{t('Current plan')}</Text>
-            <Text style={[styles.emph, { color: theme.text }]}>{t(formatPlanLabel(status?.plan))}</Text>
+        <PlanAccentBar premium={String(status?.plan || '').startsWith('premium') || String(status?.plan || '') === 'trial_premium'} />
+        <View
+          style={[
+            styles.subscriptionHero,
+            {
+              backgroundColor: theme.key === 'light' ? '#FCFDFE' : 'rgba(255,255,255,0.04)',
+              borderColor: theme.key === 'light' ? '#C9D7E8' : theme.border
+            }
+          ]}
+        >
+          <View style={styles.subscriptionHeroTopRow}>
+            <View style={styles.subscriptionHeroCopy}>
+              <Text style={[styles.subtle, { color: theme.muted }]}>{t('Current plan')}</Text>
+              <Text style={[styles.subscriptionPlanName, { color: theme.text }]}>{t(formatPlanLabel(status?.plan))}</Text>
+            </View>
+            <StatusBadge
+              label={t(formatStatusLabel(status?.status))}
+              tone={String(status?.status || '').toLowerCase() === 'active' ? 'positive' : 'neutral'}
+              theme={theme}
+            />
           </View>
-          <View>
-            <Text style={[styles.subtle, { color: theme.muted }]}>{t('Status')}</Text>
-            <Text style={[styles.emph, { color: theme.text }]}>{t(formatStatusLabel(status?.status))}</Text>
+          <View style={styles.subscriptionMetaGrid}>
+            <View
+              style={[
+                styles.subscriptionMetaCard,
+                {
+                  backgroundColor: theme.key === 'light' ? '#F7FAFC' : 'rgba(11,31,58,0.32)',
+                  borderColor: theme.key === 'light' ? '#D7E3F1' : theme.border
+                }
+              ]}
+            >
+              <Text style={[styles.subscriptionMetaLabel, { color: theme.muted }]}>{t('Expires')}</Text>
+              <Text style={[styles.subscriptionMetaValue, { color: theme.text }]}>
+                {status?.current_period_end ? formatDate(status.current_period_end) : t('Not set')}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.subscriptionMetaCard,
+                {
+                  backgroundColor: theme.key === 'light' ? '#F7FAFC' : 'rgba(11,31,58,0.32)',
+                  borderColor: theme.key === 'light' ? '#D7E3F1' : theme.border
+                }
+              ]}
+            >
+              <Text style={[styles.subscriptionMetaLabel, { color: theme.muted }]}>{t('Provider')}</Text>
+              <Text style={[styles.subscriptionMetaValue, { color: theme.text }]}>
+                {t(formatProviderLabel(status?.provider))}
+              </Text>
+            </View>
           </View>
         </View>
-        {status?.current_period_end ? (
-          <Text style={[styles.subtle, { color: theme.muted }]}>{t('Expires: {date}', { date: formatDate(status.current_period_end) })}</Text>
-        ) : null}
-        {status?.provider ? (
-          <Text style={[styles.subtle, { color: theme.muted }]}>
-            {t('Provider: {value}', { value: t(formatProviderLabel(status.provider)) })}
-          </Text>
-        ) : null}
         {status?.provider_details?.provider_state ? (
           <Text style={[styles.subtle, { color: theme.muted }]}>
             {t('Store status: {value}', { value: String(status.provider_details.provider_state).replace(/_/g, ' ') })}
@@ -668,13 +783,43 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
         ) : null}
       </SectionCard>
 
-      <SectionCard title={t('What You Get')}>
+      <SectionCard title={t('Worthio Feature List')}>
         <View style={styles.compareHeader}>
-          <Text style={[styles.compareHeaderText, { color: theme.silver }]}>{t('Basic')}</Text>
-          <Text style={[styles.compareHeaderText, { color: theme.gold }]}>{t('Premium')}</Text>
+          <View style={styles.compareHeaderSpacer} />
+          <View
+            style={[
+              styles.compareHeaderPill,
+              {
+                backgroundColor: theme.key === 'light' ? '#F5F8FC' : 'rgba(143,162,191,0.14)',
+                borderColor: theme.key === 'light' ? '#CCD9E8' : 'rgba(143,162,191,0.22)'
+              }
+            ]}
+          >
+            <Text style={[styles.compareHeaderText, { color: theme.silver }]}>{t('Basic')}</Text>
+          </View>
+          <View
+            style={[
+              styles.compareHeaderPill,
+              {
+                backgroundColor: theme.key === 'light' ? '#FFF8EA' : 'rgba(221,178,77,0.14)',
+                borderColor: theme.key === 'light' ? '#EACF8D' : 'rgba(221,178,77,0.24)'
+              }
+            ]}
+          >
+            <Text style={[styles.compareHeaderText, { color: theme.gold }]}>{t('Premium')}</Text>
+          </View>
         </View>
         {COMPARISON.map((row) => (
-          <View key={row.feature} style={[styles.compareRow, { borderBottomColor: theme.border }]}>
+          <View
+            key={row.feature}
+            style={[
+              styles.compareRow,
+              {
+                borderBottomColor: theme.key === 'light' ? '#E2EAF4' : theme.border,
+                backgroundColor: theme.key === 'light' ? '#FCFDFE' : 'rgba(255,255,255,0.03)'
+              }
+            ]}
+          >
             <Text style={[styles.compareFeature, { color: theme.text }]}>{t(row.feature)}</Text>
             <Text style={[styles.compareBasic, { color: theme.silver }]}>{t(String(row.basic))}</Text>
             <Text style={[styles.comparePremium, { color: theme.gold }]}>{t(String(row.premium))}</Text>
@@ -696,61 +841,124 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
           </Text>
         ) : null}
         <View style={styles.planGrid}>
-          <View style={[styles.planCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            <Text style={[styles.planTitle, { color: theme.text }]}>{t('Basic')}</Text>
-            {resolveTierVariant(status, 'basic') ? (
-              <Text style={[styles.subtle, { color: theme.muted }]}>
-                {t('Active variant: {value}', { value: t(resolveTierVariant(status, 'basic')) })}
-              </Text>
-            ) : null}
-            <Text style={[styles.planPrice, { color: theme.accent }]}>{t(planDisplayPrice('basic_monthly'))}</Text>
-            <Text style={[styles.planNote, { color: theme.muted }]}>{t('Best for tracking essentials.')}</Text>
-            <PillButton
-              kind={basicMonthlyActive ? 'status' : 'ghost'}
-              disabled={basicMonthlyActive}
-              label={basicMonthlyActive ? t('Active - Monthly') : t('Buy Monthly')}
-              onPress={() => purchase('basic_monthly').catch((e) => setMessage(e.message))}
-            />
-            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{t(planDisplayPrice('basic_yearly'))}</Text>
-            <View style={styles.discountRow}>
-              <Text style={[styles.discountBadge, { backgroundColor: theme.accentSoft, color: theme.accent }]}>
-                {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.basic.monthly, PLAN_META.basic.yearly) })}
-              </Text>
+          <View style={[styles.planCard, { borderColor: theme.key === 'light' ? '#CCD9E8' : theme.border, backgroundColor: theme.key === 'light' ? '#FCFDFE' : theme.card, shadowColor: theme.key === 'light' ? '#0B1F3A' : '#000000' }]}>
+            <PlanAccentBar />
+            <View
+              style={[
+                styles.planHeaderBlock,
+                {
+                  backgroundColor: theme.key === 'light' ? '#F7FAFC' : 'rgba(255,255,255,0.04)',
+                  borderColor: theme.key === 'light' ? '#D7E3F1' : theme.border
+                }
+              ]}
+            >
+              <View style={styles.planHeaderTopRow}>
+                <View style={[styles.planTierCapsule, { backgroundColor: theme.key === 'light' ? '#E7F1FF' : 'rgba(36,178,214,0.14)', borderColor: theme.key === 'light' ? '#BFD8F7' : 'rgba(36,178,214,0.24)' }]}>
+                  <Text style={[styles.planTierCapsuleText, { color: theme.info }]}>{t('ESSENTIAL')}</Text>
+                </View>
+                {basicVariant ? <StatusBadge label={t('Active {value}', { value: t(basicVariant) })} tone="neutral" theme={theme} /> : null}
+              </View>
+              <Text style={[styles.planTitle, styles.planTitleLarge, { color: theme.text }]}>{t('Basic')}</Text>
+              <Text style={[styles.planNote, styles.planNoteHeader, { color: theme.muted }]}>{t('Best for tracking essentials.')}</Text>
             </View>
-            <PillButton
-              kind={basicYearlyActive ? 'status' : 'ghost'}
-              disabled={basicYearlyActive}
-              label={basicYearlyActive ? t('Active - Yearly') : t('Buy Yearly')}
-              onPress={() => purchase('basic_yearly').catch((e) => setMessage(e.message))}
-            />
+            <View style={[styles.planOptionCard, { backgroundColor: theme.key === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.03)', borderColor: theme.key === 'light' ? '#D7E3F1' : theme.border }]}>
+              <View style={styles.planOptionCopy}>
+                <Text style={[styles.planOptionLabel, { color: theme.text }]}>{t('Monthly')}</Text>
+                <Text style={[styles.planPrice, { color: theme.accent }]}>{t(planDisplayPrice('basic_monthly'))}</Text>
+              </View>
+              {basicMonthlyActive ? (
+                <StatusBadge label={t('Current Plan')} tone="positive" theme={theme} />
+              ) : (
+                <PillButton
+                  kind="ghost"
+                  label={getActionLabel(basicVariant, 'Monthly', t('Buy Monthly'))}
+                  onPress={() => purchase('basic_monthly').catch((e) => setMessage(e.message))}
+                />
+              )}
+            </View>
+            <View style={[styles.planOptionCard, { backgroundColor: theme.key === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.03)', borderColor: theme.key === 'light' ? '#D7E3F1' : theme.border }]}>
+              <View style={styles.planOptionCopy}>
+                <Text style={[styles.planOptionLabel, { color: theme.text }]}>{t('Yearly')}</Text>
+                <View style={styles.priceBadgeRow}>
+                  <Text style={[styles.planPrice, styles.planPriceCompact, { color: theme.accent }]}>{t(planDisplayPrice('basic_yearly'))}</Text>
+                  <Text style={[styles.discountBadge, { backgroundColor: theme.key === 'light' ? '#E7F1FF' : '#155EAF', color: '#FFFFFF' }]}>
+                    {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.basic.monthly, PLAN_META.basic.yearly) })}
+                  </Text>
+                </View>
+              </View>
+              {basicYearlyActive ? (
+                <StatusBadge label={t('Current Plan')} tone="positive" theme={theme} />
+              ) : (
+                <PillButton
+                  kind="ghost"
+                  label={getActionLabel(basicVariant, 'Yearly', t('Buy Yearly'))}
+                  onPress={() => purchase('basic_yearly').catch((e) => setMessage(e.message))}
+                />
+              )}
+            </View>
           </View>
-          <View style={[styles.planCard, styles.planCardPremium, { borderColor: theme.gold, backgroundColor: theme.card }]}>
-            <Text style={[styles.planTitle, { color: theme.text }]}>{t('Premium')}</Text>
-            {resolveTierVariant(status, 'premium') ? (
-              <Text style={[styles.subtle, { color: theme.muted }]}>
-                {t('Active variant: {value}', { value: t(resolveTierVariant(status, 'premium')) })}
-              </Text>
-            ) : null}
-            <Text style={[styles.planPrice, { color: theme.accent }]}>{t(planDisplayPrice('premium_monthly'))}</Text>
-            <Text style={[styles.planNote, { color: theme.muted }]}>{t('Unlock targets, reminders, and net worth trend.')}</Text>
-            <PillButton
-              kind={premiumMonthlyActive ? 'status' : 'ghost'}
-              disabled={premiumMonthlyActive}
-              label={premiumMonthlyActive ? t('Active - Monthly') : t('Buy Monthly')}
-              onPress={() => purchase('premium_monthly').catch((e) => setMessage(e.message))}
-            />
-            <Text style={[styles.planPriceSecondary, { color: theme.muted }]}>{t(planDisplayPrice('premium_yearly'))}</Text>
-            <View style={styles.discountRow}>
-              <Text style={[styles.discountBadge, { backgroundColor: theme.accentSoft, color: theme.accent }]}>
-                {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.premium.monthly, PLAN_META.premium.yearly) })}
-              </Text>
+          <View style={[styles.planCard, styles.planCardPremium, { borderColor: theme.key === 'light' ? '#E2C56D' : theme.gold, backgroundColor: theme.key === 'light' ? '#FFFEFB' : theme.card, shadowColor: theme.key === 'light' ? '#0B1F3A' : '#000000' }]}>
+            <PlanAccentBar premium />
+            <View
+              style={[
+                styles.planHeaderBlock,
+                {
+                  backgroundColor: theme.key === 'light' ? '#FFF8EA' : 'rgba(221,178,77,0.08)',
+                  borderColor: theme.key === 'light' ? '#EACF8D' : 'rgba(221,178,77,0.22)'
+                }
+              ]}
+            >
+              <View style={styles.planHeaderTopRow}>
+                <View style={[styles.planTierCapsule, { backgroundColor: theme.key === 'light' ? '#FFF3D6' : 'rgba(221,178,77,0.14)', borderColor: theme.key === 'light' ? '#F0D999' : 'rgba(221,178,77,0.26)' }]}>
+                  <Text style={[styles.planTierCapsuleText, { color: theme.gold }]}>{t('UNLOCK MORE')}</Text>
+                </View>
+                {premiumVariant ? <StatusBadge label={t('Active {value}', { value: t(premiumVariant) })} tone="neutral" theme={theme} /> : null}
+              </View>
+              <Text style={[styles.planTitle, styles.planTitleLarge, { color: theme.text }]}>{t('Premium')}</Text>
+              <Text style={[styles.planNote, styles.planNoteHeader, { color: theme.muted }]}>{t('Unlock advanced access and deeper portfolio visibility.')}</Text>
             </View>
-            <PillButton
-              kind={premiumYearlyActive ? 'status' : 'ghost'}
-              disabled={premiumYearlyActive}
-              label={premiumYearlyActive ? t('Active - Yearly') : t('Buy Yearly')}
-              onPress={() => purchase('premium_yearly').catch((e) => setMessage(e.message))}
-            />
+            <View style={styles.featureTagRow}>
+              {PREMIUM_FEATURE_TAGS.map((feature) => (
+                <View key={feature} style={[styles.featureTag, { borderColor: theme.key === 'light' ? '#EACF8D' : theme.gold, backgroundColor: theme.key === 'light' ? '#FFF8EA' : 'rgba(221,178,77,0.12)' }]}>
+                  <Text style={[styles.featureTagText, { color: theme.gold }]}>{t(feature)}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={[styles.planOptionCard, styles.planOptionCardPremium, { backgroundColor: theme.key === 'light' ? '#FFFCF4' : 'rgba(255,255,255,0.04)', borderColor: theme.key === 'light' ? '#EACF8D' : 'rgba(221,178,77,0.20)' }]}>
+              <View style={styles.planOptionCopy}>
+                <Text style={[styles.planOptionLabel, { color: theme.text }]}>{t('Monthly')}</Text>
+                <Text style={[styles.planPrice, { color: theme.accent }]}>{t(planDisplayPrice('premium_monthly'))}</Text>
+              </View>
+              {premiumMonthlyActive ? (
+                <StatusBadge label={t('Current Plan')} tone="positive" theme={theme} />
+              ) : (
+                <PillButton
+                  kind="ghost"
+                  label={getActionLabel(premiumVariant, 'Monthly', t('Buy Monthly'))}
+                  onPress={() => purchase('premium_monthly').catch((e) => setMessage(e.message))}
+                />
+              )}
+            </View>
+            <View style={[styles.planOptionCard, styles.planOptionCardPremium, { backgroundColor: theme.key === 'light' ? '#FFFCF4' : 'rgba(255,255,255,0.04)', borderColor: theme.key === 'light' ? '#EACF8D' : 'rgba(221,178,77,0.20)' }]}>
+              <View style={styles.planOptionCopy}>
+                <Text style={[styles.planOptionLabel, { color: theme.text }]}>{t('Yearly')}</Text>
+                <View style={styles.priceBadgeRow}>
+                  <Text style={[styles.planPrice, styles.planPriceCompact, { color: theme.accent }]}>{t(planDisplayPrice('premium_yearly'))}</Text>
+                  <Text style={[styles.discountBadge, { backgroundColor: theme.key === 'light' ? '#E7F1FF' : '#155EAF', color: '#FFFFFF' }]}>
+                    {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.premium.monthly, PLAN_META.premium.yearly) })}
+                  </Text>
+                </View>
+              </View>
+              {premiumYearlyActive ? (
+                <StatusBadge label={t('Current Plan')} tone="positive" theme={theme} />
+              ) : (
+                <PillButton
+                  kind="ghost"
+                  label={getActionLabel(premiumVariant, 'Yearly', t('Buy Yearly'))}
+                  onPress={() => purchase('premium_yearly').catch((e) => setMessage(e.message))}
+                />
+              )}
+            </View>
           </View>
         </View>
       </SectionCard>
@@ -778,17 +986,13 @@ const styles = StyleSheet.create({
     padding: 16
   },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6
+    marginBottom: 8,
+    gap: 10
   },
   checkoutHeader: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
+    gap: 10
   },
   emptyCheckout: {
     flex: 1,
@@ -796,29 +1000,90 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24
   },
-  headerCenter: {
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  headerTitleBlock: {
     flex: 1,
-    alignItems: 'center'
+    justifyContent: 'center',
+    gap: 4
   },
-  headerSpacer: {
-    width: 48
+  backIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  backRow: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6
-  },
-  backText: {
-    color: '#0f766e',
-    fontWeight: '700'
+  backChevron: {
+    fontSize: 22,
+    lineHeight: 22,
+    fontWeight: '800',
+    marginTop: -1
   },
   headerTitle: {
-    color: '#0f3557',
-    fontWeight: '800'
+    color: '#0B1F3A',
+    fontWeight: '800',
+    fontSize: 24,
+    lineHeight: 30
   },
   headerSub: {
-    color: '#607d99',
-    fontSize: 12,
+    color: '#64748B',
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '600'
+  },
+  subscriptionHero: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 8
+  },
+  subscriptionHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  subscriptionHeroCopy: {
+    flex: 1,
+    gap: 2
+  },
+  subscriptionPlanName: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '800',
+    letterSpacing: -0.3
+  },
+  subscriptionMetaGrid: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  subscriptionMetaCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4
+  },
+  subscriptionMetaLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase'
+  },
+  subscriptionMetaValue: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700'
   },
   statusRow: {
     flexDirection: 'row',
@@ -827,12 +1092,12 @@ const styles = StyleSheet.create({
     marginBottom: 6
   },
   subtle: {
-    color: '#607d99',
+    color: '#64748B',
     marginBottom: 6,
     fontWeight: '600'
   },
   emph: {
-    color: '#0f3557',
+    color: '#0B1F3A',
     fontWeight: '700'
   },
   planGrid: {
@@ -840,11 +1105,15 @@ const styles = StyleSheet.create({
   },
   planCard: {
     borderWidth: 1,
-    borderColor: '#d6e3f2',
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     padding: 12,
-    gap: 8
+    gap: 10,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3
   },
   ribbon: {
     position: 'absolute',
@@ -866,24 +1135,105 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase'
   },
   planCardPremium: {
-    borderColor: '#f4d58d'
+    borderColor: '#DDB24D'
+  },
+  planAccentBar: {
+    height: 10,
+    borderRadius: 5,
+    overflow: 'hidden'
   },
   planTitle: {
-    color: '#183750',
+    color: '#0B1F3A',
     fontWeight: '800',
     fontSize: 16
   },
+  planTitleLarge: {
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.3
+  },
+  planHeaderBlock: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4
+  },
+  planHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  planTierCapsule: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  planTierCapsuleText: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '900',
+    letterSpacing: 0.8
+  },
   planPrice: {
-    color: '#0f766e',
-    fontWeight: '800'
+    color: '#00C896',
+    fontWeight: '800',
+    fontSize: 22,
+    lineHeight: 28
+  },
+  planPriceCompact: {
+    fontSize: 20,
+    lineHeight: 26
   },
   planPriceSecondary: {
-    color: '#35526e',
-    marginTop: 6,
+    color: '#334155',
     fontWeight: '700'
   },
-  discountRow: {
-    alignItems: 'flex-start'
+  planOptionCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10
+  },
+  planOptionCardPremium: {
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 1
+  },
+  planOptionCopy: {
+    gap: 4
+  },
+  planOptionLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase'
+  },
+  priceBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'nowrap'
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    minHeight: 36,
+    justifyContent: 'center'
+  },
+  statusBadgeText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    letterSpacing: 0.2
   },
   discountBadge: {
     paddingHorizontal: 10,
@@ -895,9 +1245,31 @@ const styles = StyleSheet.create({
     overflow: 'hidden'
   },
   planNote: {
-    color: '#607d99',
+    color: '#64748B',
     marginBottom: 6,
     fontWeight: '600'
+  },
+  planNoteHeader: {
+    marginBottom: 0
+  },
+  featureTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 2,
+    marginTop: -2
+  },
+  featureTag: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  featureTagText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+    letterSpacing: 0.1
   },
   compareRow: {
     flexDirection: 'row',
@@ -905,39 +1277,49 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: '#eef2f8'
+    borderBottomColor: '#D9E2EF'
   },
   compareFeature: {
     flex: 1,
-    color: '#183750',
-    fontWeight: '700'
+    color: '#0B1F3A',
+    fontWeight: '700',
+    paddingRight: 12
   },
   compareBasic: {
-    width: 90,
-    textAlign: 'right',
-    color: '#98a2b3',
+    width: 100,
+    textAlign: 'center',
+    color: '#8FA2BF',
     fontWeight: '700'
   },
   comparePremium: {
-    width: 90,
-    textAlign: 'right',
-    color: '#c28f2c',
+    width: 100,
+    textAlign: 'center',
+    color: '#DDB24D',
     fontWeight: '800'
   },
   compareHeader: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 16,
+    alignItems: 'center',
+    gap: 10,
     marginBottom: 6
   },
+  compareHeaderSpacer: {
+    flex: 1
+  },
   compareHeaderText: {
-    width: 90,
-    textAlign: 'right',
-    color: '#35526e',
+    textAlign: 'center',
+    color: '#334155',
     fontWeight: '800'
   },
+  compareHeaderPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    width: 100
+  },
   message: {
-    color: '#b3261e',
+    color: '#FF5A5F',
     marginTop: 8,
     fontWeight: '600'
   },
@@ -950,7 +1332,7 @@ const styles = StyleSheet.create({
     marginTop: 10
   },
   closeText: {
-    color: '#0f766e',
+    color: '#00C896',
     fontWeight: '700'
   }
 });

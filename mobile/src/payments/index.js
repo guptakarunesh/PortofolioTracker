@@ -19,7 +19,7 @@ function getAppReturnUrl() {
   if (host) {
     return `exp://${host}:8081/--/subscription-return`;
   }
-  return 'networthmanager://subscription-return';
+  return 'worthio://subscription-return';
 }
 
 export async function startCheckout(plan, { user, fallback } = {}) {

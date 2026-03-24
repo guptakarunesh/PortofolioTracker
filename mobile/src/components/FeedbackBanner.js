@@ -2,28 +2,28 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme';
 
-const KIND_STYLES = {
-  success: {
-    bg: '#d1fae5',
-    border: '#10b981',
-    text: '#065f46'
-  },
-  error: {
-    bg: '#fee2e2',
-    border: '#ef4444',
-    text: '#991b1b'
-  },
-  info: {
-    bg: '#dbeafe',
-    border: '#3b82f6',
-    text: '#1d4ed8'
-  }
-};
-
 export default function FeedbackBanner({ message = '', kind = 'info' }) {
   const { theme } = useTheme();
   if (!message) return null;
-  const palette = KIND_STYLES[kind] || KIND_STYLES.info;
+  const isLight = theme.key === 'light';
+  const palette =
+    kind === 'success'
+      ? {
+          bg: isLight ? '#E9FBF4' : '#10284A',
+          border: theme.success,
+          text: isLight ? '#0A6B52' : theme.text
+        }
+      : kind === 'error'
+        ? {
+            bg: isLight ? '#FFF1F1' : '#132844',
+            border: theme.danger,
+            text: isLight ? '#9F1F24' : theme.text
+          }
+        : {
+            bg: isLight ? '#EEF7FF' : '#132844',
+            border: theme.accent,
+            text: isLight ? '#0B4F8A' : theme.text
+          };
   return (
     <View
       style={[

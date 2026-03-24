@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import PillButton from '../components/PillButton';
 import { api } from '../api/client';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
+import { BRAND } from '../brand';
 
 function FingerprintIcon({ color }) {
   return (
@@ -97,6 +98,113 @@ function PhoneBadgeIcon({ color }) {
   );
 }
 
+function NoLinkIcon({ stroke }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9.2 14.8 6.7 17.3a3.1 3.1 0 1 1-4.4-4.4l2.5-2.5"
+        stroke={stroke}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="m14.8 9.2 2.5-2.5a3.1 3.1 0 0 1 4.4 4.4l-2.5 2.5"
+        stroke={stroke}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path d="m9 15 6-6" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M7.3 7.3 16.7 16.7" stroke={stroke} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function AuthGradientButton({ label, onPress, disabled = false, leftIcon = null, style = null }) {
+  const { theme } = useTheme();
+  const [buttonSize, setButtonSize] = useState({ width: 0, height: 44 });
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout || {};
+        if (!width || !height) return;
+        setButtonSize((current) => (
+          current.width === width && current.height === height
+            ? current
+            : { width, height }
+        ));
+      }}
+      style={({ pressed }) => [
+        styles.modeButton,
+        styles.authPrimaryButton,
+        style,
+        disabled && styles.authPrimaryDisabled,
+        pressed && !disabled && styles.authPrimaryPressed
+      ]}
+    >
+      <View style={styles.authPrimaryFill} pointerEvents="none">
+        <Svg
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${Math.max(buttonSize.width, 1)} ${Math.max(buttonSize.height, 1)}`}
+        >
+          <Defs>
+            <LinearGradient id="worthioAuthRectGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <Stop offset="0%" stopColor="#1B6FCC" />
+              <Stop offset="52%" stopColor="#24B2D6" />
+              <Stop offset="100%" stopColor="#16AA8A" />
+            </LinearGradient>
+          </Defs>
+          <Rect
+            x="0"
+            y="0"
+            width={Math.max(buttonSize.width, 1)}
+            height={Math.max(buttonSize.height, 1)}
+            rx="16"
+            fill="url(#worthioAuthRectGradient)"
+          />
+        </Svg>
+      </View>
+      <View style={styles.authPrimaryContent}>
+        {leftIcon ? <View style={styles.authPrimaryIcon}>{leftIcon}</View> : null}
+        <Text style={[styles.modeButtonText, styles.authPrimaryText, { textShadowColor: theme.key === 'light' ? 'rgba(11,31,58,0.10)' : 'rgba(11,31,58,0.22)' }]}>
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function formatAuthDisplayMessage(value, t) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.includes('Unable to send OTP right now')) {
+    return t('Unable to send OTP right now. Please wait a few seconds and try again.');
+  }
+  if (raw.includes('Unable to verify OTP right now')) {
+    return t('Unable to verify OTP right now. Please wait a few seconds and try again.');
+  }
+  if (raw.includes('Network request failed') || raw.includes('Failed to fetch')) {
+    return t('Connection issue. Please try again in a few seconds.');
+  }
+  if (raw.includes('auth/invalid-phone-number')) {
+    return t('Enter a valid 10-digit Indian mobile number.');
+  }
+  if (raw.includes('auth/too-many-requests')) {
+    return t('Too many attempts. Please wait a little and try again.');
+  }
+  if (raw.includes('auth/invalid-verification-code')) {
+    return t('The OTP you entered is incorrect. Please try again.');
+  }
+  if (raw.includes('auth/code-expired')) {
+    return t('This OTP has expired. Please request a new one.');
+  }
+  return raw;
+}
+
 export default function AuthScreen({
   onRegister,
   onLoginWithBiometric,
@@ -116,6 +224,7 @@ export default function AuthScreen({
   const [otp, setOtp] = useState('');
   const [otpRequested, setOtpRequested] = useState(false);
   const [otpCooldown, setOtpCooldown] = useState(0);
+  const [messageTone, setMessageTone] = useState('error');
   const [consentPrivacy, setConsentPrivacy] = useState(false);
   const [consentTerms, setConsentTerms] = useState(false);
   const [privacyVersion, setPrivacyVersion] = useState('v1.1');
@@ -124,6 +233,7 @@ export default function AuthScreen({
   const [biometricMessage, setBiometricMessage] = useState('');
   const [privacyInfoVisible, setPrivacyInfoVisible] = useState(false);
   const [legalDocVisible, setLegalDocVisible] = useState(null);
+  const isLight = theme.key === 'light';
 
   useEffect(() => {
     api
@@ -155,19 +265,15 @@ export default function AuthScreen({
   }, [mode]);
 
   useEffect(() => {
-    if (variant === 'fresh') {
-      setMode('register');
-      return;
-    }
     if (variant === 'returning') {
       setMode('login');
       setMobile(String(initialMobile || '').replace(/\D/g, '').slice(0, 10));
       return;
     }
-    if (!mobile && initialMobile) {
-      setMobile(String(initialMobile || '').replace(/\D/g, '').slice(0, 10));
+    if (initialMobile) {
+      setMobile((current) => current || String(initialMobile || '').replace(/\D/g, '').slice(0, 10));
     }
-  }, [initialMobile, mobile, variant]);
+  }, [initialMobile, variant]);
 
   const canRegister = useMemo(() => consentPrivacy && consentTerms, [consentPrivacy, consentTerms]);
   const requiresOtp = mode === 'login' || mode === 'register';
@@ -185,9 +291,11 @@ export default function AuthScreen({
 
   const validateRegisterFields = () => {
     if (!/^[A-Za-z]{2}$/.test(String(fullName || '').trim())) {
+      setMessageTone('error');
       return t('Enter exactly 2 initials for registration.');
     }
     if (!canRegister) {
+      setMessageTone('error');
       return t('Please accept Privacy Policy and Terms before creating an account.');
     }
     return '';
@@ -195,6 +303,7 @@ export default function AuthScreen({
 
   const requestOtp = async () => {
     if (!mobile.trim()) {
+      setMessageTone('error');
       setMessage(t('Mobile number is required.'));
       return;
     }
@@ -211,11 +320,13 @@ export default function AuthScreen({
     setOtpRequested(true);
     setOtpCooldown(Number(result?.retry_after_seconds || 30));
     setBiometricMessage('');
+    setMessageTone('success');
     setMessage(t('OTP sent to your mobile number.'));
   };
 
   const submit = async () => {
     if (!mobile.trim()) {
+      setMessageTone('error');
       setMessage(t('Mobile number is required.'));
       return;
     }
@@ -224,6 +335,7 @@ export default function AuthScreen({
       return;
     }
     if (!otp.trim()) {
+      setMessageTone('error');
       setMessage(t('OTP (6 digits) is required.'));
       return;
     }
@@ -249,11 +361,11 @@ export default function AuthScreen({
     }
 
     setMessage('');
+    setMessageTone('error');
   };
 
-  const effectiveMessage = message || externalMessage;
+  const effectiveMessage = formatAuthDisplayMessage(message || externalMessage, t);
   const isReturningVariant = variant === 'returning';
-  const isLightNewVariant = variant === 'light-new';
   const legalDocContent =
     legalDocVisible === 'privacy'
       ? {
@@ -262,7 +374,7 @@ export default function AuthScreen({
           sections: [
             {
               heading: t('Scope'),
-              body: t('Networth Manager handles your account, portfolio, security, reminder, and family-sharing data to operate the app securely and lawfully.')
+              body: t('Worthio handles your account, portfolio, security, reminder, and family-sharing data to operate the app securely and lawfully.')
             },
             {
               heading: t('Data We Collect'),
@@ -297,7 +409,7 @@ export default function AuthScreen({
             sections: [
               {
                 heading: t('Service Description'),
-                body: t('Networth Manager is a personal finance record-keeping and planning app for assets, liabilities, reminders, family sharing, and AI-generated informational insights.')
+                body: t('Worthio is a personal finance record-keeping and planning app for assets, liabilities, reminders, family sharing, and AI-generated informational insights.')
               },
               {
                 heading: t('What the Service Is Not'),
@@ -330,16 +442,66 @@ export default function AuthScreen({
   return (
     <View style={styles.authShell}>
       <View style={styles.panelWrap}>
-        <View style={[styles.authPanelFrame, styles.authPanelFramePremiumBlue]}>
-          <View style={[styles.authPanelCard, styles.authPanelCardPremiumBlue, { shadowColor: theme.text }]}>
+        <View
+          style={[
+            styles.authPanelFrame,
+            {
+              backgroundColor: isLight ? 'rgba(255,255,255,0.78)' : 'rgba(11,31,58,0.72)',
+              borderColor: isLight ? 'rgba(217,226,239,0.85)' : 'rgba(255,255,255,0.10)',
+              shadowColor: BRAND.colors.bgDeep
+            }
+          ]}
+        >
+          <View
+            style={[
+              styles.authPanelCard,
+              {
+                backgroundColor: isLight ? 'rgba(255,255,255,0.92)' : 'rgba(19,40,68,0.88)',
+                borderColor: isLight ? 'rgba(217,226,239,0.72)' : 'rgba(255,255,255,0.08)',
+                shadowColor: BRAND.colors.bgDeep
+              }
+            ]}
+        >
           <View style={styles.formInner}>
         <View style={styles.modeRow}>
-          <PillButton label={t('Login')} kind={mode === 'login' ? 'primary' : 'ghost'} onPress={() => setMode('login')} />
-          <PillButton
-            label={t('Register')}
-            kind={mode === 'register' ? 'primary' : 'ghost'}
+          <Pressable
+            style={[
+              styles.modeButton,
+              {
+                backgroundColor: mode === 'login' ? (isLight ? '#1B6FCC' : '#155EAF') : (isLight ? BRAND.colors.surfaceAlt : BRAND.colors.bgElevated),
+                borderColor: mode === 'login' ? (isLight ? '#1B6FCC' : '#155EAF') : theme.border
+              }
+            ]}
+            onPress={() => setMode('login')}
+          >
+            <Text
+              style={[
+                styles.modeButtonText,
+                { color: mode === 'login' ? '#FFFFFF' : theme.muted }
+              ]}
+            >
+              {t('Login')}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.modeButton,
+              {
+                backgroundColor: mode === 'register' ? (isLight ? '#1B6FCC' : '#155EAF') : (isLight ? BRAND.colors.surfaceAlt : BRAND.colors.bgElevated),
+                borderColor: mode === 'register' ? (isLight ? '#1B6FCC' : '#155EAF') : theme.border
+              }
+            ]}
             onPress={() => setMode('register')}
-          />
+          >
+            <Text
+              style={[
+                styles.modeButtonText,
+                { color: mode === 'register' ? '#FFFFFF' : theme.muted }
+              ]}
+            >
+              {t('Register')}
+            </Text>
+          </Pressable>
         </View>
         <Text style={[styles.cardTitle, { color: theme.text }]}>
           {isReturningVariant
@@ -350,26 +512,15 @@ export default function AuthScreen({
               ? t('Welcome Back')
               : t('Sign In Securely')}
         </Text>
-        <Text style={[styles.cardSubtitle, { color: theme.muted }]}>
-          {isReturningVariant
-            ? t('Encrypted, protected, and visible only to you.')
-            : mode === 'register'
-            ? t('Encrypted, protected, and visible only to you.')
-            : otpRequested || mobile.trim().length === 10
-              ? t('Continue with OTP or your enrolled biometrics.')
-              : t('Use your mobile number to continue securely.')}
-        </Text>
-        {(mode === 'register' || isLightNewVariant) ? (
-          <Pressable style={styles.privacyInfoLinkWrap} onPress={() => setPrivacyInfoVisible(true)}>
-            <Text style={[styles.privacyInfoLink, { color: theme.accent }]}>{t('Know how your privacy works?')}</Text>
-          </Pressable>
-        ) : null}
-        {typeof onLoginWithBiometric === 'function' && biometricReady ? (
+        <Pressable style={styles.privacyInfoLinkWrap} onPress={() => setPrivacyInfoVisible(true)}>
+          <Text style={[styles.privacyInfoLink, { color: theme.info }]}>{t('Know how your privacy works?')}</Text>
+        </Pressable>
+        {mode === 'login' && typeof onLoginWithBiometric === 'function' && biometricReady ? (
           <>
-            <PillButton
+            <AuthGradientButton
               label={t('Login with Biometrics')}
-              kind="primary"
               leftIcon={<FingerprintIcon color={theme.card} />}
+              style={styles.primaryActionButton}
               disabled={loading}
               onPress={() =>
                 onLoginWithBiometric()
@@ -393,7 +544,7 @@ export default function AuthScreen({
               value={fullName}
               onChangeText={handleInitialsInput}
               placeholder={t('AB')}
-              placeholderTextColor={theme.muted}
+              placeholderTextColor={theme.subtle}
               autoCapitalize="characters"
               maxLength={2}
             />
@@ -406,21 +557,21 @@ export default function AuthScreen({
                 value={mobile}
                 onChangeText={handleMobileInput}
                 placeholder={t('10-digit Indian mobile')}
-                placeholderTextColor={theme.muted}
+                placeholderTextColor={theme.subtle}
                 keyboardType="number-pad"
                 autoCapitalize="none"
                 maxLength={10}
               />
             </View>
 
-            <View style={[styles.consentWrap, { borderColor: theme.border, backgroundColor: theme.background }]}> 
+            <View style={[styles.consentWrap, { borderColor: theme.border, backgroundColor: isLight ? BRAND.colors.surfaceAlt : BRAND.colors.bgElevated }]}> 
               <Pressable style={styles.consentRow} onPress={() => setConsentPrivacy((v) => !v)}>
                 <View style={[styles.checkbox, { borderColor: theme.border, backgroundColor: theme.card }, consentPrivacy && { backgroundColor: theme.accent, borderColor: theme.accent }]}> 
                   {consentPrivacy ? <Text style={styles.checkboxTick}>✓</Text> : null}
                 </View>
                 <Text style={[styles.consentText, { color: theme.muted }]}>{t('I agree to the ')}</Text>
                 <Pressable onPress={() => setLegalDocVisible('privacy')}>
-                  <Text style={[styles.linkText, { color: theme.accent }]}>{t('Privacy Policy')}</Text>
+                  <Text style={[styles.linkText, { color: theme.info }]}>{t('Privacy Policy')}</Text>
                 </Pressable>
               </Pressable>
               <Pressable style={styles.consentRow} onPress={() => setConsentTerms((v) => !v)}>
@@ -429,7 +580,7 @@ export default function AuthScreen({
                 </View>
                 <Text style={[styles.consentText, { color: theme.muted }]}>{t('I agree to the ')}</Text>
                 <Pressable onPress={() => setLegalDocVisible('terms')}>
-                  <Text style={[styles.linkText, { color: theme.accent }]}>{t('Terms of Service')}</Text>
+                  <Text style={[styles.linkText, { color: theme.info }]}>{t('Terms of Service')}</Text>
                 </Pressable>
               </Pressable>
             </View>
@@ -446,7 +597,7 @@ export default function AuthScreen({
                 value={mobile}
                 onChangeText={handleMobileInput}
                 placeholder={t('10-digit Indian mobile')}
-                placeholderTextColor={theme.muted}
+                placeholderTextColor={theme.subtle}
                 keyboardType="number-pad"
                 autoCapitalize="none"
                 maxLength={10}
@@ -463,13 +614,13 @@ export default function AuthScreen({
               value={otp}
               onChangeText={(text) => setOtp(String(text || '').replace(/\D/g, '').slice(0, 6))}
               placeholder={t('Enter OTP')}
-              placeholderTextColor={theme.muted}
+              placeholderTextColor={theme.subtle}
               keyboardType="number-pad"
             />
           </>
         ) : null}
 
-        <PillButton
+        <AuthGradientButton
           label={
             loading
               ? t('Please wait...')
@@ -479,7 +630,7 @@ export default function AuthScreen({
                   : t('Verify OTP')
                 : t('Send OTP')
           }
-          kind="primary"
+          style={styles.primaryActionButton}
           disabled={submitDisabled}
           onPress={() => submit().catch((e) => setMessage(e.message))}
         />
@@ -488,23 +639,39 @@ export default function AuthScreen({
           <PillButton
             label={otpCooldown > 0 ? t('Resend OTP ({seconds}s)', { seconds: otpCooldown }) : t('Resend OTP')}
             kind="ghost"
+            style={[styles.primaryActionButton, styles.secondaryActionButton]}
             disabled={loading || otpCooldown > 0}
             onPress={() => requestOtp().catch((e) => setMessage(e.message))}
           />
         ) : null}
 
-        {!!effectiveMessage && <Text style={[styles.message, { color: theme.danger }]}>{effectiveMessage}</Text>}
-        {!!biometricMessage && <Text style={[styles.message, { color: theme.danger }]}>{biometricMessage}</Text>}
+        {!!effectiveMessage && (
+          <View
+            style={[
+              styles.messageBanner,
+              messageTone === 'success'
+                ? { backgroundColor: isLight ? '#ECFDF3' : 'rgba(0,200,150,0.12)', borderColor: isLight ? '#ABEFC6' : 'rgba(0,200,150,0.22)' }
+                : { backgroundColor: isLight ? '#FEF2F2' : 'rgba(255,90,95,0.10)', borderColor: isLight ? '#FECACA' : 'rgba(255,90,95,0.22)' }
+            ]}
+          >
+            <Text style={[styles.message, { color: messageTone === 'success' ? (isLight ? '#067647' : '#78E0BF') : (isLight ? '#B42318' : '#FF9A9D') }]}>{effectiveMessage}</Text>
+          </View>
+        )}
+        {!!biometricMessage && (
+          <View style={[styles.messageBanner, { backgroundColor: isLight ? '#FEF2F2' : 'rgba(255,90,95,0.10)', borderColor: isLight ? '#FECACA' : 'rgba(255,90,95,0.22)' }]}>
+            <Text style={[styles.message, { color: isLight ? '#B42318' : '#FF9A9D' }]}>{biometricMessage}</Text>
+          </View>
+        )}
           </View>
           </View>
         </View>
       </View>
       <View style={styles.legalRow}>
         <Pressable onPress={() => setLegalDocVisible('terms')}>
-          <Text style={[styles.legalLink, { color: theme.muted }]}>{t('Terms')}</Text>
+          <Text style={[styles.legalLink, { color: theme.subtle }]}>{t('Terms')}</Text>
         </Pressable>
         <Pressable onPress={() => setLegalDocVisible('privacy')}>
-          <Text style={[styles.legalLink, { color: theme.muted }]}>{t('Privacy Policy')}</Text>
+          <Text style={[styles.legalLink, { color: theme.subtle }]}>{t('Privacy Policy')}</Text>
         </Pressable>
       </View>
       <Modal visible={!!legalDocVisible} transparent animationType="slide" onRequestClose={() => setLegalDocVisible(null)}>
@@ -512,7 +679,7 @@ export default function AuthScreen({
           <View style={[styles.infoModalCard, styles.legalModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.legalModalHeader}>
               <View>
-                <Text style={[styles.infoModalTitle, { color: '#0f6b78' }]}>{legalDocContent?.title || ''}</Text>
+                <Text style={[styles.infoModalTitle, { color: BRAND.colors.accentCyan }]}>{legalDocContent?.title || ''}</Text>
                 <Text style={[styles.legalModalMeta, { color: theme.muted }]}>
                   {t('Version {version}', { version: legalDocContent?.version || '' })}
                 </Text>
@@ -535,55 +702,60 @@ export default function AuthScreen({
       <Modal visible={privacyInfoVisible} transparent animationType="fade" onRequestClose={() => setPrivacyInfoVisible(false)}>
         <View style={styles.infoModalBackdrop}>
           <View style={[styles.infoModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.infoModalTitle, { color: '#0f6b78' }]}>{t('How Your Privacy Works')}</Text>
+            <Text style={[styles.infoModalTitle, { color: BRAND.colors.accentCyan }]}>{t('How Your Privacy Works')}</Text>
             <ScrollView style={styles.infoModalBody} contentContainerStyle={styles.infoModalBodyContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.infoBulletRow}>
-                <View style={[styles.infoBulletIcon, { backgroundColor: '#2563eb' }]}>
-                  <PhoneBadgeIcon color="#ffffff" />
+              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F8FBFF' : BRAND.colors.surfaceAlt, borderColor: 'rgba(10,132,255,0.18)' }]}>
+                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#DBEAFE' : 'rgba(10,132,255,0.18)' }]}>
+                  <NoLinkIcon stroke={isLight ? '#0A84FF' : '#CFE7FF'} />
                 </View>
-                <View style={styles.infoBulletCopy}>
-                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
+                <View style={styles.infoTrustCopy}>
+                  <Text style={[styles.infoTrustTitle, { color: theme.text }]}>{t('No Bank Linking Required')}</Text>
+                  <Text style={[styles.infoTrustBody, { color: theme.muted }]}>
+                    {t('Worthio does not require you to connect bank accounts or allow automatic data pulling. You decide what to track, what to reveal, and how your records are maintained.')}
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F8FBFF' : BRAND.colors.surfaceAlt, borderColor: 'rgba(10,132,255,0.18)' }]}>
+                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#DBEAFE' : 'rgba(10,132,255,0.18)' }]}>
+                  <PhoneBadgeIcon color={isLight ? '#0A84FF' : '#CFE7FF'} />
+                </View>
+                <View style={styles.infoTrustCopy}>
+                  <Text style={[styles.infoTrustTitle, { color: theme.text }]}>{t('Private by Design')}</Text>
+                  <Text style={[styles.infoTrustBody, { color: theme.muted }]}>
                     {t('We collect only your mobile number as personal information, and nothing more, to keep your experience discreet and secure.')}
                   </Text>
                 </View>
               </View>
-              <View style={styles.infoBulletRow}>
-                <View style={[styles.infoBulletIcon, { backgroundColor: '#0ea5e9' }]}>
-                  <LockBadgeIcon color="#ffffff" />
+              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F6FCFF' : BRAND.colors.surfaceAlt, borderColor: 'rgba(46,211,247,0.18)' }]}>
+                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#D7F3FA' : 'rgba(46,211,247,0.18)' }]}>
+                  <LockBadgeIcon color={isLight ? '#1389B5' : '#D8F7FF'} />
                 </View>
-                <View style={styles.infoBulletCopy}>
-                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
-                    {t('Your sensitive information is encrypted before it is stored.')}
+                <View style={styles.infoTrustCopy}>
+                  <Text style={[styles.infoTrustTitle, { color: theme.text }]}>{t('Encrypted & Protected')}</Text>
+                  <Text style={[styles.infoTrustBody, { color: theme.muted }]}>
+                    {t('Your sensitive wealth data is encrypted before it is stored so it stays protected and unreadable to others.')}
                   </Text>
                 </View>
               </View>
-              <View style={styles.infoBulletRow}>
-                <View style={[styles.infoBulletIcon, { backgroundColor: '#059669' }]}>
-                  <FingerprintIcon color="#ffffff" />
+              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F4FEFA' : BRAND.colors.surfaceAlt, borderColor: 'rgba(0,200,150,0.18)' }]}>
+                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#DDF8EF' : 'rgba(0,200,150,0.18)' }]}>
+                  <FingerprintIcon color={isLight ? '#119B76' : '#DBFFF4'} />
                 </View>
-                <View style={styles.infoBulletCopy}>
-                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
-                    {t('Access is protected using OTP verification and device biometrics.')}
+                <View style={styles.infoTrustCopy}>
+                  <Text style={[styles.infoTrustTitle, { color: theme.text }]}>{t('Only You Can Unlock It')}</Text>
+                  <Text style={[styles.infoTrustBody, { color: theme.muted }]}>
+                    {t('Access is protected using OTP verification, device biometrics, and your Privacy PIN when sensitive information needs to be viewed.')}
                   </Text>
                 </View>
               </View>
-              <View style={styles.infoBulletRow}>
-                <View style={[styles.infoBulletIcon, { backgroundColor: '#7c3aed' }]}>
-                  <ClockBadgeIcon color="#ffffff" />
+              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F8FAFF' : BRAND.colors.surfaceAlt, borderColor: 'rgba(143,162,191,0.20)' }]}>
+                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#E2E8F0' : 'rgba(143,162,191,0.18)' }]}>
+                  <ClockBadgeIcon color={isLight ? '#46607E' : '#E4EDF8'} />
                 </View>
-                <View style={styles.infoBulletCopy}>
-                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
-                    {t('Sensitive details are unlocked only temporarily when you choose to view them.')}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.infoBulletRow}>
-                <View style={[styles.infoBulletIcon, { backgroundColor: '#dc2626' }]}>
-                  <EyeOffBadgeIcon color="#ffffff" />
-                </View>
-                <View style={styles.infoBulletCopy}>
-                  <Text style={[styles.infoBulletText, { color: theme.muted }]}>
-                    {t('Personal and financial information remains inaccessible to our developers, staff and anyone without authorization.')}
+                <View style={styles.infoTrustCopy}>
+                  <Text style={[styles.infoTrustTitle, { color: theme.text }]}>{t('Visible Only When You Choose')}</Text>
+                  <Text style={[styles.infoTrustBody, { color: theme.muted }]}>
+                    {t('Sensitive details are unlocked only temporarily when you choose to view them, and personal or financial information remains inaccessible to our developers, staff, and anyone without authorization.')}
                   </Text>
                 </View>
               </View>
@@ -606,31 +778,22 @@ const styles = StyleSheet.create({
   },
   authPanelFrame: {
     borderWidth: 1,
-    borderRadius: 30,
+    borderRadius: 24,
     padding: 10,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4
-  },
-  authPanelFramePremiumBlue: {
-    backgroundColor: '#edf4ff',
-    borderColor: '#183b72'
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3
   },
   authPanelCard: {
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 18,
-    shadowOpacity: 0.1,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 3
-  },
-  authPanelCardPremiumBlue: {
-    backgroundColor: '#fdfefe',
-    borderColor: '#c7d8f8'
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2
   },
   formInner: {
     width: '100%'
@@ -664,7 +827,58 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     justifyContent: 'center'
   },
-  label: { color: '#35526e', fontWeight: '700', marginBottom: 5 },
+  modeButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 12
+  },
+  modeButtonText: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '800',
+    letterSpacing: 0.2
+  },
+  primaryActionButton: {
+    alignSelf: 'center',
+    minWidth: 180
+  },
+  authPrimaryButton: {
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'transparent',
+    overflow: 'hidden'
+  },
+  authPrimaryFill: {
+    ...StyleSheet.absoluteFillObject
+  },
+  authPrimaryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  authPrimaryIcon: {
+    marginRight: 8
+  },
+  authPrimaryText: {
+    color: '#FFFFFF',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2
+  },
+  authPrimaryPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.94
+  },
+  authPrimaryDisabled: {
+    opacity: 0.55
+  },
+  secondaryActionButton: {
+    marginTop: 12
+  },
+  label: { fontWeight: '700', marginBottom: 5 },
   input: {
     borderWidth: 1,
     borderColor: '#c6d8eb',
@@ -693,9 +907,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10
   },
   message: {
+    color: '#B42318',
+    fontWeight: '600',
+    fontSize: 14,
+    lineHeight: 20
+  },
+  messageBanner: {
     marginTop: 12,
-    color: '#b3261e',
-    fontWeight: '600'
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10
   },
   consentWrap: {
     marginBottom: 12,
@@ -703,8 +925,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: '#e1eaf5',
-    borderRadius: 12,
-    backgroundColor: '#f8fbff'
+    borderRadius: 14
   },
   consentRow: {
     flexDirection: 'row',
@@ -799,12 +1020,16 @@ const styles = StyleSheet.create({
   },
   legalModalClose: {
     borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8
+    borderRadius: 16,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   legalModalCloseText: {
-    fontSize: 12,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '800'
   },
   legalModalBodyContent: {
@@ -840,30 +1065,38 @@ const styles = StyleSheet.create({
   infoModalBodyContent: {
     gap: 14
   },
-  infoBulletRow: {
+  infoTrustCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12
   },
-  infoBulletCopy: {
-    flex: 1
-  },
-  infoBulletIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  infoTrustIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 3
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1.5
   },
-  infoBulletText: {
-    fontSize: 15,
+  infoTrustCopy: {
+    flex: 1
+  },
+  infoTrustTitle: {
+    fontSize: 16,
     lineHeight: 22,
+    fontWeight: '800',
+    marginBottom: 4
+  },
+  infoTrustBody: {
+    fontSize: 14,
+    lineHeight: 21,
     fontWeight: '500'
   }
 });

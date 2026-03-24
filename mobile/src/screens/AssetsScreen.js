@@ -19,7 +19,6 @@ const CATEGORY_OPTIONS = [
 ];
 
 const REACH_OPTIONS = ['Branch', 'RM', 'Customer Care', 'Portal'];
-
 const blankForm = {
   category: CATEGORY_OPTIONS[0],
   reach_via: REACH_OPTIONS[0],
@@ -59,6 +58,7 @@ export default function AssetsScreen({
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const isLight = theme.key === 'light';
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(blankForm);
   const [editingId, setEditingId] = useState(null);
@@ -67,6 +67,8 @@ export default function AssetsScreen({
   const [fieldErrors, setFieldErrors] = useState({});
   const [showCategoryOptions, setShowCategoryOptions] = useState(false);
   const [showReachOptions, setShowReachOptions] = useState(false);
+  const [assetSortType, setAssetSortType] = useState('amount');
+  const [assetSortDirection, setAssetSortDirection] = useState('desc');
   const [limitReached, setLimitReached] = useState(false);
   const [revealVisible, setRevealVisible] = useState(false);
   const [revealItem, setRevealItem] = useState(null);
@@ -74,6 +76,7 @@ export default function AssetsScreen({
   const [revealData, setRevealData] = useState(null);
   const [revealError, setRevealError] = useState('');
   const [revealLoading, setRevealLoading] = useState(false);
+  const [expandedAssetId, setExpandedAssetId] = useState(null);
   const nameInputRef = useRef(null);
   const relationshipMobileInputRef = useRef(null);
   const trackingUrlInputRef = useRef(null);
@@ -345,10 +348,34 @@ export default function AssetsScreen({
     setMessageKind('info');
   };
 
+  const toggleExpanded = (id) => {
+    setExpandedAssetId((current) => (current === id ? null : id));
+  };
+
+  const toggleTypeSort = () => {
+    setAssetSortType('type');
+    setAssetSortDirection((current) => (assetSortType === 'type' && current === 'asc' ? 'desc' : 'asc'));
+  };
+
+  const toggleAmountSort = () => {
+    setAssetSortType('amount');
+    setAssetSortDirection((current) => (assetSortType === 'amount' && current === 'asc' ? 'desc' : 'asc'));
+  };
+
   const visibleItems = items
     .filter((item) => Number(item.current_value || 0) > 0)
-    .sort((a, b) => Number(b.current_value || 0) - Number(a.current_value || 0));
+    .sort((a, b) => {
+      if (assetSortType === 'type') {
+        return assetSortDirection === 'asc'
+          ? String(a.category || '').localeCompare(String(b.category || ''))
+          : String(b.category || '').localeCompare(String(a.category || ''));
+      }
+      return assetSortDirection === 'asc'
+        ? Number(a.current_value || 0) - Number(b.current_value || 0)
+        : Number(b.current_value || 0) - Number(a.current_value || 0);
+    });
   const maxAssets = subscriptionStatus?.limits?.maxAssets;
+  const totalAssetValue = visibleItems.reduce((sum, item) => sum + Number(item.current_value || 0), 0);
 
   return (
     <View>
@@ -374,7 +401,7 @@ export default function AssetsScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.category === category && { backgroundColor: theme.accentSoft }
+                  form.category === category && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, category }));
@@ -385,7 +412,7 @@ export default function AssetsScreen({
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.category === category && { color: theme.accent, fontWeight: '700' }
+                    form.category === category && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t(category)}
@@ -440,7 +467,7 @@ export default function AssetsScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.reach_via === reachVia && { backgroundColor: theme.accentSoft }
+                  form.reach_via === reachVia && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, reach_via: reachVia }));
@@ -451,7 +478,7 @@ export default function AssetsScreen({
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.reach_via === reachVia && { color: theme.accent, fontWeight: '700' }
+                    form.reach_via === reachVia && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t(reachVia)}
@@ -639,7 +666,47 @@ export default function AssetsScreen({
 
       <FeedbackBanner message={message} kind={messageKind} />
 
-      <SectionCard title={t('Current Assets')}>
+      <SectionCard>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderTitleWrap}>
+            <Text style={[styles.sectionHeaderTitle, { color: theme.text }]}>{t('Current Assets')}</Text>
+            <Text style={[styles.sectionHeaderTotal, { color: theme.success }]}>
+              {displayAmount(totalAssetValue, hideSensitive, preferredCurrency, fxRates)}
+            </Text>
+          </View>
+          <View style={styles.sortActionsRow}>
+            <Pressable
+              onPress={toggleTypeSort}
+              style={[
+                styles.sortIconButton,
+                { borderColor: theme.border, backgroundColor: theme.inputBg },
+                assetSortType === 'type' && {
+                  borderColor: isLight ? theme.accent : '#155EAF',
+                  backgroundColor: isLight ? theme.accent : '#155EAF'
+                }
+              ]}
+            >
+              <Text style={[styles.sortIconGlyph, { color: assetSortType === 'type' ? '#FFFFFF' : theme.muted }]}>
+                {assetSortDirection === 'asc' && assetSortType === 'type' ? 'A→Z' : 'Z→A'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={toggleAmountSort}
+              style={[
+                styles.sortIconButton,
+                { borderColor: theme.border, backgroundColor: theme.inputBg },
+                assetSortType === 'amount' && {
+                  borderColor: isLight ? theme.accent : '#155EAF',
+                  backgroundColor: isLight ? theme.accent : '#155EAF'
+                }
+              ]}
+            >
+              <Text style={[styles.sortIconGlyph, { color: assetSortType === 'amount' ? '#FFFFFF' : theme.muted }]}>
+                {assetSortDirection === 'asc' && assetSortType === 'amount' ? '↑₹' : '↓₹'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
         {Number(maxAssets) > 0 ? (
           <View style={styles.planLimitRow}>
             <Text style={[styles.planLimitText, { color: theme.warn }]}>
@@ -650,56 +717,61 @@ export default function AssetsScreen({
         ) : null}
         {visibleItems.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            <View style={styles.rowHeader}>
+            <Pressable style={styles.rowHeader} onPress={() => toggleExpanded(item.id)}>
               <View style={styles.rowTitleWrap}>
-                <Text style={[styles.name, { color: theme.text }]}>{item.institution || item.name}</Text>
-                <Text style={[styles.sub, { color: theme.muted }]}>{t(item.category)}</Text>
+                <Text style={[styles.name, { color: theme.text }]}>{t(item.category)}</Text>
+                <Text style={[styles.sub, { color: theme.muted }]}>{item.institution || item.name}</Text>
               </View>
               <View style={styles.amountBlock}>
                 <Text style={[styles.amount, { color: theme.success }]}>
                   {displayAmount(item.current_value, hideSensitive, preferredCurrency, fxRates)}
                 </Text>
                 <Text style={[styles.amountLabel, { color: theme.muted }]}>{t('Current Value')}</Text>
+                <Text style={[styles.expandHint, { color: theme.muted }]}>{expandedAssetId === item.id ? '▲' : '▼'}</Text>
               </View>
-            </View>
-            <View style={styles.metaBlock}>
-              {hasInfo(item.reach_via) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Reach via: {value}', { value: t(item.reach_via) })}</Text>
-              ) : null}
-              {hasInfo(item.relationship_mobile) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Relationship / Branch Manager: {value}', { value: item.relationship_mobile })}</Text>
-              ) : null}
-              {hasInfo(item.account_ref) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Account Ref: {value}', { value: item.account_ref })}</Text>
-              ) : null}
-              {hasInfo(item.tracking_url) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Website: {value}', { value: item.tracking_url })}</Text>
-              ) : null}
-              {Number(item.invested_amount || 0) > 0 ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Invested: {value}', { value: displayAmount(item.invested_amount, hideSensitive, preferredCurrency, fxRates) })}</Text>
-              ) : null}
-              {hasInfo(item.notes) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>{t('Notes for Family: {value}', { value: item.notes })}</Text>
-              ) : null}
-              {hasInfo(item.updated_at) ? (
-                <Text style={[styles.sub, { color: theme.muted }]}>
-                  {t('Last Updated: {value}', { value: String(item.updated_at).replace('T', ' ').slice(0, 19) })}
-                </Text>
-              ) : null}
-              <Text style={[styles.sub, { color: theme.muted }]}>
-                {t('Updated By: {value}', { value: hasInfo(item.updated_by_initials) ? item.updated_by_initials : 'NA' })}
-              </Text>
-            </View>
-            <View style={styles.actionsRow}>
-              <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
-              <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
-              <PillButton
-                label={t('Delete')}
-                kind="ghost"
-                onPress={() => confirmRemove(item)}
-                disabled={readOnly}
-              />
-            </View>
+            </Pressable>
+            {expandedAssetId === item.id ? (
+              <>
+                <View style={styles.metaBlock}>
+                  {hasInfo(item.reach_via) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Reach via: {value}', { value: t(item.reach_via) })}</Text>
+                  ) : null}
+                  {hasInfo(item.relationship_mobile) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Relationship / Branch Manager: {value}', { value: item.relationship_mobile })}</Text>
+                  ) : null}
+                  {hasInfo(item.account_ref) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Account Ref: {value}', { value: item.account_ref })}</Text>
+                  ) : null}
+                  {hasInfo(item.tracking_url) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Website: {value}', { value: item.tracking_url })}</Text>
+                  ) : null}
+                  {Number(item.invested_amount || 0) > 0 ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Invested: {value}', { value: displayAmount(item.invested_amount, hideSensitive, preferredCurrency, fxRates) })}</Text>
+                  ) : null}
+                  {hasInfo(item.notes) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Notes for Family: {value}', { value: item.notes })}</Text>
+                  ) : null}
+                  {hasInfo(item.updated_at) ? (
+                    <Text style={[styles.sub, { color: theme.muted }]}>
+                      {t('Last Updated: {value}', { value: String(item.updated_at).replace('T', ' ').slice(0, 19) })}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.sub, { color: theme.muted }]}>
+                    {t('Updated By: {value}', { value: hasInfo(item.updated_by_initials) ? item.updated_by_initials : 'NA' })}
+                  </Text>
+                </View>
+                <View style={styles.actionsRow}>
+                  <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
+                  <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
+                  <PillButton
+                    label={t('Delete')}
+                    kind="ghost"
+                    onPress={() => confirmRemove(item)}
+                    disabled={readOnly}
+                  />
+                </View>
+              </>
+            ) : null}
           </View>
         ))}
         {!visibleItems.length ? <Text style={[styles.sub, { color: theme.muted }]}>{t('No non-zero assets yet.')}</Text> : null}
@@ -758,7 +830,7 @@ export default function AssetsScreen({
 }
 
 const styles = StyleSheet.create({
-  label: { color: '#35526e', fontWeight: '700', marginBottom: 5 },
+  label: { fontWeight: '700', marginBottom: 5 },
   helpText: {
     fontSize: 11,
     lineHeight: 16,
@@ -779,8 +851,8 @@ const styles = StyleSheet.create({
   },
   dropdownTrigger: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -790,16 +862,16 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   dropdownText: {
-    color: '#183750'
+    color: '#0B1F3A'
   },
   dropdownArrow: {
-    color: '#607d99',
+    color: '#64748B',
     fontSize: 12
   },
   dropdownMenu: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden'
@@ -808,16 +880,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eef2f8'
+    borderBottomColor: '#D9E2EF'
   },
   dropdownItemActive: {
-    backgroundColor: '#e9f2ff'
+    backgroundColor: '#EEF7FF'
   },
   dropdownItemText: {
-    color: '#183750'
+    color: '#0B1F3A'
   },
   dropdownItemTextActive: {
-    color: '#0f5fb8',
+    color: '#0A84FF',
     fontWeight: '700'
   },
   planLimitRow: {
@@ -826,8 +898,47 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8
+  },
+  sectionHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.2
+  },
+  sectionHeaderTitleWrap: {
+    flex: 1,
+    paddingRight: 10
+  },
+  sectionHeaderTotal: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  sortIconButton: {
+    minWidth: 64,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sortActionsRow: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  sortIconGlyph: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900'
+  },
   planLimitText: {
-    color: '#9a6b00',
+    color: '#B7791F',
     fontWeight: '700'
   },
   limitCtaRow: {
@@ -835,8 +946,8 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -865,8 +976,8 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top'
   },
   inputDisabled: {
-    backgroundColor: '#f2f4f7',
-    color: '#8aa0b6'
+    backgroundColor: '#E2E8F0',
+    color: '#64748B'
   },
   row: {
     flexDirection: 'column',
@@ -874,9 +985,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#e4ebf5',
+    borderColor: '#D9E2EF',
     borderRadius: 12,
-    backgroundColor: '#fbfdff',
+    backgroundColor: '#FFFFFF',
     marginBottom: 8,
     gap: 8
   },
@@ -892,6 +1003,11 @@ const styles = StyleSheet.create({
   amountBlock: {
     alignItems: 'flex-end'
   },
+  expandHint: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 6
+  },
   metaBlock: {
     gap: 2
   },
@@ -902,11 +1018,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'flex-start'
   },
-  name: { color: '#0f3557', fontWeight: '700' },
-  sub: { color: '#607d99' },
-  amount: { color: '#0a8f4b', fontWeight: '800' },
+  name: { color: '#0B1F3A', fontWeight: '700' },
+  sub: { color: '#64748B' },
+  amount: { color: '#00C896', fontWeight: '800' },
   amountLabel: { fontSize: 11, fontWeight: '700', marginTop: 2 },
-  readOnlyText: { color: '#9a6b00', fontWeight: '700', marginBottom: 8 },
+  readOnlyText: { color: '#B7791F', fontWeight: '700', marginBottom: 8 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -953,5 +1069,5 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '600'
   },
-  message: { color: '#0f3557', marginBottom: 20, fontWeight: '600' }
+  message: { color: '#0B1F3A', marginBottom: 20, fontWeight: '600' }
 });

@@ -1,11 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme';
+import { BRAND } from '../brand';
 
 export default function StatTile({ label, value, positive }) {
   const { theme } = useTheme();
+  const isLight = theme.key === 'light';
   return (
-    <View style={[styles.tile, { backgroundColor: theme.card, borderColor: theme.border, shadowColor: theme.text }]}>
+    <View
+      style={[
+        styles.tile,
+        {
+          backgroundColor: isLight ? theme.cardAlt : theme.backgroundElevated,
+          borderColor: theme.border,
+          shadowColor: isLight ? BRAND.colors.bgDeep : '#000000'
+        }
+      ]}
+    >
       <Text style={[styles.label, { color: theme.muted }]}>{label}</Text>
       <Text style={[
         styles.value,
@@ -22,9 +33,9 @@ export default function StatTile({ label, value, positive }) {
 const styles = StyleSheet.create({
   tile: {
     flex: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     borderWidth: 1,
     shadowOpacity: 0.06,
     shadowRadius: 10,

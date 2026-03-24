@@ -1,0 +1,11 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:drawable="@color/splashscreen_background" />
+  <item
+    android:gravity="fill">
+    <bitmap
+      android:src="@drawable/worthio_splash_full"
+      android:gravity="fill"
+      android:antialias="true"
+      android:filter="true" />
+  </item>
+</layer-list>

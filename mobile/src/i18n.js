@@ -163,7 +163,7 @@ const translations = {
     'Confirm': 'पुष्टि करें'
     ,
     'Insights': 'इनसाइट्स',
-    'Networth Manager': 'नेटवर्थ मैनेजर',
+    'Worthio': 'वर्थियो',
     'Create account or login using OTP. Biometric login can be enabled after setup.':
       'ओटीपी का उपयोग करके अकाउंट बनाएं या लॉगिन करें। सेटअप के बाद बायोमेट्रिक लॉगिन सक्षम किया जा सकता है।',
     'Welcome, {name}': 'स्वागत है, {name}',
@@ -298,7 +298,6 @@ const translations = {
     'Account Access': 'अकाउंट एक्सेस',
     'Full Name': 'पूरा नाम',
     'Your name': 'आपका नाम',
-    'Email (Optional)': 'ईमेल (वैकल्पिक)',
     'you@example.com': 'you@example.com',
     'Country': 'देश',
     'India': 'भारत',
@@ -674,7 +673,6 @@ const translations = {
     'faq_delete_a': 'डिलीशन स्थायी है और आपका सभी डेटा हटा देता है। आप तुरंत लॉगआउट हो जाएंगे।'
     ,
     'Mobile': 'मोबाइल',
-    'Email': 'ईमेल',
     'Read': 'रीड',
     'Write': 'राइट',
     'Admin': 'एडमिन',

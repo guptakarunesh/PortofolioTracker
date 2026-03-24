@@ -36,6 +36,7 @@ const displayAmount = (value, hideSensitive) => (hideSensitive ? '••••�
 export default function TransactionsScreen({ hideSensitive = false, readOnly = false }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const isLight = theme.key === 'light';
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
     tx_date: '2026-02-16',
@@ -106,7 +107,7 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.category === category && { backgroundColor: theme.accentSoft }
+                  form.category === category && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, category }));
@@ -117,7 +118,7 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.category === category && { color: theme.accent, fontWeight: '700' }
+                    form.category === category && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t(category)}
@@ -143,7 +144,7 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.tx_type === txType && { backgroundColor: theme.accentSoft }
+                  form.tx_type === txType && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, tx_type: txType }));
@@ -154,7 +155,7 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.tx_type === txType && { color: theme.accent, fontWeight: '700' }
+                    form.tx_type === txType && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t(txType)}

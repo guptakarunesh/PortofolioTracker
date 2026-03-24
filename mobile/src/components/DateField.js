@@ -100,11 +100,11 @@ export default function DateField({
                 maximumDate={maximumDate}
               />
               <View style={styles.actionsRow}>
-                <Pressable onPress={() => setVisible(false)}>
+                <Pressable style={[styles.actionButton, styles.actionButtonGhost, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={() => setVisible(false)}>
                   <Text style={[styles.btnText, { color: theme.muted }]}>{t('Cancel')}</Text>
                 </Pressable>
-                <Pressable onPress={commitIos}>
-                  <Text style={[styles.btnText, { color: theme.accent }]}>{t('Done')}</Text>
+                <Pressable style={[styles.actionButton, styles.actionButtonPrimary, { backgroundColor: theme.accent, borderColor: theme.accent }]} onPress={commitIos}>
+                  <Text style={[styles.btnText, { color: '#FFFFFF' }]}>{t('Done')}</Text>
                 </Pressable>
               </View>
             </View>
@@ -151,12 +151,25 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 16,
+    gap: 8,
     marginTop: 8,
     paddingHorizontal: 6,
     paddingBottom: 4
   },
+  actionButton: {
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  actionButtonGhost: {},
+  actionButtonPrimary: {},
   btnText: {
-    fontWeight: '700'
+    fontWeight: '700',
+    fontSize: 15,
+    lineHeight: 20
   }
 });

@@ -1,5 +1,7 @@
+const localeForCurrency = (currency = 'INR') => (String(currency || '').toUpperCase() === 'INR' ? 'en-IN' : 'en-US');
+
 export const formatINR = (value, currency = 'INR') =>
-  new Intl.NumberFormat('en-US', {
+  new Intl.NumberFormat(localeForCurrency(currency), {
     style: 'currency',
     currency,
     currencyDisplay: 'narrowSymbol',
@@ -18,7 +20,7 @@ export const formatAmountFromInr = (value, currency = 'INR', fxRates = {}) =>
   formatINR(convertFromInr(value, currency, fxRates), currency);
 
 export const currencySymbol = (currency = 'INR') => {
-  const formatted = new Intl.NumberFormat('en-US', {
+  const formatted = new Intl.NumberFormat(localeForCurrency(currency), {
     style: 'currency',
     currency,
     currencyDisplay: 'narrowSymbol',

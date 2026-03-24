@@ -35,6 +35,7 @@ export default function RemindersScreen({
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const isLight = theme.key === 'light';
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({
     due_date: '2026-04-01',
@@ -128,8 +129,10 @@ export default function RemindersScreen({
     return (
       <View>
         <SectionCard title={t('Reminders (Premium)')}>
-          <Text style={[styles.sub, { color: theme.warn }]}>{t('Reminders are available with Premium.')}</Text>
-          <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
+          <View style={styles.premiumLockedWrap}>
+            <Text style={[styles.sub, styles.premiumLockedText, { color: theme.warn }]}>{t('Reminders are available with Premium.')}</Text>
+            <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
+          </View>
         </SectionCard>
       </View>
     );
@@ -161,7 +164,7 @@ export default function RemindersScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.category === category && { backgroundColor: theme.accentSoft }
+                  form.category === category && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, category }));
@@ -172,7 +175,7 @@ export default function RemindersScreen({
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.category === category && { color: theme.accent, fontWeight: '700' }
+                    form.category === category && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t(category)}
@@ -216,7 +219,7 @@ export default function RemindersScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.alert_days_before === days && { backgroundColor: theme.accentSoft }
+                  form.alert_days_before === days && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, alert_days_before: days }));
@@ -227,7 +230,7 @@ export default function RemindersScreen({
                   style={[
                     styles.dropdownItemText,
                     { color: theme.text },
-                    form.alert_days_before === days && { color: theme.accent, fontWeight: '700' }
+                    form.alert_days_before === days && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
                   {t('{count} day(s)', { count: days })}
@@ -292,11 +295,17 @@ export default function RemindersScreen({
 }
 
 const styles = StyleSheet.create({
-  label: { color: '#35526e', fontWeight: '700', marginBottom: 5 },
+  premiumLockedWrap: {
+    gap: 12
+  },
+  premiumLockedText: {
+    marginBottom: 2
+  },
+  label: { fontWeight: '700', marginBottom: 5 },
   dropdownTrigger: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -306,16 +315,16 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   dropdownText: {
-    color: '#183750'
+    color: '#0B1F3A'
   },
   dropdownArrow: {
-    color: '#607d99',
+    color: '#64748B',
     fontSize: 12
   },
   dropdownMenu: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden'
@@ -324,22 +333,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eef2f8'
+    borderBottomColor: '#D9E2EF'
   },
   dropdownItemActive: {
-    backgroundColor: '#e9f2ff'
+    backgroundColor: '#EEF7FF'
   },
   dropdownItemText: {
-    color: '#183750'
+    color: '#0B1F3A'
   },
   dropdownItemTextActive: {
-    color: '#0f5fb8',
+    color: '#0A84FF',
     fontWeight: '700'
   },
   input: {
     borderWidth: 1,
-    borderColor: '#c6d8eb',
-    backgroundColor: '#fff',
+    borderColor: '#D9E2EF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -351,14 +360,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#e4ebf5',
+    borderColor: '#D9E2EF',
     borderRadius: 12,
-    backgroundColor: '#fbfdff',
+    backgroundColor: '#FFFFFF',
     marginBottom: 8
   },
   right: { gap: 8, alignItems: 'flex-end' },
-  name: { color: '#0f3557', fontWeight: '800' },
-  sub: { color: '#607d99' },
-  amount: { color: '#0f3557', fontWeight: '800' },
-  message: { color: '#0f3557', marginBottom: 20, fontWeight: '600' }
+  name: { color: '#0B1F3A', fontWeight: '800' },
+  sub: { color: '#64748B' },
+  amount: { color: '#0B1F3A', fontWeight: '800' },
+  message: { color: '#0B1F3A', marginBottom: 20, fontWeight: '600' }
 });

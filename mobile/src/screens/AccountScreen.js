@@ -47,25 +47,6 @@ function maskMobile(value = '') {
   return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
 }
 
-function maskEmail(value = '') {
-  const email = String(value || '').trim().toLowerCase();
-  if (!email || !email.includes('@')) return '-';
-  const [localRaw, domainRaw] = email.split('@');
-  const local = String(localRaw || '');
-  const domain = String(domainRaw || '');
-  if (!local || !domain) return '-';
-  const domainParts = domain.split('.');
-  const domainName = domainParts.shift() || '';
-  const domainSuffix = domainParts.length ? `.${domainParts.join('.')}` : '';
-  const maskedLocal =
-    local.length <= 2 ? `${local.charAt(0)}*` : `${local.charAt(0)}${'*'.repeat(local.length - 2)}${local.slice(-1)}`;
-  const maskedDomain =
-    domainName.length <= 2
-      ? `${domainName.charAt(0)}*`
-      : `${domainName.charAt(0)}${'*'.repeat(domainName.length - 2)}${domainName.slice(-1)}`;
-  return `${maskedLocal}@${maskedDomain}${domainSuffix}`;
-}
-
 function formatPlanLabel(plan) {
   if (!plan || plan === 'none') return 'None';
   return toCamelCaseWords(String(plan).replace(/_/g, ' '));
@@ -159,11 +140,12 @@ export default function AccountScreen({
   onMeasureOnboardingTarget,
   onGetOnboardingZoomStyle,
   onThemeChange,
-  themeKey = 'teal',
+  themeKey = 'worthio',
   onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
   const { language, setLanguage, t } = useI18n();
+  const isDark = theme.key === 'worthio' || theme.key === 'dark';
   const [pin, setPin] = useState('');
   const [openFaqs, setOpenFaqs] = useState({});
   const [message, setMessage] = useState('');
@@ -387,8 +369,8 @@ export default function AccountScreen({
               </Text>
             </ScrollView>
             <View style={styles.modalActions}>
-              <PillButton kind="ghost" label={t('Close')} onPress={() => setReceiptModalVisible(false)} />
-              <PillButton label={t('Download PDF')} onPress={() => downloadReceiptPdf().catch((e) => setMessage(e.message))} />
+              <PillButton kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} label={t('Close')} onPress={() => setReceiptModalVisible(false)} />
+              <PillButton style={isDark ? styles.accountPrimaryButtonDark : null} label={t('Download PDF')} onPress={() => downloadReceiptPdf().catch((e) => setMessage(e.message))} />
             </View>
           </View>
         </View>
@@ -398,8 +380,6 @@ export default function AccountScreen({
         <Text style={[styles.value, { color: theme.text }]}>{toInitials(user?.full_name || '-')}</Text>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile')}</Text>
         <Text style={[styles.value, { color: theme.text }]}>{maskMobile(user?.mobile || '')}</Text>
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Email')}</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{maskEmail(user?.email || '')}</Text>
       </SectionCard>
 
       <SectionCard title={t('Privacy & Security')}>
@@ -417,7 +397,7 @@ export default function AccountScreen({
           secureTextEntry
           maxLength={4}
         />
-        <PillButton label={t('Save Security PIN')} onPress={() => saveSecurityPin().catch((e) => setMessage(e.message))} />
+        <PillButton style={isDark ? styles.accountPrimaryButtonDark : null} label={t('Save Security PIN')} onPress={() => saveSecurityPin().catch((e) => setMessage(e.message))} />
 
         <View style={[styles.securityDivider, { backgroundColor: theme.border }]} />
         <Text style={[styles.label, { color: theme.muted }]}>{t('Forgot Security PIN')}</Text>
@@ -448,22 +428,25 @@ export default function AccountScreen({
               maxLength={4}
             />
             <View style={styles.row}>
-              <PillButton
-                label={pinResetOtpCooldown > 0 ? t('Resend OTP ({seconds}s)', { seconds: pinResetOtpCooldown }) : t('Resend OTP')}
-                kind="ghost"
-                disabled={pinResetOtpCooldown > 0}
-                onPress={() => requestSecurityPinResetOtp().catch((e) => setMessage(e.message))}
-              />
-              <PillButton
-                label={t('Confirm Reset')}
-                onPress={() => confirmSecurityPinReset().catch((e) => setMessage(e.message))}
-              />
+                <PillButton
+                  label={pinResetOtpCooldown > 0 ? t('Resend OTP ({seconds}s)', { seconds: pinResetOtpCooldown }) : t('Resend OTP')}
+                  kind="ghost"
+                  style={isDark ? styles.accountGhostButtonDark : null}
+                  disabled={pinResetOtpCooldown > 0}
+                  onPress={() => requestSecurityPinResetOtp().catch((e) => setMessage(e.message))}
+                />
+                <PillButton
+                  style={isDark ? styles.accountPrimaryButtonDark : null}
+                  label={t('Confirm Reset')}
+                  onPress={() => confirmSecurityPinReset().catch((e) => setMessage(e.message))}
+                />
             </View>
           </>
         ) : (
           <PillButton
             label={t('Reset Security PIN via OTP')}
             kind="ghost"
+            style={isDark ? styles.accountGhostButtonDark : null}
             onPress={() => requestSecurityPinResetOtp().catch((e) => setMessage(e.message))}
           />
         )}
@@ -479,6 +462,7 @@ export default function AccountScreen({
           <PillButton
             label={biometricEnrolled ? t('Biometric Login Enrolled') : t('Enroll Biometric Login')}
             kind={biometricEnrolled ? 'primary' : 'ghost'}
+            style={isDark ? (biometricEnrolled ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
             onPress={() =>
               Promise.resolve(onEnrollBiometric?.())
                 .then(() => setMessage(t('Biometric login enrolled for this device.')))
@@ -489,6 +473,7 @@ export default function AccountScreen({
             <PillButton
               label={t('Disable Biometric Login')}
               kind="ghost"
+              style={isDark ? styles.accountGhostButtonDark : null}
               onPress={() =>
                 Promise.resolve(onDisableBiometric?.())
                   .then(() => setMessage(t('Biometric login disabled for this device.')))
@@ -500,18 +485,17 @@ export default function AccountScreen({
       </SectionCard>
 
       <SectionCard title={t('Theme')}>
-        <Text style={[styles.helper, { color: theme.muted }]}>{t('Choose the app color scheme.')}</Text>
+        <Text style={[styles.helper, { color: theme.muted }]}>{t('Choose between the standard Worthio theme and a clean light theme.')}</Text>
         <View style={styles.row}>
           {[
-            { key: 'teal', label: 'Teal' },
-            { key: 'ocean', label: 'Ocean' },
-            { key: 'slate', label: 'Slate' },
-            { key: 'black', label: 'Black' }
+            { key: 'worthio', label: 'Worthio' },
+            { key: 'light', label: 'Light' }
           ].map((opt) => (
             <PillButton
               key={opt.key}
               label={t(opt.label)}
               kind={themeKey === opt.key ? 'primary' : 'ghost'}
+              style={isDark ? (themeKey === opt.key ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
               onPress={() => onThemeChange?.(opt.key)}
             />
           ))}
@@ -526,11 +510,13 @@ export default function AccountScreen({
           <PillButton
             label={t('English')}
             kind={language === 'en' ? 'primary' : 'ghost'}
+            style={isDark ? (language === 'en' ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
             onPress={() => saveLanguage('en').catch((e) => setMessage(e.message))}
           />
           <PillButton
             label={t('हिंदी')}
             kind={language === 'hi' ? 'primary' : 'ghost'}
+            style={isDark ? (language === 'hi' ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
             onPress={() => saveLanguage('hi').catch((e) => setMessage(e.message))}
           />
         </View>
@@ -553,6 +539,7 @@ export default function AccountScreen({
             <PillButton
               label={t('Manage Family')}
               kind={premiumActive ? 'primary' : 'ghost'}
+              style={isDark ? (premiumActive ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
               onPress={premiumActive ? onOpenFamily : onOpenSubscription}
             />
           </Animated.View>
@@ -605,14 +592,14 @@ export default function AccountScreen({
           <Text style={[styles.subText, { color: theme.muted }]}>{t('No purchases yet.')}</Text>
         )}
         {!!receiptError ? <Text style={[styles.message, { color: theme.danger }]}>{receiptError}</Text> : null}
-        <PillButton label={t('Buy Subscription')} kind="ghost" onPress={onOpenSubscription} />
+        <PillButton label={t('Buy Subscription')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={onOpenSubscription} />
       </SectionCard>
 
       <SectionCard title={t('NWM Support')}>
         <Text style={[styles.helper, { color: theme.muted }]}>
           {t('Open support for FAQs and AI-assisted help with login, subscription, family access, and setup.')}
         </Text>
-        <PillButton label={t('Open NWM Support')} kind="primary" onPress={onOpenSupport} />
+        <PillButton label={t('Worthio Support')} kind="primary" style={isDark ? styles.accountPrimaryButtonDark : null} onPress={onOpenSupport} />
       </SectionCard>
 
       <SectionCard title={t('FAQs')}>
@@ -635,7 +622,7 @@ export default function AccountScreen({
         <Text style={[styles.helper, { color: theme.muted }]}>
           {t('Take a quick walkthrough of main features and usage.')}
         </Text>
-        <PillButton label={t('Start Tour')} kind="ghost" onPress={onOpenOnboarding} />
+        <PillButton label={t('Start Tour')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={onOpenOnboarding} />
       </SectionCard>
 
       <SectionCard title={t('Legal')}>
@@ -643,16 +630,19 @@ export default function AccountScreen({
           <PillButton
             label={t('Privacy Policy')}
             kind="ghost"
+            style={isDark ? styles.accountGhostButtonDark : null}
             onPress={() => Linking.openURL(buildApiUrl('/legal/privacy')).catch((e) => setMessage(e.message))}
           />
           <PillButton
             label={t('Terms')}
             kind="ghost"
+            style={isDark ? styles.accountGhostButtonDark : null}
             onPress={() => Linking.openURL(buildApiUrl('/legal/terms')).catch((e) => setMessage(e.message))}
           />
           <PillButton
             label={t('Contact Grievance Officer')}
             kind="ghost"
+            style={isDark ? styles.accountGhostButtonDark : null}
             onPress={() => Linking.openURL('mailto:grievance@[yourdomain].com').catch((e) => setMessage(e.message))}
           />
         </View>
@@ -660,17 +650,18 @@ export default function AccountScreen({
 
       <SectionCard title={t('Data Rights')}>
         <View style={styles.row}>
-          <PillButton label={t('Export My Data')} kind="ghost" onPress={() => exportData().catch((e) => setMessage(e.message))} />
+          <PillButton label={t('Export My Data')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={() => exportData().catch((e) => setMessage(e.message))} />
           <PillButton
             label={confirmDelete ? t('Confirm Delete Account') : t('Delete Account')}
             kind="ghost"
+            style={isDark ? styles.accountGhostButtonDark : null}
             onPress={() => deleteAccount().catch((e) => setMessage(e.message))}
           />
         </View>
       </SectionCard>
 
       <SectionCard title={t('Session')}>
-        <PillButton label={t('Logout')} kind="ghost" onPress={onLogout} />
+        <PillButton label={t('Logout')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={onLogout} />
       </SectionCard>
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>
@@ -719,6 +710,13 @@ const styles = StyleSheet.create({
   },
   historyPrimary: {
     fontWeight: '700'
+  },
+  accountGhostButtonDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.14)'
+  },
+  accountPrimaryButtonDark: {
+    borderColor: 'rgba(255,255,255,0.08)'
   },
   historyMetaRow: {
     marginTop: 4,

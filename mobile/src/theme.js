@@ -1,87 +1,74 @@
 import React from 'react';
+import { BRAND } from './brand';
+
+const worthioBase = {
+  accent: BRAND.colors.accentBlue,
+  accentSoft: BRAND.colors.bgSecondary,
+  background: BRAND.colors.bgBase,
+  backgroundElevated: BRAND.colors.bgSecondary,
+  card: BRAND.colors.surface,
+  cardAlt: '#162F52',
+  text: BRAND.colors.textPrimary,
+  muted: BRAND.colors.textSecondary,
+  subtle: BRAND.colors.textMuted,
+  info: BRAND.colors.accentCyan,
+  success: BRAND.colors.positive,
+  danger: BRAND.colors.negative,
+  warn: BRAND.colors.warning,
+  border: BRAND.colors.surfaceBorder,
+  inputBg: BRAND.colors.surfaceElevated,
+  inputText: BRAND.colors.textPrimary,
+  shadow: 'rgba(2, 8, 20, 0.28)',
+  silver: '#8FA2BF',
+  gold: '#DDB24D'
+};
+
+const lightBase = {
+  accent: BRAND.colors.accentBlue,
+  accentSoft: '#F1F5F9',
+  background: '#F7FAFC',
+  backgroundElevated: '#FFFFFF',
+  card: '#FFFFFF',
+  cardAlt: '#F1F5F9',
+  text: BRAND.colors.bgBase,
+  muted: '#334155',
+  subtle: '#64748B',
+  info: BRAND.colors.accentBlue,
+  success: '#00A97A',
+  danger: '#D92D20',
+  warn: '#D97706',
+  border: '#D9E2EF',
+  inputBg: '#FFFFFF',
+  inputText: BRAND.colors.bgBase,
+  shadow: 'rgba(11, 31, 58, 0.08)',
+  silver: '#94A3B8',
+  gold: '#D6A53A'
+};
 
 export const THEMES = {
-  teal: {
-    key: 'teal',
-    name: 'Teal',
-    accent: '#0f766e',
-    accentSoft: '#e6f6f3',
-    background: '#f7f9fc',
-    card: '#ffffff',
-    text: '#0f2f4d',
-    muted: '#5d7a95',
-    info: '#0f5fb8',
-    success: '#0a8f4b',
-    danger: '#b3261e',
-    warn: '#9a6b00',
-    border: '#dbe6f2',
-    inputBg: '#ffffff',
-    inputText: '#0f2f4d',
-    silver: '#98a2b3',
-    gold: '#c28f2c'
+  worthio: {
+    key: 'worthio',
+    name: 'Worthio',
+    ...worthioBase
   },
-  ocean: {
-    key: 'ocean',
-    name: 'Ocean',
-    accent: '#0891b2',
-    accentSoft: '#dff4fb',
-    background: '#f0f9ff',
-    card: '#ffffff',
-    text: '#0f172a',
-    muted: '#64748b',
-    info: '#0891b2',
-    success: '#0a8f4b',
-    danger: '#b3261e',
-    warn: '#b45309',
-    border: '#d5eaf2',
-    inputBg: '#ffffff',
-    inputText: '#0f172a',
-    silver: '#93a4b7',
-    gold: '#b98430'
-  },
-  slate: {
-    key: 'slate',
-    name: 'Slate',
-    accent: '#334155',
-    accentSoft: '#e2e8f0',
-    background: '#f8fafc',
-    card: '#ffffff',
-    text: '#0f172a',
-    muted: '#64748b',
-    info: '#334155',
-    success: '#0a8f4b',
-    danger: '#b3261e',
-    warn: '#b45309',
-    border: '#d7dee7',
-    inputBg: '#ffffff',
-    inputText: '#0f172a',
-    silver: '#94a3b8',
-    gold: '#b45309'
-  },
-  black: {
-    key: 'black',
-    name: 'Black',
-    accent: '#d4a017',
-    accentSoft: '#1f2a36',
-    background: '#0b0f14',
-    card: '#131a23',
-    text: '#e7edf5',
-    muted: '#93a4b7',
-    info: '#5eead4',
-    success: '#34d399',
-    danger: '#f87171',
-    warn: '#f59e0b',
-    border: '#243040',
-    inputBg: '#0f151d',
-    inputText: '#e7edf5',
-    silver: '#8a94a6',
-    gold: '#f2c14e'
+  light: {
+    key: 'light',
+    name: 'Light',
+    ...lightBase
   }
 };
 
+export function normalizeThemeKey(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'worthio';
+  if (raw === 'worthio' || raw === 'dark' || raw === 'black') return 'worthio';
+  if (raw === 'light' || raw === 'teal' || raw === 'ocean' || raw === 'slate') return 'light';
+  return 'worthio';
+}
+
 export const ThemeContext = React.createContext({
-  theme: THEMES.teal,
-  themeKey: 'teal',
+  theme: THEMES.worthio,
+  themeKey: 'worthio',
   setThemeKey: () => {}
 });
 

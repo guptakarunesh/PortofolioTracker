@@ -812,7 +812,7 @@ consoleRouter.get('/', (_req, res) => {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Networth Manager Support Console</title>
+  <title>Worthio Support Console</title>
   <style>
     :root { color-scheme: dark; --bg:#0a1220; --card:#121f35; --card2:#0f1a2d; --line:#264465; --text:#e6edf8; --muted:#9ab0c9; --accent:#38bdf8; --ok:#86efac; --bad:#fca5a5; }
     * { box-sizing: border-box; }

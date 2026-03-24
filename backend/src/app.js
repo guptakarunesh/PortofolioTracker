@@ -138,7 +138,7 @@ app.get('/cashfree/return', (req, res) => {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Return To Networth Manager</title>
+    <title>Return To Worthio</title>
   </head>
   <body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#0b1020;color:#fff;padding:20px;">
     <h3 style="margin:0 0 10px;">Payment Response Received</h3>

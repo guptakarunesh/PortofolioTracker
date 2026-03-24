@@ -16,6 +16,11 @@ const FIREBASE_TENANT_ID = process.env.FIREBASE_TENANT_ID || '';
 const OTP_STRICT_PROVIDER = String(
   process.env.OTP_STRICT_PROVIDER || (process.env.NODE_ENV === 'production' ? '1' : '0')
 ) === '1';
+const OTP_RETRY_ATTEMPTS = Math.max(1, Number.parseInt(process.env.OTP_RETRY_ATTEMPTS || '3', 10));
+const OTP_RETRY_BASE_MS = Math.max(150, Number.parseInt(process.env.OTP_RETRY_BASE_MS || '500', 10));
+const OTP_MOCK_CODE = String(process.env.OTP_MOCK_CODE || '333333')
+  .replace(/\D/g, '')
+  .slice(0, 6) || '333333';
 
 export const OTP_CONFIG = {
   provider: PROVIDER,
@@ -33,6 +38,52 @@ export class OtpServiceError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableOtpError(error) {
+  const status = Number(error?.status || 0);
+  const code = String(error?.code || '')
+    .trim()
+    .toUpperCase();
+  const message = String(error?.message || '')
+    .trim()
+    .toLowerCase();
+
+  if (status >= 500) return true;
+  if (status > 0 && status < 500) return false;
+  if (code.includes('TIMEOUT') || code.includes('UNAVAILABLE') || code.includes('INTERNAL')) return true;
+  return (
+    message.includes('fetch failed') ||
+    message.includes('network request failed') ||
+    message.includes('network error') ||
+    message.includes('timed out') ||
+    message.includes('timeout') ||
+    message.includes('socket hang up') ||
+    message.includes('econnreset') ||
+    message.includes('enotfound') ||
+    message.includes('temporarily unavailable')
+  );
+}
+
+async function withOtpRetry(label, operation) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= OTP_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const shouldRetry = attempt < OTP_RETRY_ATTEMPTS && isRetryableOtpError(error);
+      if (!shouldRetry) break;
+      const delayMs = OTP_RETRY_BASE_MS * attempt;
+      console.warn('[otp/retry] label=%s attempt=%s delay_ms=%s message=%s', label, attempt, delayMs, error?.message || error);
+      await wait(delayMs);
+    }
+  }
+  throw lastError;
 }
 
 export function normalizeProvider(input = PROVIDER) {
@@ -378,7 +429,7 @@ const PROVIDERS = {
     verify: async () => true
   },
   mock: {
-    send: async () => ({ otp: generateOtp(), providerRef: null }),
+    send: async () => ({ otp: OTP_MOCK_CODE, providerRef: null }),
     verify: async () => true
   }
 };
@@ -401,11 +452,11 @@ export function getOtpProvider(providerOverride) {
 
 export async function sendOtp(mobile, providerOverride, providerOptions = {}) {
   const { key, handler } = getOtpProvider(providerOverride);
-  const payload = await handler.send(mobile, providerOptions);
+  const payload = await withOtpRetry(`send:${key}`, () => handler.send(mobile, providerOptions));
   return { provider: key, ...payload };
 }
 
 export async function verifyOtp(mobile, otp, providerRef, providerOverride) {
-  const { handler } = getOtpProvider(providerOverride);
-  return handler.verify(mobile, otp, providerRef);
+  const { key, handler } = getOtpProvider(providerOverride);
+  return withOtpRetry(`verify:${key}`, () => handler.verify(mobile, otp, providerRef));
 }

@@ -174,6 +174,24 @@ function requireUnlockedReset(res, userId, prefix) {
   return state;
 }
 
+function isTransientOtpFailure(error) {
+  const status = Number(error?.status || 0);
+  if (status >= 500) return true;
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    code.includes('TIMEOUT') ||
+    code.includes('UNAVAILABLE') ||
+    code.includes('INTERNAL') ||
+    message.includes('fetch failed') ||
+    message.includes('network request failed') ||
+    message.includes('network error') ||
+    message.includes('timed out') ||
+    message.includes('timeout') ||
+    message.includes('temporarily unavailable')
+  );
+}
+
 async function sendOtpForPurpose(cleanMobile, mobileHash, purpose, providerOptions = {}) {
   const now = new Date();
   const nowIsoStr = now.toISOString();
@@ -226,10 +244,16 @@ async function sendOtpForPurpose(cleanMobile, mobileHash, purpose, providerOptio
     return { ok: true, status: 200, body };
   } catch (e) {
     const status = Number(e?.status) || (e instanceof OtpServiceError ? e.status : 502);
+    const transient = isTransientOtpFailure(e);
     return {
       ok: false,
       status: status >= 400 && status < 600 ? status : 502,
-      body: { error: e.message || 'Failed to send OTP' }
+      body: transient
+        ? {
+            error: 'Unable to send OTP right now. Please wait a few seconds and try again.',
+            retry_after_seconds: 3
+          }
+        : { error: e.message || 'Failed to send OTP' }
     };
   }
 }
@@ -266,10 +290,11 @@ async function verifyOtpForPurpose(cleanMobile, mobileHash, otp, purpose) {
     return { ok: true, status: 200 };
   } catch (e) {
     const status = Number(e?.status) || (e instanceof OtpServiceError ? e.status : 502);
+    const transient = isTransientOtpFailure(e);
     return {
       ok: false,
       status: status >= 400 && status < 600 ? status : 502,
-      error: e.message || 'OTP verification failed'
+      error: transient ? 'Unable to verify OTP right now. Please wait a few seconds and try again.' : e.message || 'OTP verification failed'
     };
   }
 }

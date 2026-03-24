@@ -37,7 +37,7 @@ router.get('/privacy', (_req, res) => {
   <h1>Privacy Policy</h1>
   <div class="meta">Version ${PRIVACY_POLICY_VERSION} | Effective ${LEGAL_EFFECTIVE_DATE}</div>
   <h2>1. Scope</h2>
-  <p>This Privacy Policy explains how Networth Manager ("we", "our", "us") handles personal data when you use the mobile app and connected services. We process personal data in line with applicable Indian law, including the Digital Personal Data Protection Act, 2023.</p>
+  <p>This Privacy Policy explains how Worthio ("we", "our", "us") handles personal data when you use the mobile app and connected services. We process personal data in line with applicable Indian law, including the Digital Personal Data Protection Act, 2023.</p>
 
   <h2>2. Data We Collect</h2>
   <ul>
@@ -127,7 +127,7 @@ router.get('/terms', (_req, res) => {
   <h1>Terms of Service</h1>
   <div class="meta">Version ${TERMS_VERSION} | Effective ${LEGAL_EFFECTIVE_DATE}</div>
   <h2>1. Service Description</h2>
-  <p>Networth Manager is a record-keeping and planning application for personal finance data, including assets, liabilities, reminders, family-sharing workflows, and AI-generated informational insights.</p>
+  <p>Worthio is a record-keeping and planning application for personal finance data, including assets, liabilities, reminders, family-sharing workflows, and AI-generated informational insights.</p>
 
   <h2>2. What the Service Is Not</h2>
   <ul>

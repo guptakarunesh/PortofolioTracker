@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
-import { ensureSubscriptionForUser, isPremiumActive } from '../lib/subscription.js';
 
 const router = Router();
 
@@ -63,12 +62,6 @@ function captureQuarterSnapshotIfDue(userId) {
 }
 
 router.get('/last-six', (req, res) => {
-  const subscription = ensureSubscriptionForUser(req.accountUserId);
-  if (!isPremiumActive(subscription)) {
-    return res
-      .status(403)
-      .json({ error: 'premium_required', message: 'Premium subscription required', feature: 'performance' });
-  }
   captureQuarterSnapshotIfDue(req.accountUserId);
 
   const rows = db

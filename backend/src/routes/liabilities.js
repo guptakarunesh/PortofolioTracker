@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
+import { fetchSubscription, isBasicActive } from '../lib/subscription.js';
 import { decryptString, encryptString } from '../lib/crypto.js';
 import requireActiveSubscription from '../middleware/requireActiveSubscription.js';
 import { requireAccountWrite } from '../middleware/accountAccess.js';
@@ -133,6 +134,7 @@ router.use((req, res, next) => {
 });
 
 router.post('/', (req, res) => {
+  const userId = req.accountUserId;
   const {
     loan_type,
     lender,
@@ -155,6 +157,18 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'loan_type and lender are required' });
   }
 
+  const subscription = fetchSubscription(userId);
+  if (isBasicActive(subscription)) {
+    const count = db.prepare('SELECT COUNT(*) as c FROM liabilities WHERE user_id = ?').get(userId).c;
+    if (Number(count) >= 5) {
+      return res.status(403).json({
+        error: 'basic_limit_reached',
+        message: 'Basic plan allows up to 5 liabilities. Upgrade to Premium for unlimited liabilities.',
+        limit: 5
+      });
+    }
+  }
+
   const effectiveNotes = String(notes_for_family || notes || '');
   const updatedByInitials = resolveUpdatedByInitials(req.userId, req.accountUserId);
 
@@ -166,7 +180,7 @@ router.post('/', (req, res) => {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
     .run(
-      req.accountUserId,
+      userId,
       loan_type,
       encryptString(lender),
       holder_type,
@@ -187,8 +201,8 @@ router.post('/', (req, res) => {
 
   const created = db
     .prepare('SELECT * FROM liabilities WHERE id = ? AND user_id = ?')
-    .get(result.lastInsertRowid, req.accountUserId);
-  res.status(201).json(toPublicLiabilityRow(created, req.accountUserId));
+    .get(result.lastInsertRowid, userId);
+  res.status(201).json(toPublicLiabilityRow(created, userId));
 });
 
 router.put('/:id', (req, res) => {

@@ -86,7 +86,7 @@ export function isPremiumActive(subscriptionRow, now = new Date()) {
 
 export function getSubscriptionLimits(subscriptionRow, now = new Date()) {
   if (isBasicActive(subscriptionRow, now)) {
-    return { maxAssets: 10 };
+    return { maxAssets: 10, maxLiabilities: 5 };
   }
-  return { maxAssets: null };
+  return { maxAssets: null, maxLiabilities: null };
 }

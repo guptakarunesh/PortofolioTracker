@@ -234,7 +234,7 @@ function buildGstReceiptRow({ row, user }) {
       mobile: String(user?.mobile || '').trim() || ''
     },
     line_item: {
-      description: `Networth Manager Subscription - ${String(row?.plan || 'plan').replace(/_/g, ' ')}`,
+      description: `Worthio Subscription - ${String(row?.plan || 'plan').replace(/_/g, ' ')}`,
       sac_code: process.env.RECEIPT_SAC_CODE || '998314',
       period: row?.period || '',
       plan: row?.plan || ''
@@ -761,7 +761,7 @@ router.post('/cashfree/order', requireOwner, async (req, res) => {
   const userId = req.accountUserId || req.userId;
   const orderId = buildCashfreeOrderId(userId);
   const host = publicHost(req);
-  const fallbackAppReturnUrl = process.env.CASHFREE_APP_RETURN_URL || 'networthmanager://subscription-return';
+  const fallbackAppReturnUrl = process.env.CASHFREE_APP_RETURN_URL || 'worthio://subscription-return';
   let returnUrl = process.env.CASHFREE_RETURN_URL || `${host}/cashfree/return?order_id={order_id}`;
   const appReturnUrl = String(appReturnUrlRaw || '').trim();
   const effectiveAppReturnUrl = appReturnUrl || fallbackAppReturnUrl;

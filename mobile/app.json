@@ -58,14 +58,11 @@
         "android.permission.USE_FINGERPRINT"
       ]
     },
-    "extra": {
-      "eas": {
-        "projectId": "3c237618-49f6-47e7-b951-abe8f408c5ba"
-      }
-    },
     "runtimeVersion": "1.0.0",
     "updates": {
-      "url": "https://u.expo.dev/3c237618-49f6-47e7-b951-abe8f408c5ba"
+      "enabled": false,
+      "checkAutomatically": "NEVER",
+      "useEmbeddedUpdate": true
     }
   }
 }

@@ -67,6 +67,7 @@ const AUTH_HEADER_LOCKUP = require('./src/assets/worthio-logo-lockup-header.png'
 const AUTH_LAUNCH_SPLASH = require('./src/assets/worthio-splash-screen.png');
 const AUTH_LOGON_BACKGROUND = require('./src/assets/worthio-logon-background.png');
 const REMINDER_NOTIFICATION_TYPE = 'reminder_due';
+const EXPO_PUSH_ENABLED = String(process.env.EXPO_PUBLIC_ENABLE_EXPO_PUSH || '').trim() === '1';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -827,6 +828,10 @@ export default function App() {
       setRemotePushReady(false);
       return false;
     }
+    if (!EXPO_PUSH_ENABLED) {
+      setRemotePushReady(false);
+      return false;
+    }
     const allowed = await ensureNotificationPermission();
     if (!allowed) {
       setRemotePushReady(false);
@@ -837,6 +842,10 @@ export default function App() {
       Constants?.expoConfig?.extra?.eas?.projectId ||
       Constants?.easConfig?.projectId ||
       undefined;
+    if (!projectId) {
+      setRemotePushReady(false);
+      return false;
+    }
     const tokenResult = await (projectId
       ? Notifications.getExpoPushTokenAsync({ projectId })
       : Notifications.getExpoPushTokenAsync()).catch(() => null);

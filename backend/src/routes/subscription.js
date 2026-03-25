@@ -665,7 +665,10 @@ router.post('/google-play/revoke', requireOwner, async (req, res) => {
 
 router.post('/google-play/notifications', async (req, res) => {
   const expectedToken = String(process.env.GOOGLE_PLAY_RTDN_TOKEN || '').trim();
-  if (!expectedToken || String(req.headers['x-google-play-rtdn-token'] || '').trim() !== expectedToken) {
+  const providedHeaderToken = String(req.headers['x-google-play-rtdn-token'] || '').trim();
+  const providedQueryToken = String(req.query?.token || '').trim();
+  const providedToken = providedHeaderToken || providedQueryToken;
+  if (!expectedToken || providedToken !== expectedToken) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 

@@ -25,6 +25,20 @@ import { attachAccountContext } from './middleware/accountAccess.js';
 
 const app = express();
 
+function isGooglePlayNotificationRequest(req) {
+  return req.method === 'POST' && req.path === '/google-play/notifications';
+}
+
+function requireSubscriptionAuth(req, res, next) {
+  if (isGooglePlayNotificationRequest(req)) return next();
+  return requireAuth(req, res, next);
+}
+
+function attachSubscriptionAccountContext(req, res, next) {
+  if (isGooglePlayNotificationRequest(req)) return next();
+  return attachAccountContext(req, res, next);
+}
+
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
@@ -162,7 +176,7 @@ app.use('/legal', legalRoutes);
 app.use('/support', supportConsoleRouter);
 app.use('/api/support', supportApiRouter);
 app.use('/api/auth', authRoutes);
-app.use('/api/subscription', requireAuth, attachAccountContext, subscriptionRoutes);
+app.use('/api/subscription', requireSubscriptionAuth, attachSubscriptionAccountContext, subscriptionRoutes);
 app.use('/api/ai', requireAuth, attachAccountContext, aiRoutes);
 
 app.use('/api/dashboard', requireAuth, attachAccountContext, dashboardRoutes);

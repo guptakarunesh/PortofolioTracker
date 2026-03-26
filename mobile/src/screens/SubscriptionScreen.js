@@ -595,6 +595,10 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
   const premiumYearlyActive = isExactPlanActive(status, 'premium_yearly');
   const basicVariant = resolveTierVariant(status, 'basic');
   const premiumVariant = resolveTierVariant(status, 'premium');
+  const yearlyDiscountBadgeColors =
+    theme.key === 'light'
+      ? { backgroundColor: '#0A84FF', color: '#FFFFFF' }
+      : { backgroundColor: '#155EAF', color: '#FFFFFF' };
 
   const getActionLabel = (tierVariant, targetVariant, fallback) => {
     if (tierVariant && tierVariant !== targetVariant) {
@@ -881,7 +885,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 <Text style={[styles.planOptionLabel, { color: theme.text }]}>{t('Yearly')}</Text>
                 <View style={styles.priceBadgeRow}>
                   <Text style={[styles.planPrice, styles.planPriceCompact, { color: theme.accent }]}>{t(planDisplayPrice('basic_yearly'))}</Text>
-                  <Text style={[styles.discountBadge, { backgroundColor: theme.key === 'light' ? '#E7F1FF' : '#155EAF', color: '#FFFFFF' }]}>
+                  <Text style={[styles.discountBadge, yearlyDiscountBadgeColors]}>
                     {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.basic.monthly, PLAN_META.basic.yearly) })}
                   </Text>
                 </View>
@@ -944,7 +948,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 <Text style={[styles.planOptionLabel, { color: theme.text }]}>{t('Yearly')}</Text>
                 <View style={styles.priceBadgeRow}>
                   <Text style={[styles.planPrice, styles.planPriceCompact, { color: theme.accent }]}>{t(planDisplayPrice('premium_yearly'))}</Text>
-                  <Text style={[styles.discountBadge, { backgroundColor: theme.key === 'light' ? '#E7F1FF' : '#155EAF', color: '#FFFFFF' }]}>
+                  <Text style={[styles.discountBadge, yearlyDiscountBadgeColors]}>
                     {t('Save {percent}% on yearly', { percent: getDiscountPercent(PLAN_META.premium.monthly, PLAN_META.premium.yearly) })}
                   </Text>
                 </View>

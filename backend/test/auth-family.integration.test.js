@@ -8,6 +8,7 @@ test('auth + family sharing + access roles', async (t) => {
   process.env.OTP_TEST_ECHO = '1';
 
   const app = await loadApp();
+  const { upsertSubscriptionState } = await import('../src/lib/subscription.js');
 
   const ownerPayload = {
     full_name: 'OU',
@@ -30,6 +31,19 @@ test('auth + family sharing + access roles', async (t) => {
   assert.equal(ownerRegister.status, 201);
   const ownerToken = ownerRegister.body.token;
   assert.ok(ownerToken);
+  const ownerUserId = ownerRegister.body.user?.id;
+  assert.ok(ownerUserId);
+
+  const premiumEnd = new Date();
+  premiumEnd.setDate(premiumEnd.getDate() + 30);
+  upsertSubscriptionState({
+    userId: ownerUserId,
+    plan: 'premium_monthly',
+    status: 'active',
+    startedAt: new Date().toISOString(),
+    currentPeriodEnd: premiumEnd.toISOString(),
+    provider: 'manual'
+  });
 
   const assetCreate = await appRequest(app, {
     method: 'POST',
@@ -181,4 +195,67 @@ test('otp login flow (mock)', async (t) => {
   });
   assert.equal(verify.status, 200);
   assert.ok(verify.body.token);
+});
+
+test('biometric login can create a fresh session after logout on the same trusted device', async () => {
+  process.env.DB_PATH = buildTestDbPath();
+  process.env.OTP_PROVIDER = 'mock';
+  process.env.OTP_TEST_ECHO = '1';
+
+  const app = await loadApp();
+
+  const register = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: {
+      full_name: 'BL',
+      mobile: '7777777778',
+      email: 'biometric@example.com',
+      country: 'India',
+      firebase_id_token: 'mock:7777777778',
+      consent_privacy: true,
+      consent_terms: true,
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'test-device' }
+    }
+  });
+  assert.equal(register.status, 201);
+  assert.ok(register.body.token);
+
+  const enableBiometric = await appRequest(app, {
+    method: 'PUT',
+    path: '/api/settings',
+    token: register.body.token,
+    body: {
+      biometric_login_enabled: '1'
+    }
+  });
+  assert.equal(enableBiometric.status, 200);
+
+  const logout = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/logout',
+    token: register.body.token
+  });
+  assert.equal(logout.status, 204);
+
+  const biometricLogin = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/biometric/login',
+    body: {
+      mobile: '7777777778',
+      device_context: { device_id: 'test-device' }
+    }
+  });
+  assert.equal(biometricLogin.status, 200);
+  assert.ok(biometricLogin.body.token);
+
+  const me = await appRequest(app, {
+    method: 'GET',
+    path: '/api/auth/me',
+    token: biometricLogin.body.token
+  });
+  assert.equal(me.status, 200);
+  assert.equal(me.body.user.mobile, '7777777778');
 });

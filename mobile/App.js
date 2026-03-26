@@ -37,7 +37,7 @@ import FamilyScreen from './src/screens/FamilyScreen';
 import WorthioSplash from './src/screens/LaunchScreen';
 import OnboardingModal from './src/components/OnboardingModal';
 import PillButton from './src/components/PillButton';
-import { api, getAuthToken, setAuthToken } from './src/api/client';
+import { api, setAuthToken } from './src/api/client';
 import {
   canUseNativePhoneAuth,
   clearNativePhoneOtp,
@@ -629,7 +629,10 @@ export default function App() {
       },
       ai: {
         title: t('AI Insights'),
-        body: aiStep?.body || t('Get a quick summary of your portfolio here. Use it when you want the main takeaways fast.')
+        body:
+          String(aiStep?.body || '')
+            .replace(/\s*\n+\s*/g, ' ')
+            .trim() || t('Get a quick summary of your portfolio here. Use it when you want the main takeaways fast.')
       }
     };
   }, [onboardingSteps, t]);
@@ -1146,10 +1149,9 @@ export default function App() {
     };
   }, []);
 
-  const saveBiometricSession = async (token, profile) => {
-    const sessionToken = String(token || '').trim();
+  const saveBiometricSession = async (profile) => {
     const mobile = String(profile?.mobile || '').trim();
-    if (!sessionToken || !mobile) {
+    if (!mobile) {
       throw new Error(t('Complete one OTP login before enrolling biometric login.'));
     }
     const savedRaw = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY).catch(() => null);
@@ -1166,7 +1168,6 @@ export default function App() {
     await SecureStore.setItemAsync(
       BIOMETRIC_CREDENTIALS_KEY,
       JSON.stringify({
-        token: sessionToken,
         mobile,
         full_name: String(profile?.full_name || '').trim(),
         enrolled_at: existingSessionStartedAt || nextSessionStartedAt,
@@ -1190,7 +1191,7 @@ export default function App() {
     setActiveTab('dashboard');
     setPinSetupVisible(false);
     if (biometricEnrolled && options.refreshBiometric !== false) {
-      await saveBiometricSession(payload.token, payload.user).catch(() => {});
+      await saveBiometricSession(payload.user).catch(() => {});
     }
     refreshPrivacyConfig();
     refreshSubscription();
@@ -1328,7 +1329,7 @@ export default function App() {
       fallbackLabel: t('Use device passcode')
     });
     if (!auth.success) throw new Error(t('Biometric verification failed.'));
-    await saveBiometricSession(getAuthToken(), user);
+    await saveBiometricSession(user);
     await api.upsertSettings({ biometric_login_enabled: '1' }).catch(() => {});
   };
 
@@ -1360,21 +1361,17 @@ export default function App() {
       fallbackLabel: t('Use device passcode')
     });
     if (!auth.success) throw new Error(t('Biometric login canceled or failed.'));
-    const storedToken = String(creds?.token || '').trim();
-    if (!storedToken) {
+    const storedMobile = String(creds?.mobile || '').trim();
+    if (!storedMobile) {
       throw new Error(t('Biometric session is not available on this device.'));
     }
-    setAuthToken(storedToken);
     try {
-      const profile = await api.me();
-      await handleAuthSuccess({ token: storedToken, user: profile }, { refreshBiometric: false });
+      const result = await api.loginWithBiometric({ mobile: storedMobile });
+      await handleAuthSuccess(result, { refreshBiometric: false });
     } catch (e) {
       setAuthToken(null);
       await SecureStore.deleteItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => {});
-      if (Number(e?.status || 0) === 401) {
-        throw new Error(t('Biometric session is no longer valid. Login with OTP once to refresh it.'));
-      }
-      throw new Error(t('Biometric login could not be completed right now. Try again.'));
+      throw new Error(String(e?.message || t('Biometric login could not be completed right now. Try again.')));
     }
   };
 
@@ -1763,6 +1760,7 @@ export default function App() {
                 biometricReady={biometricEnrolled || (__DEV__ && authPreviewVariant === 'returning')}
                 loading={authLoading}
                 externalMessage={authError}
+                onClearExternalMessage={() => setAuthError('')}
                 variant={authPreviewVariant}
                 initialMobile={lastKnownUserMobile}
               />
@@ -2100,7 +2098,11 @@ export default function App() {
                     { color: isDarkTheme ? (theme.textSecondary || '#C9D4E5') : theme.muted },
                     active && { color: isDarkTheme ? '#FFFFFF' : theme.accent },
                     locked && !active && { color: isDarkTheme ? '#D9E3F2' : theme.muted }
-                  ]}>
+                  ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.82}
+                  >
                     {label}
                   </Text>
                 </View>
@@ -3112,7 +3114,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#D9E2EF',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     paddingTop: 8,
     paddingBottom: 10
   },
@@ -3123,6 +3125,8 @@ const styles = StyleSheet.create({
   navItem: {
     flex: 1,
     alignItems: 'center',
+    minWidth: 0,
+    paddingHorizontal: 2,
     paddingVertical: 9,
     borderRadius: 14,
     borderWidth: 1,
@@ -3131,7 +3135,9 @@ const styles = StyleSheet.create({
   navTextWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2
+    gap: 2,
+    width: '100%',
+    minWidth: 0
   },
   navIconWrap: {
     position: 'relative',
@@ -3169,9 +3175,11 @@ const styles = StyleSheet.create({
   navText: {
     color: '#334155',
     fontWeight: '800',
-    fontSize: 12,
-    lineHeight: 15,
-    textAlign: 'center'
+    fontSize: 11,
+    lineHeight: 13,
+    textAlign: 'center',
+    width: '100%',
+    flexShrink: 1
   },
   hamburgerText: {
     fontSize: 18,

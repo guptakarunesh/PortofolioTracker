@@ -42,6 +42,7 @@ export default function OnboardingModal({
   const skipColor = appIsDark ? '#111111' : '#f8fafc';
   const inactiveDotColor = appIsDark ? theme.border : 'rgba(255,255,255,0.24)';
   const panel = String(step?.panel || 'top').toLowerCase();
+  const stackHeaderActions = screenWidth < 480;
 
   const cardPositionStyle = useMemo(() => {
     if (panel === 'middle') {
@@ -63,11 +64,11 @@ export default function OnboardingModal({
           ]}
         >
           <View style={[styles.cardAccent, { backgroundColor: theme.accent }]} />
-          <View style={styles.topRow}>
+          <View style={[styles.topRow, stackHeaderActions ? styles.topRowStacked : null]}>
             <Text style={[styles.stepMeta, { color: cardMeta }]}>
               {t('Step {current} of {total}', { current: safeIndex + 1, total: steps.length })}
             </Text>
-            <View style={styles.topActions}>
+            <View style={[styles.topActions, stackHeaderActions ? styles.topActionsStacked : null]}>
               {safeIndex > 0 ? (
                 <Pressable style={[styles.topActionButton, { borderColor: actionColor }]} onPress={onBack}>
                   <Text style={[styles.topActionText, { color: actionColor }]}>{t('Back')}</Text>
@@ -138,10 +139,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12
   },
+  topRowStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start'
+  },
   topActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8
+  },
+  topActionsStacked: {
+    width: '100%',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start'
   },
   topActionButton: {
     minHeight: 40,
@@ -150,7 +160,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    flexShrink: 1
   },
   topActionButtonPrimary: {
     borderWidth: 0

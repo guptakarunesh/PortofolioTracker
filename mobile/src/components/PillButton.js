@@ -3,7 +3,16 @@ import { Pressable, Text, StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useTheme } from '../theme';
 
-export default function PillButton({ label, onPress, kind = 'primary', disabled = false, leftIcon = null, fullWidth = false, style = null }) {
+export default function PillButton({
+  label,
+  onPress,
+  kind = 'primary',
+  disabled = false,
+  leftIcon = null,
+  fullWidth = false,
+  style = null,
+  textStyle = null
+}) {
   const { theme } = useTheme();
   const [buttonSize, setButtonSize] = React.useState({ width: 0, height: 44 });
   const isGhost = kind === 'ghost';
@@ -72,7 +81,8 @@ export default function PillButton({ label, onPress, kind = 'primary', disabled 
           showGradient && { color: primaryTextColor },
           isGhost && styles.ghostText,
           isGhost && { color: ghostTextColor },
-          isStatus && styles.statusText
+          isStatus && styles.statusText,
+          textStyle
         ]}>
           {label}
         </Text>

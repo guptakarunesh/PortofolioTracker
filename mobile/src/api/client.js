@@ -181,6 +181,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ...(payload || {}), device_context: await getDeviceContext().catch(() => null) })
     }),
+  loginWithBiometric: async (payload) =>
+    apiRequest('/api/auth/biometric/login', {
+      method: 'POST',
+      body: JSON.stringify({ ...(payload || {}), device_context: await getDeviceContext().catch(() => null) })
+    }),
   sendLoginOtp: (payload) =>
     apiRequest('/api/auth/otp/send', {
       method: 'POST',

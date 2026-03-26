@@ -205,6 +205,8 @@ function formatAuthDisplayMessage(value, t) {
   return raw;
 }
 
+const NOOP = () => {};
+
 export default function AuthScreen({
   onRegister,
   onLoginWithBiometric,
@@ -212,6 +214,7 @@ export default function AuthScreen({
   onVerifyOtp,
   loading = false,
   externalMessage = '',
+  onClearExternalMessage = NOOP,
   biometricReady = false,
   variant = 'light-new',
   initialMobile = ''
@@ -262,7 +265,8 @@ export default function AuthScreen({
     setOtpCooldown(0);
     setMessage('');
     setBiometricMessage('');
-  }, [mode]);
+    onClearExternalMessage?.();
+  }, [mode, onClearExternalMessage]);
 
   useEffect(() => {
     if (variant === 'returning') {
@@ -289,6 +293,12 @@ export default function AuthScreen({
     setFullName(initials);
   };
 
+  const clearAttemptMessages = () => {
+    setMessage('');
+    setBiometricMessage('');
+    onClearExternalMessage?.();
+  };
+
   const validateRegisterFields = () => {
     if (!/^[A-Za-z]{2}$/.test(String(fullName || '').trim())) {
       setMessageTone('error');
@@ -302,6 +312,7 @@ export default function AuthScreen({
   };
 
   const requestOtp = async () => {
+    clearAttemptMessages();
     if (!mobile.trim()) {
       setMessageTone('error');
       setMessage(t('Mobile number is required.'));
@@ -325,6 +336,7 @@ export default function AuthScreen({
   };
 
   const submit = async () => {
+    clearAttemptMessages();
     if (!mobile.trim()) {
       setMessageTone('error');
       setMessage(t('Mobile number is required.'));
@@ -522,11 +534,14 @@ export default function AuthScreen({
               leftIcon={<FingerprintIcon color={theme.card} />}
               style={styles.primaryActionButton}
               disabled={loading}
-              onPress={() =>
+              onPress={() => {
+                clearAttemptMessages();
+                return (
                 onLoginWithBiometric()
                   .then(() => setBiometricMessage(''))
                   .catch((e) => setBiometricMessage(e.message))
-              }
+                );
+              }}
             />
             <View style={styles.orRow}>
               <View style={[styles.orLine, { backgroundColor: theme.border }]} />

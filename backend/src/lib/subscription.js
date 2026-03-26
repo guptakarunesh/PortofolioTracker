@@ -46,7 +46,7 @@ export function ensureSubscriptionForUser(userId) {
 
   const row = {
     user_id: userId,
-    plan: 'trial_premium',
+    plan: 'basic_monthly',
     status,
     started_at: createdAt.toISOString(),
     current_period_end: trialEnd.toISOString(),
@@ -63,7 +63,7 @@ export function ensureSubscriptionForUser(userId) {
     INSERT INTO payment_history (
       user_id, plan, amount_inr, period, provider, provider_txn_id,
       purchased_at, valid_until, status
-    ) VALUES (?, 'trial_premium', 0, 'trial', 'trial', null, ?, ?, ?)
+    ) VALUES (?, 'basic_monthly', 0, 'monthly', 'trial', null, ?, ?, ?)
   `).run(userId, row.started_at, row.current_period_end, status === 'active' ? 'succeeded' : 'expired');
 
   return row;

@@ -727,7 +727,7 @@ router.post('/register', async (req, res) => {
       registerStage = 'subscription_upsert';
       db.prepare(`
         INSERT INTO subscriptions (user_id, plan, status, started_at, current_period_end, provider, updated_at)
-        VALUES (?, 'trial_premium', 'active', ?, ?, 'trial', ?)
+        VALUES (?, 'basic_monthly', 'active', ?, ?, 'trial', ?)
         ON CONFLICT(user_id) DO UPDATE SET
           plan=excluded.plan,
           status=excluded.status,
@@ -742,7 +742,7 @@ router.post('/register', async (req, res) => {
         INSERT INTO payment_history (
           user_id, plan, amount_inr, period, provider, provider_txn_id,
           purchased_at, valid_until, status
-        ) VALUES (?, 'trial_premium', 0, 'trial', 'trial', null, ?, ?, 'succeeded')
+        ) VALUES (?, 'basic_monthly', 0, 'monthly', 'trial', null, ?, ?, 'succeeded')
       `).run(user.id, trialStart, trialEndIso);
     });
 
@@ -855,6 +855,105 @@ router.post('/login', (req, res) => {
     mobileHash,
     eventType: 'login_success',
     authMethod: 'mpin',
+    status: 'ok',
+    context,
+    req
+  });
+
+  return res.json({ token, user: publicUser(user) });
+});
+
+router.post('/biometric/login', (req, res) => {
+  const { mobile } = req.body || {};
+  const context = extractDeviceContext(req, req.body?.device_context);
+  const cleanMobile = normalizeMobile(mobile);
+  const mobileHash = hashLookup(cleanMobile);
+
+  if (!String(context.device_id || '').trim()) {
+    return res.status(400).json({ error: 'device_id_required', message: 'Device identifier is required.' });
+  }
+
+  if (!isValidIndianMobile(cleanMobile)) {
+    logAuthEvent({
+      userId: null,
+      mobileHash,
+      eventType: 'biometric_login_failed_validation',
+      authMethod: 'biometric',
+      status: 'failed',
+      reason: 'missing_mobile',
+      context,
+      req
+    });
+    return res.status(400).json({ error: 'Valid Indian mobile number is required' });
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE mobile_hash = ?').get(mobileHash);
+  if (!user) {
+    logAuthEvent({
+      userId: null,
+      mobileHash,
+      eventType: 'biometric_login_failed_user_not_found',
+      authMethod: 'biometric',
+      status: 'failed',
+      reason: 'user_not_found',
+      context,
+      req
+    });
+    return res.status(404).json({ error: 'Account not found for this mobile number' });
+  }
+
+  if (!isTrustedDevice(user.id, context.device_id)) {
+    logAuthEvent({
+      userId: user.id,
+      mobileHash,
+      eventType: 'biometric_login_rejected_untrusted_device',
+      authMethod: 'biometric',
+      status: 'blocked',
+      reason: 'untrusted_device',
+      context,
+      req
+    });
+    return res.status(403).json({
+      error: 'device_not_trusted',
+      message: 'This device is not trusted. Login once via OTP to authorize this device.'
+    });
+  }
+
+  const biometricEnabled = String(getUserSettingValue(user.id, 'biometric_login_enabled') || '').toLowerCase();
+  if (!(biometricEnabled === '1' || biometricEnabled === 'true' || biometricEnabled === 'yes')) {
+    logAuthEvent({
+      userId: user.id,
+      mobileHash,
+      eventType: 'biometric_login_failed_not_enabled',
+      authMethod: 'biometric',
+      status: 'failed',
+      reason: 'biometric_not_enabled',
+      context,
+      req
+    });
+    return res.status(403).json({
+      error: 'biometric_not_enabled',
+      message: 'Biometric login is not enabled for this account on this device yet.'
+    });
+  }
+
+  const nowIsoStr = nowIso();
+  db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(nowIsoStr, user.id);
+  upsertUserDevice(user.id, context, req);
+  const token = createSessionToken();
+  createBoundSession({
+    userId: user.id,
+    token,
+    authMethod: 'biometric',
+    context,
+    req,
+    createdAt: nowIsoStr
+  });
+  logAuthEvent({
+    userId: user.id,
+    mobileHash,
+    eventType: 'biometric_login_success',
+    authMethod: 'biometric',
     status: 'ok',
     context,
     req

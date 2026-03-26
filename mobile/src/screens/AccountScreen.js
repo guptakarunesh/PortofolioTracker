@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, Linking, Share, Pressable, Animated, Modal, ScrollView } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import SectionCard from '../components/SectionCard';
@@ -161,6 +162,7 @@ export default function AccountScreen({
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
   const fieldOffsetsRef = useRef({});
+  const hasSecurityPin = /^\d{4}$/.test(pin);
 
   useEffect(() => {
     api
@@ -208,6 +210,25 @@ export default function AccountScreen({
       onRequestScrollTo(Number.isFinite(targetY) ? targetY : 0);
     },
     [onRequestScrollTo]
+  );
+  const selectorButtonStyle = useCallback(
+    (selected) => [
+      styles.selectorButton,
+      {
+        borderColor: selected ? theme.accent : theme.border,
+        backgroundColor: selected
+          ? (isDark ? 'rgba(36,178,214,0.18)' : '#E7F1FF')
+          : (isDark ? 'rgba(255,255,255,0.06)' : (theme.cardAlt || '#F8FAFC'))
+      }
+    ],
+    [isDark, theme.accent, theme.border, theme.cardAlt]
+  );
+  const selectorTextStyle = useCallback(
+    (selected) => [
+      styles.selectorButtonText,
+      { color: selected ? theme.accent : theme.text }
+    ],
+    [theme.accent, theme.text]
   );
 
   const saveSecurityPin = async () => {
@@ -278,7 +299,27 @@ export default function AccountScreen({
   const exportData = async () => {
     const payload = await api.exportUserData();
     const text = JSON.stringify(payload, null, 2);
-    await Share.share({ message: text });
+    const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+    if (!baseDir) {
+      await Share.share({ message: text });
+      setMessage(t('Data export prepared.'));
+      return;
+    }
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const mobileSuffix = String(user?.mobile || '').replace(/\D/g, '').slice(-4) || 'account';
+    const fileUri = `${baseDir}nwm-export-${mobileSuffix}-${dateStamp}.json`;
+    await FileSystem.writeAsStringAsync(fileUri, text, {
+      encoding: FileSystem.EncodingType.UTF8
+    });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/json',
+        dialogTitle: t('Export My Data'),
+        UTI: 'public.json'
+      });
+    } else {
+      await Share.share({ message: fileUri });
+    }
     setMessage(t('Data export prepared.'));
   };
 
@@ -387,17 +428,27 @@ export default function AccountScreen({
           {t('Security PIN is required to reveal full identifiers, contacts, and family notes. Amount privacy toggle does not require PIN.')}
         </Text>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Security PIN (4 digits)')}</Text>
-        <TextInput
-          onLayout={(event) => setFieldOffset('pin', event.nativeEvent.layout.y)}
-          onFocus={() => scrollToField('pin')}
-          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
-          value={pin}
-          onChangeText={handleMaskedPinInput}
-          keyboardType="number-pad"
-          secureTextEntry
-          maxLength={4}
-        />
-        <PillButton style={isDark ? styles.accountPrimaryButtonDark : null} label={t('Save Security PIN')} onPress={() => saveSecurityPin().catch((e) => setMessage(e.message))} />
+        {hasSecurityPin ? (
+          <Text style={[styles.valueInline, styles.pinEnabledValue, { color: theme.text }]}>{t('PIN Enabled')}</Text>
+        ) : (
+          <>
+            <TextInput
+              onLayout={(event) => setFieldOffset('pin', event.nativeEvent.layout.y)}
+              onFocus={() => scrollToField('pin')}
+              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+              value={pin}
+              onChangeText={handleMaskedPinInput}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={4}
+            />
+            <PillButton
+              style={isDark ? styles.accountPrimaryButtonDark : null}
+              label={t('Save Security PIN')}
+              onPress={() => saveSecurityPin().catch((e) => setMessage(e.message))}
+            />
+          </>
+        )}
 
         <View style={[styles.securityDivider, { backgroundColor: theme.border }]} />
         <Text style={[styles.label, { color: theme.muted }]}>{t('Forgot Security PIN')}</Text>
@@ -458,18 +509,11 @@ export default function AccountScreen({
             ? t('Biometric login is enabled for fast access on this device.')
             : t('Enroll Biometric Login to use fingerprint or face unlock on this device.')}
         </Text>
-        <View style={styles.row}>
-          <PillButton
-            label={biometricEnrolled ? t('Biometric Login Enrolled') : t('Enroll Biometric Login')}
-            kind={biometricEnrolled ? 'primary' : 'ghost'}
-            style={isDark ? (biometricEnrolled ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
-            onPress={() =>
-              Promise.resolve(onEnrollBiometric?.())
-                .then(() => setMessage(t('Biometric login enrolled for this device.')))
-                .catch((e) => setMessage(e.message))
-            }
-          />
-          {biometricEnrolled ? (
+        {biometricEnrolled ? (
+          <View style={styles.biometricEnabledRow}>
+            <Text style={[styles.valueInline, styles.biometricEnabledValue, { color: theme.text }]}>
+              {t('Biometric Login Enrolled')}
+            </Text>
             <PillButton
               label={t('Disable Biometric Login')}
               kind="ghost"
@@ -480,8 +524,21 @@ export default function AccountScreen({
                   .catch((e) => setMessage(e.message))
               }
             />
-          ) : null}
-        </View>
+          </View>
+        ) : (
+          <View style={styles.row}>
+            <PillButton
+              label={t('Enroll Biometric Login')}
+              kind="ghost"
+              style={isDark ? styles.accountGhostButtonDark : null}
+              onPress={() =>
+                Promise.resolve(onEnrollBiometric?.())
+                  .then(() => setMessage(t('Biometric login enrolled for this device.')))
+                  .catch((e) => setMessage(e.message))
+              }
+            />
+          </View>
+        )}
       </SectionCard>
 
       <SectionCard title={t('Theme')}>
@@ -494,8 +551,9 @@ export default function AccountScreen({
             <PillButton
               key={opt.key}
               label={t(opt.label)}
-              kind={themeKey === opt.key ? 'primary' : 'ghost'}
-              style={isDark ? (themeKey === opt.key ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
+              kind="ghost"
+              style={selectorButtonStyle(themeKey === opt.key)}
+              textStyle={selectorTextStyle(themeKey === opt.key)}
               onPress={() => onThemeChange?.(opt.key)}
             />
           ))}
@@ -509,14 +567,16 @@ export default function AccountScreen({
         <View style={styles.row}>
           <PillButton
             label={t('English')}
-            kind={language === 'en' ? 'primary' : 'ghost'}
-            style={isDark ? (language === 'en' ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
+            kind="ghost"
+            style={selectorButtonStyle(language === 'en')}
+            textStyle={selectorTextStyle(language === 'en')}
             onPress={() => saveLanguage('en').catch((e) => setMessage(e.message))}
           />
           <PillButton
             label={t('हिंदी')}
-            kind={language === 'hi' ? 'primary' : 'ghost'}
-            style={isDark ? (language === 'hi' ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
+            kind="ghost"
+            style={selectorButtonStyle(language === 'hi')}
+            textStyle={selectorTextStyle(language === 'hi')}
             onPress={() => saveLanguage('hi').catch((e) => setMessage(e.message))}
           />
         </View>
@@ -770,11 +830,30 @@ const styles = StyleSheet.create({
     color: '#0f3557',
     fontWeight: '700'
   },
+  pinEnabledValue: {
+    marginBottom: 2
+  },
   row: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
     marginBottom: 8
+  },
+  selectorButton: {
+    minWidth: 110
+  },
+  selectorButtonText: {
+    fontWeight: '900'
+  },
+  biometricEnabledRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap'
+  },
+  biometricEnabledValue: {
+    flex: 1
   },
   input: {
     borderWidth: 1,

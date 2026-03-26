@@ -106,6 +106,7 @@ router.get('/privacy', (_req, res) => {
     <li>View and revoke trusted devices.</li>
     <li>Delete your account.</li>
   </ul>
+  <p>For account deletion instructions, visit <a href="/legal/delete-account">Worthio Account Deletion</a>.</p>
 
   <h2>10. Cross-Border Processing</h2>
   <p>Some service providers used for notifications, analytics/security, or AI processing may operate from multiple regions. By using the app, you consent to such processing subject to applicable law and contractual safeguards.</p>
@@ -190,6 +191,46 @@ router.get('/terms', (_req, res) => {
   <p>We may update these Terms as the product and legal requirements evolve. Continued use after publication of updated Terms constitutes acceptance.</p>`;
 
   res.type('html').send(htmlPage('Terms of Service', body));
+});
+
+router.get('/delete-account', (_req, res) => {
+  const body = `
+  <h1>Worthio Account Deletion</h1>
+  <div class="meta">Networth Manager account and data deletion request instructions</div>
+  <p>This page explains how users of <strong>Worthio</strong> by <strong>Networth Manager</strong> can request deletion of their account and associated data.</p>
+
+  <h2>1. How to Request Deletion</h2>
+  <ol>
+    <li>Email <strong>grievance@networthmanager.app</strong> from your registered email address, or send the request from inside the app support flow using your registered mobile number.</li>
+    <li>Use the subject line <strong>Account Deletion Request - Worthio</strong>.</li>
+    <li>Include your registered mobile number and, if available, the email address linked to the account.</li>
+    <li>We may ask you to complete a verification step to confirm that the request was made by the account owner.</li>
+  </ol>
+
+  <h2>2. What We Delete</h2>
+  <ul>
+    <li>Account profile data, including initials, mobile number, optional email, and preferences stored with the active account.</li>
+    <li>Portfolio records entered by you, including assets, liabilities, reminders, transactions, and related notes.</li>
+    <li>Family-sharing mappings, linked-device records, push tokens, and active session records associated with the account.</li>
+  </ul>
+
+  <h2>3. What We May Retain</h2>
+  <ul>
+    <li>Minimal audit, security, fraud-prevention, billing, and legal-compliance records.</li>
+    <li>Operational logs required to document the deletion request and protect against abuse.</li>
+    <li>Records that we are required or permitted to keep under applicable law.</li>
+  </ul>
+
+  <h2>4. Retention Period for Kept Data</h2>
+  <p>Where retention is required, the retained records are kept only for the minimum period reasonably necessary for security, billing, dispute handling, and legal compliance. Our current target retention window for such limited records is up to <strong>180 days</strong> after deletion request completion, unless a longer period is required by law or an active dispute, fraud review, or payment reconciliation is in progress.</p>
+
+  <h2>5. Processing Timeline</h2>
+  <p>We target initial response within <strong>15 working days</strong>. Once ownership is verified, we aim to complete deletion of active account data within a reasonable operational period.</p>
+
+  <h2>6. Contact</h2>
+  <p>Deletion requests and privacy questions: <strong>grievance@networthmanager.app</strong></p>`;
+
+  res.type('html').send(htmlPage('Worthio Account Deletion', body));
 });
 
 export default router;

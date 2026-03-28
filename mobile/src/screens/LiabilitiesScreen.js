@@ -26,7 +26,6 @@ const blankForm = {
   lender: '',
   holder_type: HOLDER_OPTIONS[0],
   reach_via: REACH_OPTIONS[0],
-  relationship_mobile: '',
   account_ref: '',
   outstanding_amount: '',
   notes_for_family: ''
@@ -80,7 +79,6 @@ export default function LiabilitiesScreen({
   const [revealLoading, setRevealLoading] = useState(false);
   const [expandedLiabilityId, setExpandedLiabilityId] = useState(null);
   const lenderInputRef = useRef(null);
-  const relationshipMobileInputRef = useRef(null);
   const outstandingAmountInputRef = useRef(null);
   const fieldOffsetsRef = useRef({});
 
@@ -113,7 +111,6 @@ export default function LiabilitiesScreen({
 
   const focusField = useCallback((key) => {
     if (key === 'lender' && lenderInputRef.current?.focus) lenderInputRef.current.focus();
-    if (key === 'relationship_mobile' && relationshipMobileInputRef.current?.focus) relationshipMobileInputRef.current.focus();
     if (key === 'outstanding_amount' && outstandingAmountInputRef.current?.focus) outstandingAmountInputRef.current.focus();
   }, []);
 
@@ -156,7 +153,6 @@ export default function LiabilitiesScreen({
       lender: item.lender || '',
       holder_type: item.holder_type || HOLDER_OPTIONS[0],
       reach_via: item.reach_via || REACH_OPTIONS[0],
-      relationship_mobile: '',
       account_ref: '',
       outstanding_amount: String(item.outstanding_amount ?? ''),
       notes_for_family: ''
@@ -225,11 +221,6 @@ export default function LiabilitiesScreen({
       registerError('lender', t('Institution Name is required.'));
     }
 
-    const normalizedRelationship = String(form.relationship_mobile || '').replace(/\D/g, '').slice(0, 10);
-    if (form.relationship_mobile && normalizedRelationship.length !== 10) {
-      registerError('relationship_mobile', t('Enter a valid 10-digit mobile number.'));
-    }
-
     const cleanedOutstanding = String(form.outstanding_amount || '').trim().replace(/,/g, '');
     if (cleanedOutstanding) {
       const n = Number(cleanedOutstanding);
@@ -275,7 +266,6 @@ export default function LiabilitiesScreen({
     try {
       if (editingId) {
         const payload = { ...basePayload };
-        if (normalizedRelationship) payload.relationship_mobile = normalizedRelationship;
         if (normalizedAccountRef) payload.account_ref = normalizedAccountRef;
         if (normalizedNotes) payload.notes_for_family = normalizedNotes;
         await api.updateLiability(editingId, payload);
@@ -284,7 +274,6 @@ export default function LiabilitiesScreen({
       } else {
         await api.createLiability({
           ...basePayload,
-          relationship_mobile: normalizedRelationship,
           account_ref: normalizedAccountRef,
           notes_for_family: normalizedNotes
         });
@@ -392,15 +381,10 @@ export default function LiabilitiesScreen({
       : basicPlanActive
         ? 5
         : 0;
-  const usageText = Number(maxLiabilities) > 0
-    ? t('Basic plan: {used}/{total} liabilities used', { used: items.length, total: maxLiabilities })
-    : t('Liabilities used: {used}', { used: items.length });
-
   return (
     <View>
       <SectionCard title={editingId ? t('Edit Liability') : t('Add Liability')}>
         {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{t('Subscription expired. View-only mode.')}</Text> : null}
-        <Text style={[styles.planUsageText, { color: theme.muted }]}>{usageText}</Text>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Type')}</Text>
         <Pressable
           onLayout={(event) => setFieldOffset('loan_type', event.nativeEvent.layout.y)}
@@ -419,7 +403,7 @@ export default function LiabilitiesScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.loan_type === type && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.loan_type === type && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, loan_type: type }));
@@ -478,7 +462,7 @@ export default function LiabilitiesScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.holder_type === holderType && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.holder_type === holderType && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, holder_type: holderType }));
@@ -520,7 +504,7 @@ export default function LiabilitiesScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.reach_via === reachVia && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.reach_via === reachVia && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, reach_via: reachVia }));
@@ -539,42 +523,6 @@ export default function LiabilitiesScreen({
               </Pressable>
             ))}
           </View>
-        ) : null}
-
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Relationship / Branch Manager Mobile')}</Text>
-        <HelpLine
-          theme={theme}
-          text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
-        />
-        <View
-          ref={relationshipMobileInputRef}
-          collapsable={false}
-          onLayout={(event) => setFieldOffset('relationship_mobile', event.nativeEvent.layout.y)}
-          style={[
-            styles.phoneWrap,
-            {
-              backgroundColor: readOnly ? theme.background : theme.inputBg,
-              borderColor: fieldErrors.relationship_mobile ? theme.danger : theme.border
-            }
-          ]}
-        >
-          <Text style={[styles.phonePrefix, { color: readOnly ? theme.muted : theme.text }]}>+91</Text>
-          <TextInput
-            style={[styles.phoneInput, { color: readOnly ? theme.muted : theme.inputText }]}
-            onFocus={() => scrollToField('relationship_mobile')}
-            value={form.relationship_mobile}
-            onChangeText={(v) => {
-              clearFieldError('relationship_mobile');
-              setForm((f) => ({ ...f, relationship_mobile: String(v || '').replace(/\D/g, '').slice(0, 10) }));
-            }}
-            placeholder={editingId ? t('Enter new mobile to replace existing') : t('10-digit mobile number')}
-            keyboardType="number-pad"
-            placeholderTextColor={theme.muted}
-            editable={!readOnly}
-          />
-        </View>
-        {!!fieldErrors.relationship_mobile ? (
-          <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.relationship_mobile}</Text>
         ) : null}
 
         <Text style={[styles.label, { color: theme.muted }]}>{t('Liability Account / Unique Number')}</Text>
@@ -714,7 +662,7 @@ export default function LiabilitiesScreen({
         {Number(maxLiabilities) > 0 ? (
           <View style={styles.planLimitRow}>
             <Text style={[styles.planLimitText, { color: theme.warn }]}>{usageText}</Text>
-            <PillButton label={t('Upgrade')} kind="ghost" onPress={onOpenSubscription} />
+            <PillButton label={t('Upgrade')} kind="primary" onPress={onOpenSubscription} />
           </View>
         ) : null}
         {sortedItems.map((item) => (
@@ -741,9 +689,6 @@ export default function LiabilitiesScreen({
                   {hasInfo(item.reach_via) ? (
                     <Text style={[styles.sub, { color: theme.muted }]}>{t('Reach via: {value}', { value: t(item.reach_via) })}</Text>
                   ) : null}
-                  {hasInfo(item.relationship_mobile) ? (
-                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Relationship / Branch Manager: {value}', { value: item.relationship_mobile })}</Text>
-                  ) : null}
                   {hasInfo(item.account_ref) ? (
                     <Text style={[styles.sub, { color: theme.muted }]}>{t('Account Ref: {value}', { value: item.account_ref })}</Text>
                   ) : null}
@@ -764,7 +709,7 @@ export default function LiabilitiesScreen({
                   <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
                   <PillButton
                     label={t('Delete')}
-                    kind="ghost"
+                    kind="danger"
                     onPress={() => confirmRemove(item)}
                     disabled={readOnly}
                   />
@@ -782,13 +727,12 @@ export default function LiabilitiesScreen({
             {revealData ? (
               <View style={styles.revealDetails}>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Identifier: {value}', { value: revealData.account_ref || '-' })}</Text>
-                <Text style={[styles.revealLine, { color: theme.text }]}>{t('Contact: {value}', { value: revealData.relationship_mobile || '-' })}</Text>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Notes: {value}', { value: revealData.notes || '-' })}</Text>
               </View>
             ) : (
               <>
                 <Text style={[styles.modalSub, { color: theme.muted }]}> 
-                  {t('Enter your security PIN to view full identifier, contact, and notes.')}
+                  {t('Enter your security PIN to view full identifier and notes.')}
                 </Text>
                 <TextInput
                   style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
@@ -883,13 +827,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#D9E2EF'
   },
   dropdownItemActive: {
-    backgroundColor: '#EEF7FF'
+    backgroundColor: '#E8F7F2'
   },
   dropdownItemText: {
     color: '#0B1F3A'
   },
   dropdownItemTextActive: {
-    color: '#0A84FF',
+    color: '#0E8A72',
     fontWeight: '700'
   },
   input: {

@@ -19,10 +19,34 @@ const REMINDER_CATEGORY_OPTIONS = [
   'Other'
 ];
 
-const ALERT_DAYS_OPTIONS = ['3', '7', '10', '15', '30'];
+const ALERT_DAYS_OPTIONS = ['1', '2', '3', '5', '7'];
+const REPEAT_OPTIONS = [
+  { key: 'one_time', label: 'One Time' },
+  { key: 'daily', label: 'Daily' },
+  { key: 'weekly', label: 'Weekly' },
+  { key: 'every_x_days', label: 'Every X Days' },
+  { key: 'monthly', label: 'Monthly' },
+  { key: 'yearly', label: 'Yearly' }
+];
+
+const repeatLabel = (repeatType, repeatEveryDays, t) => {
+  const type = String(repeatType || 'one_time');
+  if (type === 'every_x_days') return t('Every {count} Days', { count: repeatEveryDays || 0 });
+  return t(REPEAT_OPTIONS.find((option) => option.key === type)?.label || 'One Time');
+};
 
 const displayAmount = (value, hideSensitive, currency, fxRates) =>
   hideSensitive ? '••••••' : formatAmountFromInr(value, currency, fxRates);
+
+const createEmptyReminderForm = () => ({
+  due_date: '2026-04-01',
+  category: REMINDER_CATEGORY_OPTIONS[0],
+  description: '',
+  amount: '',
+  alert_days_before: ALERT_DAYS_OPTIONS[3],
+  repeat_type: 'one_time',
+  repeat_every_days: '2'
+});
 
 export default function RemindersScreen({
   hideSensitive = false,
@@ -37,19 +61,16 @@ export default function RemindersScreen({
   const { t } = useI18n();
   const isLight = theme.key === 'light';
   const [items, setItems] = useState([]);
-  const [form, setForm] = useState({
-    due_date: '2026-04-01',
-    category: REMINDER_CATEGORY_OPTIONS[0],
-    description: '',
-    amount: '',
-    alert_days_before: ALERT_DAYS_OPTIONS[3]
-  });
+  const [form, setForm] = useState(createEmptyReminderForm);
+  const [editingReminderId, setEditingReminderId] = useState(null);
   const [message, setMessage] = useState('');
   const [messageKind, setMessageKind] = useState('info');
   const [showCategoryOptions, setShowCategoryOptions] = useState(false);
   const [showAlertOptions, setShowAlertOptions] = useState(false);
+  const [showRepeatOptions, setShowRepeatOptions] = useState(false);
   const descriptionInputRef = useRef(null);
   const amountInputRef = useRef(null);
+  const repeatEveryDaysInputRef = useRef(null);
   const fieldOffsetsRef = useRef({});
 
   const load = useCallback(async () => {
@@ -94,24 +115,70 @@ export default function RemindersScreen({
       setMessageKind('error');
       return;
     }
-    await api.createReminder({
+    if (form.repeat_type === 'every_x_days') {
+      const interval = Number(form.repeat_every_days || 0);
+      if (!Number.isInteger(interval) || interval < 2 || interval > 365) {
+        setMessage(t('Enter a valid repeat interval between 2 and 365 days.'));
+        setMessageKind('error');
+        return;
+      }
+    }
+    const payload = {
       ...form,
       amount: Number(form.amount || 0),
       alert_days_before: Number(form.alert_days_before || 7),
+      repeat_every_days: form.repeat_type === 'every_x_days' ? Number(form.repeat_every_days || 0) : null,
       status: 'Pending'
-    });
-    setForm((f) => ({ ...f, description: '', amount: '' }));
+    };
+    if (editingReminderId) {
+      await api.updateReminder(editingReminderId, payload);
+    } else {
+      await api.createReminder(payload);
+    }
+    setForm(createEmptyReminderForm());
+    setEditingReminderId(null);
     setShowCategoryOptions(false);
     setShowAlertOptions(false);
-    setMessage(t('Reminder added.'));
+    setShowRepeatOptions(false);
+    setMessage(editingReminderId ? t('Reminder updated.') : t('Reminder added.'));
     setMessageKind('success');
     onRemindersChanged();
     await load();
   };
 
+  const startEdit = (item) => {
+    setEditingReminderId(item.id);
+    setForm({
+      due_date: String(item.due_date || ''),
+      category: String(item.category || REMINDER_CATEGORY_OPTIONS[0]),
+      description: String(item.description || ''),
+      amount: Number(item.amount || 0) ? String(item.amount) : '',
+      alert_days_before: String(item.alert_days_before || ALERT_DAYS_OPTIONS[3]),
+      repeat_type: String(item.repeat_type || 'one_time'),
+      repeat_every_days: String(item.repeat_every_days || '2')
+    });
+    setShowCategoryOptions(false);
+    setShowAlertOptions(false);
+    setShowRepeatOptions(false);
+    scrollToField();
+  };
+
+  const cancelEdit = () => {
+    setEditingReminderId(null);
+    setForm(createEmptyReminderForm());
+    setShowCategoryOptions(false);
+    setShowAlertOptions(false);
+    setShowRepeatOptions(false);
+  };
+
   const markComplete = async (id) => {
+    const current = items.find((item) => item.id === id);
     await api.updateReminderStatus(id, 'Completed');
-    setMessage(t('Reminder marked complete.'));
+    setMessage(
+      String(current?.repeat_type || 'one_time') === 'one_time'
+        ? t('Reminder marked complete.')
+        : t('Recurring reminder moved to the next occurrence.')
+    );
     setMessageKind('success');
     onRemindersChanged();
     await load();
@@ -140,7 +207,7 @@ export default function RemindersScreen({
 
   return (
     <View>
-      <SectionCard title={t('Add Reminder')}>
+      <SectionCard title={t(editingReminderId ? 'Edit Reminder' : 'Add Reminder')}>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Due Date (YYYY-MM-DD)')}</Text>
         <DateField
           value={form.due_date}
@@ -164,7 +231,7 @@ export default function RemindersScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.category === category && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.category === category && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, category }));
@@ -203,6 +270,64 @@ export default function RemindersScreen({
           value={form.amount}
           onChangeText={(v) => setForm((f) => ({ ...f, amount: v }))}
         />
+        <Text style={[styles.label, { color: theme.muted }]}>{t('Repeats')}</Text>
+        <Pressable
+          style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
+          onPress={() => setShowRepeatOptions((v) => !v)}
+        >
+          <Text style={[styles.dropdownText, { color: theme.inputText }]}>
+            {repeatLabel(form.repeat_type, form.repeat_every_days, t)}
+          </Text>
+          <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showRepeatOptions ? '▲' : '▼'}</Text>
+        </Pressable>
+        {showRepeatOptions ? (
+          <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
+            {REPEAT_OPTIONS.map((option) => (
+              <Pressable
+                key={option.key}
+                style={[
+                  styles.dropdownItem,
+                  { borderBottomColor: theme.border },
+                  form.repeat_type === option.key && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
+                ]}
+                onPress={() => {
+                  setForm((f) => ({
+                    ...f,
+                    repeat_type: option.key,
+                    repeat_every_days: option.key === 'every_x_days' ? (f.repeat_every_days || '2') : f.repeat_every_days
+                  }));
+                  setShowRepeatOptions(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.dropdownItemText,
+                    { color: theme.text },
+                    form.repeat_type === option.key && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
+                  ]}
+                >
+                  {t(option.label)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {form.repeat_type === 'every_x_days' ? (
+          <>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Every X Days')}</Text>
+            <TextInput
+              ref={repeatEveryDaysInputRef}
+              onLayout={(event) => setFieldOffset('repeat_every_days', event.nativeEvent.layout.y)}
+              onFocus={() => scrollToField('repeat_every_days')}
+              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+              keyboardType="number-pad"
+              value={String(form.repeat_every_days || '')}
+              onChangeText={(v) => setForm((f) => ({ ...f, repeat_every_days: String(v || '').replace(/\D/g, '') }))}
+              placeholder={t('2')}
+              placeholderTextColor={theme.muted}
+            />
+          </>
+        ) : null}
         <Text style={[styles.label, { color: theme.muted }]}>{t('Alert Days Before')}</Text>
         <Pressable
           style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
@@ -219,7 +344,7 @@ export default function RemindersScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.alert_days_before === days && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.alert_days_before === days && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, alert_days_before: days }));
@@ -239,31 +364,40 @@ export default function RemindersScreen({
             ))}
           </View>
         ) : null}
-        <PillButton
-          label={t('Save Reminder')}
-          onPress={() =>
-            submit().catch((e) => {
-              setMessage(e.message);
-              setMessageKind('error');
-            })
-          }
-        />
+        <View style={styles.formActions}>
+          <PillButton
+            label={t(editingReminderId ? 'Update Reminder' : 'Save Reminder')}
+            onPress={() =>
+              submit().catch((e) => {
+                setMessage(e.message);
+                setMessageKind('error');
+              })
+            }
+          />
+          {editingReminderId ? <PillButton label={t('Cancel Edit')} kind="ghost" onPress={cancelEdit} /> : null}
+        </View>
       </SectionCard>
 
       <FeedbackBanner message={message} kind={messageKind} />
 
       <SectionCard title={t('Upcoming Reminders')}>
-        {items.map((item) => (
+        {items.length ? items.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.name, { color: theme.text }]}>{item.description}</Text>
               <Text style={[styles.sub, { color: theme.muted }]}>{t('{category} · {date}', { category: t(item.category), date: formatDate(item.due_date) })}</Text>
+              <Text style={[styles.sub, { color: theme.muted }]}>{t('Repeats: {value}', { value: repeatLabel(item.repeat_type, item.repeat_every_days, t) })}</Text>
               <Text style={[styles.sub, { color: theme.muted }]}>{t('Status: {value}', { value: t(item.status) })}</Text>
             </View>
             <View style={styles.right}>
               <Text style={[styles.amount, { color: theme.text }]}>{displayAmount(item.amount, hideSensitive, preferredCurrency, fxRates)}</Text>
               {item.status !== 'Completed' ? (
                 <>
+                  <PillButton
+                    label={t('Edit')}
+                    kind="ghost"
+                    onPress={() => startEdit(item)}
+                  />
                   <PillButton
                     label={t('Snooze +1d')}
                     kind="ghost"
@@ -288,7 +422,7 @@ export default function RemindersScreen({
               ) : null}
             </View>
           </View>
-        ))}
+        )) : <Text style={[styles.sub, { color: theme.muted }]}>{t('No active reminders yet.')}</Text>}
       </SectionCard>
     </View>
   );
@@ -297,6 +431,9 @@ export default function RemindersScreen({
 const styles = StyleSheet.create({
   premiumLockedWrap: {
     gap: 12
+  },
+  formActions: {
+    gap: 10
   },
   premiumLockedText: {
     marginBottom: 2
@@ -336,13 +473,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#D9E2EF'
   },
   dropdownItemActive: {
-    backgroundColor: '#EEF7FF'
+    backgroundColor: '#E8F7F2'
   },
   dropdownItemText: {
     color: '#0B1F3A'
   },
   dropdownItemTextActive: {
-    color: '#0A84FF',
+    color: '#0E8A72',
     fontWeight: '700'
   },
   input: {

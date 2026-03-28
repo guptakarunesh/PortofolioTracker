@@ -24,22 +24,22 @@ const worthioBase = {
 };
 
 const lightBase = {
-  accent: BRAND.colors.accentBlue,
-  accentSoft: '#F1F5F9',
+  accent: '#0E8A72',
+  accentSoft: '#E8F7F2',
   background: '#F7FAFC',
   backgroundElevated: '#FFFFFF',
   card: '#FFFFFF',
   cardAlt: '#F1F5F9',
-  text: BRAND.colors.bgBase,
+  text: '#1F2937',
   muted: '#334155',
   subtle: '#64748B',
-  info: BRAND.colors.accentBlue,
+  info: '#1688A5',
   success: '#00A97A',
   danger: '#D92D20',
   warn: '#D97706',
   border: '#D9E2EF',
   inputBg: '#FFFFFF',
-  inputText: BRAND.colors.bgBase,
+  inputText: '#1F2937',
   shadow: 'rgba(11, 31, 58, 0.08)',
   silver: '#94A3B8',
   gold: '#D6A53A'

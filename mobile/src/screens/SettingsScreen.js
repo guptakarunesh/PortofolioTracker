@@ -8,17 +8,59 @@ import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
 const ASSET_TARGET_CATEGORIES = [
-  'Banking & Deposits',
-  'Market Investments',
-  'Precious Metals',
-  'Real Estate',
+  'Cash & Bank Accounts',
+  'Market Stocks & RSUs',
   'Retirement Funds',
-  'Insurance (Cash Value)',
-  'Other Assets'
+  'Real Estate',
+  'Vehicles',
+  'Business Equity',
+  'Precious Metals',
+  'Jewelry & Watches',
+  'Collectibles',
+  'Insurance & Other'
 ];
 
 const targetSettingKey = (category) =>
   `yearly_target_${category.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}`;
+
+const sanitizeTargetDigits = (value = '') => String(value || '').replace(/\D/g, '');
+const TARGETS_LAST_UPDATED_KEY = 'targets_last_updated_at';
+
+const formatTargetDigits = (value = '') => {
+  const digits = sanitizeTargetDigits(value);
+  if (!digits) return '';
+  return new Intl.NumberFormat('en-IN', {
+    maximumFractionDigits: 0
+  }).format(Number(digits));
+};
+
+const formatLastUpdated = (value = '') => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+};
+
+const stripSettingsMetadata = (data = {}) => {
+  const next = { ...(data || {}) };
+  delete next[TARGETS_LAST_UPDATED_KEY];
+  return next;
+};
+
+const normalizeSettingsForm = (data = {}) => {
+  const normalized = stripSettingsMetadata(data);
+  ASSET_TARGET_CATEGORIES.forEach((category) => {
+    const key = targetSettingKey(category);
+    normalized[key] = sanitizeTargetDigits(normalized[key]);
+  });
+  return normalized;
+};
 
 export default function SettingsScreen({
   premiumActive = false,
@@ -30,11 +72,16 @@ export default function SettingsScreen({
   const { t } = useI18n();
   const [form, setForm] = useState({});
   const [message, setMessage] = useState('');
+  const [focusedTargetKey, setFocusedTargetKey] = useState('');
+  const [targetsLastUpdatedAt, setTargetsLastUpdatedAt] = useState('');
   const fieldOffsetsRef = useRef({});
 
   useEffect(() => {
     api.getSettings()
-      .then((data) => setForm(data))
+      .then((data) => {
+        setTargetsLastUpdatedAt(String(data?.[TARGETS_LAST_UPDATED_KEY] || ''));
+        setForm(normalizeSettingsForm(data));
+      })
       .catch((e) => setMessage(e.message));
   }, []);
 
@@ -53,7 +100,9 @@ export default function SettingsScreen({
   );
 
   const save = async () => {
-    await api.upsertSettings(form);
+    const saved = await api.upsertSettings(stripSettingsMetadata(form));
+    setTargetsLastUpdatedAt(String(saved?.[TARGETS_LAST_UPDATED_KEY] || ''));
+    setForm(normalizeSettingsForm(saved));
     setMessage(t('Settings saved.'));
   };
 
@@ -73,6 +122,11 @@ export default function SettingsScreen({
   return (
     <View>
       <SectionCard title={t('Targets')}>
+        {!!targetsLastUpdatedAt && (
+          <Text style={[styles.lastUpdated, { color: theme.muted }]}>
+            {t('Last updated: {value}', { value: formatLastUpdated(targetsLastUpdatedAt) })}
+          </Text>
+        )}
         <Text style={[styles.label, { color: theme.muted }]}>{t('Target Date (YYYY-MM-DD)')}</Text>
         <DateField
           value={String(form.target_date ?? '')}
@@ -88,18 +142,33 @@ export default function SettingsScreen({
               <Text style={[styles.label, { color: theme.muted }]}>{t(category)}</Text>
               <TextInput
                 onLayout={(event) => setFieldOffset(key, event.nativeEvent.layout.y)}
-                onFocus={() => scrollToField(key)}
+                onFocus={() => {
+                  setFocusedTargetKey(key);
+                  scrollToField(key);
+                }}
+                onBlur={() => {
+                  setFocusedTargetKey((current) => (current === key ? '' : current));
+                }}
                 style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
-                keyboardType="numeric"
+                keyboardType="number-pad"
                 placeholder={t('0')}
-                value={String(form[key] ?? '')}
-                onChangeText={(v) => setForm((prev) => ({ ...prev, [key]: v }))}
+                value={
+                  focusedTargetKey === key
+                    ? sanitizeTargetDigits(form[key])
+                    : formatTargetDigits(form[key])
+                }
+                onChangeText={(v) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    [key]: sanitizeTargetDigits(v)
+                  }))
+                }
                 placeholderTextColor={theme.muted}
               />
             </View>
           );
         })}
-        <PillButton label={t('Save Settings & Targets')} onPress={() => save().catch((e) => setMessage(e.message))} />
+        <PillButton label={t('Set My Targets')} onPress={() => save().catch((e) => setMessage(e.message))} />
       </SectionCard>
 
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
@@ -108,6 +177,7 @@ export default function SettingsScreen({
 }
 
 const styles = StyleSheet.create({
+  lastUpdated: { marginBottom: 10, fontWeight: '600' },
   label: { color: '#35526e', fontWeight: '700', marginBottom: 5 },
   input: {
     borderWidth: 1,

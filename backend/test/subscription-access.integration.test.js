@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTestDbPath, loadApp, appRequest } from './test-utils.js';
 
-test('new registration starts with a 30-day basic monthly plan', async () => {
+test('new registration starts with a 30-day premium trial', async () => {
   process.env.DB_PATH = buildTestDbPath();
   process.env.OTP_PROVIDER = 'mock';
   process.env.OTP_TEST_ECHO = '1';
@@ -34,7 +34,7 @@ test('new registration starts with a 30-day basic monthly plan', async () => {
     token: register.body.token
   });
   assert.equal(status.status, 200);
-  assert.equal(status.body.plan, 'basic_monthly');
+  assert.equal(status.body.plan, 'trial_premium');
   assert.equal(status.body.status, 'active');
   assert.equal(status.body.provider, 'trial');
 

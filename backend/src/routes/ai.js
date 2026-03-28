@@ -6,23 +6,29 @@ const router = Router();
 const AI_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const CATEGORY_BUCKETS = [
-  'Banking & Deposits',
-  'Market Investments',
-  'Precious Metals',
-  'Real Estate',
+  'Cash & Bank Accounts',
+  'Market Stocks & RSUs',
   'Retirement Funds',
-  'Insurance (Cash Value)',
-  'Other Assets'
+  'Real Estate',
+  'Vehicles',
+  'Business Equity',
+  'Precious Metals',
+  'Jewelry & Watches',
+  'Collectibles',
+  'Insurance & Other'
 ];
 
 const CONSERVATIVE_RANGES = {
-  'Banking & Deposits': [20, 40],
-  'Market Investments': [15, 35],
+  'Cash & Bank Accounts': [20, 40],
+  'Market Stocks & RSUs': [15, 30],
+  'Retirement Funds': [10, 20],
   'Precious Metals': [5, 15],
   'Real Estate': [10, 20],
-  'Retirement Funds': [5, 15],
-  'Insurance (Cash Value)': [3, 10],
-  'Other Assets': [0, 8]
+  'Vehicles': [0, 10],
+  'Business Equity': [0, 8],
+  'Jewelry & Watches': [0, 8],
+  'Collectibles': [0, 5],
+  'Insurance & Other': [3, 10]
 };
 
 function getUserSetting(userId, key) {
@@ -116,19 +122,23 @@ function sumBy(rows, field) {
 
 function bucketFromAssetCategory(category = '') {
   const c = String(category || '').toLowerCase();
-  if (c.includes('banking') || c.includes('deposit') || c.includes('cash')) return 'Cash & Deposits';
-  if (c.includes('market') || c.includes('equity') || c.includes('stock') || c.includes('mutual')) return 'Equities';
-  if (c.includes('retirement') || c.includes('fund') || c.includes('ppf') || c.includes('nps')) return 'Retirement / Long-Term';
-  if (c.includes('precious') || c.includes('gold') || c.includes('silver')) return 'Gold / Commodities';
+  if (c.includes('cash & bank') || c.includes('banking') || c.includes('deposit') || c.includes('cash')) return 'Cash & Bank Accounts';
+  if (c.includes('market stocks') || c.includes('rsu') || c.includes('market') || c.includes('etf') || c.includes('stock') || c.includes('mutual')) return 'Market Stocks & RSUs';
+  if (c.includes('retirement') || c.includes('epf') || c.includes('ppf') || c.includes('vpf') || c.includes('nps')) return 'Retirement Funds';
   if (c.includes('real estate') || c.includes('property')) return 'Real Estate';
-  if (c.includes('insurance')) return 'Insurance (Cash Value)';
-  return 'Other';
+  if (c.includes('vehicle') || c.includes('car') || c.includes('boat') || c.includes('powersport')) return 'Vehicles';
+  if (c.includes('business equity') || c.includes('startup') || c.includes('private ownership')) return 'Business Equity';
+  if (c.includes('jewelry') || c.includes('jewellery') || c.includes('watch') || c.includes('gemstone')) return 'Jewelry & Watches';
+  if (c.includes('collectible') || c.includes('art') || c.includes('wine') || c.includes('memorabilia') || c.includes('trading card')) return 'Collectibles';
+  if (c.includes('precious') || c.includes('gold') || c.includes('silver')) return 'Precious Metals';
+  if (c.includes('insurance') || c.includes('crypto') || c.includes('ip')) return 'Insurance & Other';
+  return 'Insurance & Other';
 }
 
 function getConservativeGaps(assets) {
   const byCategoryRows = new Map();
   for (const asset of assets) {
-    const category = asset.category || 'Other Assets';
+    const category = asset.category || 'Insurance & Other';
     const total = byCategoryRows.get(category) || 0;
     byCategoryRows.set(category, total + safeNumber(asset.current_value));
   }
@@ -168,14 +178,33 @@ function getConservativeGaps(assets) {
     .sort((a, b) => Number(b.gapPct || 0) - Number(a.gapPct || 0));
 }
 
-function unavailableNewsBullets(reason = 'Live news fetch unavailable right now.') {
-  return [
+function metalsFallbackBullet(reason = 'Live metals coverage is limited right now.') {
+  return `Gold / Silver / Metals. What happened: ${reason} Why it matters: metal prices can change portfolio hedge value quickly. What to consider: review current bullion rates and whether your hedge allocation still fits. Source: IBJA - https://www.ibja.co/`;
+}
+
+function hasMetalsBullet(bullets = []) {
+  return Array.isArray(bullets) && bullets.some((bullet) => /gold|silver|metals/i.test(String(bullet || '')));
+}
+
+function ensureMetalsCoverage(bullets = [], { includeMetals = false, reason } = {}) {
+  const list = Array.isArray(bullets) ? bullets.filter(Boolean) : [];
+  if (!includeMetals || hasMetalsBullet(list)) {
+    return list.slice(0, 5);
+  }
+  const fallback = metalsFallbackBullet(reason);
+  const withoutDuplicateMetals = list.filter((bullet) => !/gold|silver|metals/i.test(String(bullet || '')));
+  return [fallback, ...withoutDuplicateMetals].slice(0, 5);
+}
+
+function unavailableNewsBullets(reason = 'Live news fetch unavailable right now.', options = {}) {
+  const bullets = [
     `Stocks / ETFs / Mutual Funds. What happened: ${reason} Why it matters: stock and fund moves may be missed. What to consider: check index, sector, and fund updates manually. Source: NSE India - https://www.nseindia.com/`,
     `FDs / Savings / RDs. What happened: ${reason} Why it matters: deposit rates may have changed. What to consider: review latest bank and RBI rate circulars. Source: RBI - https://www.rbi.org.in/`,
     `EPF / NPS / Insurance. What happened: ${reason} Why it matters: rule or contribution changes may matter. What to consider: verify scheme and policy updates manually. Source: EPFO - https://www.epfindia.gov.in/`,
     `Gold / Silver / Bonds. What happened: ${reason} Why it matters: commodity and yield moves can shift returns. What to consider: check bullion prices and bond yield direction. Source: MCX - https://www.mcxindia.com/`,
     `Real Estate (Land / Flats). What happened: ${reason} Why it matters: policy and demand shifts can affect prices. What to consider: verify local market and rate updates. Source: CREDAI - https://credai.org/`
   ];
+  return ensureMetalsCoverage(bullets, options);
 }
 
 router.get('/insights', async (req, res) => {
@@ -254,6 +283,7 @@ router.get('/insights', async (req, res) => {
     totals: portfolio.totals,
     allocation_pct: portfolio.allocation.by_bucket_pct
   };
+  const hasPreciousMetalsExposure = safeNumber(byBucket['Gold / Commodities']) > 0;
 
   const conservativeGaps = getConservativeGaps(assets);
   const topGaps = conservativeGaps.slice(0, 2);
@@ -309,7 +339,10 @@ router.get('/insights', async (req, res) => {
   ) {
     return res.json({
       personal_bullets: cache.personal_bullets,
-      news_bullets: cache.news_bullets,
+      news_bullets: ensureMetalsCoverage(cache.news_bullets, {
+        includeMetals: hasPreciousMetalsExposure,
+        reason: 'Recent metals-specific coverage is limited right now.'
+      }),
       disclaimer: defaultDisclaimer,
       as_of: cacheDisplayAsOf,
       cached: true,
@@ -320,7 +353,10 @@ router.get('/insights', async (req, res) => {
   if (!apiKey) {
     return res.status(200).json({
       personal_bullets: personalBullets,
-      news_bullets: unavailableNewsBullets(),
+      news_bullets: unavailableNewsBullets('Live news fetch unavailable right now.', {
+        includeMetals: hasPreciousMetalsExposure,
+        reason: 'Recent metals-specific coverage is limited right now.'
+      }),
       disclaimer: defaultDisclaimer,
       as_of: nowIso(),
       portfolio
@@ -346,7 +382,10 @@ router.get('/insights', async (req, res) => {
     });
     const payload = {
       personal_bullets: personalBullets,
-      news_bullets: result.bullets,
+      news_bullets: ensureMetalsCoverage(result.bullets, {
+        includeMetals: hasPreciousMetalsExposure,
+        reason: 'Recent metals-specific coverage is limited right now.'
+      }),
       disclaimer: defaultDisclaimer,
       as_of: nowIso(),
       source_as_of: nowIso()
@@ -364,7 +403,10 @@ router.get('/insights', async (req, res) => {
     if (!forceRefresh && within24h && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
       return res.status(200).json({
         personal_bullets: personalBullets,
-        news_bullets: cache.news_bullets,
+        news_bullets: ensureMetalsCoverage(cache.news_bullets, {
+          includeMetals: hasPreciousMetalsExposure,
+          reason: 'Recent metals-specific coverage is limited right now.'
+        }),
         disclaimer: defaultDisclaimer,
         as_of: cacheDisplayAsOf,
         cached: true,
@@ -376,7 +418,13 @@ router.get('/insights', async (req, res) => {
     return res.status(200).json({
       personal_bullets: personalBullets,
       news_bullets: unavailableNewsBullets(
-        errText.toLowerCase().includes('timeout') ? 'Live 48h news timed out.' : 'Live 48h news is currently unavailable.'
+        errText.toLowerCase().includes('timeout') ? 'Live 48h news timed out.' : 'Live 48h news is currently unavailable.',
+        {
+          includeMetals: hasPreciousMetalsExposure,
+          reason: errText.toLowerCase().includes('timeout')
+            ? 'Recent metals-specific coverage timed out.'
+            : 'Recent metals-specific coverage is limited right now.'
+        }
       ),
       disclaimer: defaultDisclaimer,
       as_of: nowIso(),

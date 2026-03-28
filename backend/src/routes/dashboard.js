@@ -4,42 +4,54 @@ import { db } from '../lib/db.js';
 const router = Router();
 
 const categories = [
-  'Banking & Deposits',
-  'Market Investments',
-  'Precious Metals',
-  'Real Estate',
+  'Cash & Bank Accounts',
+  'Market Stocks & RSUs',
   'Retirement Funds',
-  'Insurance (Cash Value)',
-  'Other Assets'
+  'Real Estate',
+  'Vehicles',
+  'Business Equity',
+  'Precious Metals',
+  'Jewelry & Watches',
+  'Collectibles',
+  'Insurance & Other'
 ];
 
 const PROFILE_RANGES = {
   conservative: {
-    'Banking & Deposits': [20, 40],
-    'Market Investments': [15, 35],
+    'Cash & Bank Accounts': [20, 40],
+    'Market Stocks & RSUs': [15, 30],
+    'Retirement Funds': [10, 20],
     'Precious Metals': [5, 15],
     'Real Estate': [15, 35],
-    'Retirement Funds': [10, 20],
-    'Insurance (Cash Value)': [5, 12],
-    'Other Assets': [0, 8]
+    'Vehicles': [0, 10],
+    'Business Equity': [0, 8],
+    'Jewelry & Watches': [0, 8],
+    'Collectibles': [0, 5],
+    'Insurance & Other': [3, 10]
   },
   moderate: {
-    'Banking & Deposits': [10, 25],
-    'Market Investments': [30, 50],
-    'Precious Metals': [5, 12],
-    'Real Estate': [10, 30],
+    'Cash & Bank Accounts': [10, 25],
+    'Market Stocks & RSUs': [25, 45],
     'Retirement Funds': [10, 20],
-    'Insurance (Cash Value)': [3, 10],
-    'Other Assets': [0, 8]
+    'Real Estate': [10, 30],
+    'Vehicles': [0, 8],
+    'Business Equity': [0, 12],
+    'Precious Metals': [4, 12],
+    'Jewelry & Watches': [0, 6],
+    'Collectibles': [0, 4],
+    'Insurance & Other': [2, 8]
   },
   aggressive: {
-    'Banking & Deposits': [5, 15],
-    'Market Investments': [45, 65],
-    'Precious Metals': [3, 10],
-    'Real Estate': [8, 25],
+    'Cash & Bank Accounts': [5, 15],
+    'Market Stocks & RSUs': [35, 60],
     'Retirement Funds': [8, 18],
-    'Insurance (Cash Value)': [2, 8],
-    'Other Assets': [0, 10]
+    'Real Estate': [8, 25],
+    'Vehicles': [0, 6],
+    'Business Equity': [0, 18],
+    'Precious Metals': [3, 10],
+    'Jewelry & Watches': [0, 5],
+    'Collectibles': [0, 4],
+    'Insurance & Other': [2, 8]
   }
 };
 

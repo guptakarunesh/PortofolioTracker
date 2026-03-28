@@ -280,6 +280,7 @@ export const api = {
 
   getReminders: () => apiRequest('/api/reminders'),
   createReminder: (payload) => apiRequest('/api/reminders', { method: 'POST', body: JSON.stringify(payload) }),
+  updateReminder: (id, payload) => apiRequest(`/api/reminders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   updateReminderStatus: (id, status) =>
     apiRequest(`/api/reminders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   snoozeReminder: (id, days = 1) =>
@@ -298,6 +299,7 @@ export const api = {
   updateFamilyMember: (id, payload) =>
     apiRequest(`/api/family/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   removeFamilyMember: (id) => apiRequest(`/api/family/${id}`, { method: 'DELETE' }),
+  leaveFamilyAccess: () => apiRequest('/api/family/leave', { method: 'POST' }),
   cancelFamilyInvite: (id) => apiRequest(`/api/family/invites/${id}`, { method: 'DELETE' }),
   resendFamilyInvite: (id) => apiRequest(`/api/family/invites/${id}/resend`, { method: 'POST' }),
   getFamilyAudit: () => apiRequest('/api/family/audit'),

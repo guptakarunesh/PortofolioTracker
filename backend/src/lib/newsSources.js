@@ -44,7 +44,16 @@ export const CURATED_NEWS_SOURCES = [
     trustScore: 87,
     official: false,
     priority: 79,
-    categories: ['bank_savings', 'stocks', 'gold_metals', 'retirement', 'real_estate', 'other_savings']
+    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
+  },
+  {
+    key: 'ibja',
+    name: 'IBJA',
+    domains: ['ibja.co', 'www.ibja.co'],
+    trustScore: 97,
+    official: true,
+    priority: 97,
+    categories: ['gold_metals']
   },
   {
     key: 'rbi',
@@ -53,7 +62,7 @@ export const CURATED_NEWS_SOURCES = [
     trustScore: 99,
     official: true,
     priority: 100,
-    categories: ['bank_savings', 'gold_metals', 'other_savings']
+    categories: ['bank_savings', 'other_savings']
   },
   {
     key: 'sebi',
@@ -62,7 +71,7 @@ export const CURATED_NEWS_SOURCES = [
     trustScore: 99,
     official: true,
     priority: 99,
-    categories: ['stocks', 'gold_metals', 'other_savings']
+    categories: ['stocks', 'other_savings']
   },
   {
     key: 'epfo',
@@ -155,3 +164,5 @@ export function sourceByUrl(value = '') {
   const url = String(value || '').toLowerCase();
   return CURATED_NEWS_SOURCES.find((item) => item.domains.some((domain) => url.includes(domain))) || null;
 }
+
+export const GOLD_SILVER_SOURCE_KEYS = ['reuters', 'economic_times', 'moneycontrol', 'mint', 'ibja'];

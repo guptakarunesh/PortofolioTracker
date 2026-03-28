@@ -95,9 +95,9 @@ function resolveTierVariant(status, tier) {
 function StatusBadge({ label, tone = 'neutral', theme }) {
   const stylesByTone = {
     neutral: {
-      backgroundColor: theme.key === 'light' ? '#E7F1FF' : 'rgba(36,178,214,0.14)',
-      borderColor: theme.key === 'light' ? '#BFD8F7' : 'rgba(36,178,214,0.28)',
-      color: theme.key === 'light' ? '#155EAF' : '#C9F3FF'
+      backgroundColor: theme.key === 'light' ? '#E8F7F2' : 'rgba(36,178,214,0.14)',
+      borderColor: theme.key === 'light' ? '#BDE8DC' : 'rgba(36,178,214,0.28)',
+      color: theme.key === 'light' ? '#0E8A72' : '#C9F3FF'
     },
     positive: {
       backgroundColor: theme.key === 'light' ? '#E6FAF3' : 'rgba(0,200,150,0.14)',
@@ -857,7 +857,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
               ]}
             >
               <View style={styles.planHeaderTopRow}>
-                <View style={[styles.planTierCapsule, { backgroundColor: theme.key === 'light' ? '#E7F1FF' : 'rgba(36,178,214,0.14)', borderColor: theme.key === 'light' ? '#BFD8F7' : 'rgba(36,178,214,0.24)' }]}>
+                <View style={[styles.planTierCapsule, { backgroundColor: theme.key === 'light' ? '#E8F7F2' : 'rgba(36,178,214,0.14)', borderColor: theme.key === 'light' ? '#BDE8DC' : 'rgba(36,178,214,0.24)' }]}>
                   <Text style={[styles.planTierCapsuleText, { color: theme.info }]}>{t('ESSENTIAL')}</Text>
                 </View>
                 {basicVariant ? <StatusBadge label={t('Active {value}', { value: t(basicVariant) })} tone="neutral" theme={theme} /> : null}

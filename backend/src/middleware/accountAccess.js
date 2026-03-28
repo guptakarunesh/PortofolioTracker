@@ -3,12 +3,6 @@ import { resolveAccountContext } from '../lib/family.js';
 export function attachAccountContext(req, res, next) {
   const context = resolveAccountContext(req.userId);
 
-  if (!context.isOwner && !context.premiumActive) {
-    return res
-      .status(403)
-      .json({ error: 'premium_required', message: 'Premium subscription required', feature: 'family' });
-  }
-
   req.accountUserId = context.accountUserId;
   req.accountOwnerId = context.ownerUserId;
   req.accessRole = context.accessRole;
@@ -32,4 +26,3 @@ export function requireAccountAdmin(req, res, next) {
   }
   return next();
 }
-

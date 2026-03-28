@@ -217,11 +217,11 @@ export default function AccountScreen({
       {
         borderColor: selected ? theme.accent : theme.border,
         backgroundColor: selected
-          ? (isDark ? 'rgba(36,178,214,0.18)' : '#E7F1FF')
+          ? (isDark ? 'rgba(36,178,214,0.18)' : theme.accentSoft)
           : (isDark ? 'rgba(255,255,255,0.06)' : (theme.cardAlt || '#F8FAFC'))
       }
     ],
-    [isDark, theme.accent, theme.border, theme.cardAlt]
+    [isDark, theme.accent, theme.accentSoft, theme.border, theme.cardAlt]
   );
   const selectorTextStyle = useCallback(
     (selected) => [
@@ -511,9 +511,6 @@ export default function AccountScreen({
         </Text>
         {biometricEnrolled ? (
           <View style={styles.biometricEnabledRow}>
-            <Text style={[styles.valueInline, styles.biometricEnabledValue, { color: theme.text }]}>
-              {t('Biometric Login Enrolled')}
-            </Text>
             <PillButton
               label={t('Disable Biometric Login')}
               kind="ghost"
@@ -652,7 +649,7 @@ export default function AccountScreen({
           <Text style={[styles.subText, { color: theme.muted }]}>{t('No purchases yet.')}</Text>
         )}
         {!!receiptError ? <Text style={[styles.message, { color: theme.danger }]}>{receiptError}</Text> : null}
-        <PillButton label={t('Buy Subscription')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={onOpenSubscription} />
+        <PillButton label={t('Buy Subscription')} kind="primary" style={isDark ? styles.accountPrimaryButtonDark : null} onPress={onOpenSubscription} />
       </SectionCard>
 
       <SectionCard title={t('NWM Support')}>
@@ -713,8 +710,7 @@ export default function AccountScreen({
           <PillButton label={t('Export My Data')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={() => exportData().catch((e) => setMessage(e.message))} />
           <PillButton
             label={confirmDelete ? t('Confirm Delete Account') : t('Delete Account')}
-            kind="ghost"
-            style={isDark ? styles.accountGhostButtonDark : null}
+            kind="danger"
             onPress={() => deleteAccount().catch((e) => setMessage(e.message))}
           />
         </View>

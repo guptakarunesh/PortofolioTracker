@@ -20,7 +20,7 @@ import {
   verifyFirebaseIdToken,
   verifyOtp
 } from '../lib/otp.js';
-import { ensureSubscriptionForUser, isPremiumActive } from '../lib/subscription.js';
+import { ensureSubscriptionForUser, isPremiumActive, provisionTrialPremium } from '../lib/subscription.js';
 import { logSecurityEvent, notifyOwnerAndFamily } from '../lib/securityEvents.js';
 import {
   countTrustedDevices,
@@ -602,6 +602,7 @@ router.post('/register', async (req, res) => {
   const disabledMpinHash = hashPin(createSessionToken().slice(0, 6));
   let user = null;
   let registerStage = 'init';
+  let joinedFamilyOnRegister = false;
   try {
     registerStage = 'firebase_verify';
     await verifyFirebaseIdToken(cleanMobile, String(firebaseIdToken));
@@ -687,6 +688,7 @@ router.post('/register', async (req, res) => {
               invite_id: pendingInvite.id,
               role: pendingInvite.role
             });
+            joinedFamilyOnRegister = true;
           }
         }
       }
@@ -719,31 +721,14 @@ router.post('/register', async (req, res) => {
         'mobile_register'
       );
 
-      const trialStart = nowIso();
-      const trialEnd = new Date(trialStart);
-      trialEnd.setDate(trialEnd.getDate() + 30);
-      const trialEndIso = trialEnd.toISOString();
-
-      registerStage = 'subscription_upsert';
-      db.prepare(`
-        INSERT INTO subscriptions (user_id, plan, status, started_at, current_period_end, provider, updated_at)
-        VALUES (?, 'basic_monthly', 'active', ?, ?, 'trial', ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-          plan=excluded.plan,
-          status=excluded.status,
-          started_at=excluded.started_at,
-          current_period_end=excluded.current_period_end,
-          provider=excluded.provider,
-          updated_at=excluded.updated_at
-      `).run(user.id, trialStart, trialEndIso, nowIso());
-
-      registerStage = 'payment_history_insert';
-      db.prepare(`
-        INSERT INTO payment_history (
-          user_id, plan, amount_inr, period, provider, provider_txn_id,
-          purchased_at, valid_until, status
-        ) VALUES (?, 'basic_monthly', 0, 'monthly', 'trial', null, ?, ?, 'succeeded')
-      `).run(user.id, trialStart, trialEndIso);
+      if (!joinedFamilyOnRegister) {
+        registerStage = 'subscription_upsert';
+        provisionTrialPremium({
+          userId: user.id,
+          startedAt: nowIso(),
+          updatedAt: nowIso()
+        });
+      }
     });
 
     tx();

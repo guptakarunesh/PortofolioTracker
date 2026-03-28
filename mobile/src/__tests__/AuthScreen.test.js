@@ -61,4 +61,37 @@ describe('AuthScreen', () => {
     expect(queryByText('Old login error')).toBeNull();
     expect(getByText('OTP sent to your mobile number.')).toBeTruthy();
   });
+
+  it('preserves OTP state across parent rerenders with a new clear callback', async () => {
+    const onRequestOtp = jest.fn(async () => ({ retry_after_seconds: 0 }));
+    const view = render(
+      <AuthScreen
+        onRegister={jest.fn()}
+        onLoginWithBiometric={jest.fn(() => Promise.resolve())}
+        onRequestOtp={onRequestOtp}
+        onVerifyOtp={jest.fn(async () => ({}))}
+        loading={false}
+        onClearExternalMessage={jest.fn()}
+      />
+    );
+
+    fireEvent.changeText(view.getByPlaceholderText('10-digit Indian mobile'), '9999999999');
+    fireEvent.press(view.getByText('Send OTP'));
+
+    expect(await view.findByPlaceholderText('Enter OTP')).toBeTruthy();
+
+    view.rerender(
+      <AuthScreen
+        onRegister={jest.fn()}
+        onLoginWithBiometric={jest.fn(() => Promise.resolve())}
+        onRequestOtp={onRequestOtp}
+        onVerifyOtp={jest.fn(async () => ({}))}
+        loading={false}
+        onClearExternalMessage={jest.fn()}
+      />
+    );
+
+    expect(view.getByPlaceholderText('Enter OTP')).toBeTruthy();
+    expect(view.getByText('OTP sent to your mobile number.')).toBeTruthy();
+  });
 });

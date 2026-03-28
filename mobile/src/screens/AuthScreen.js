@@ -237,6 +237,29 @@ export default function AuthScreen({
   const [privacyInfoVisible, setPrivacyInfoVisible] = useState(false);
   const [legalDocVisible, setLegalDocVisible] = useState(null);
   const isLight = theme.key === 'light';
+  const authTheme = useMemo(
+    () => ({
+      accent: '#1B6FCC',
+      accentActive: '#155EAF',
+      info: BRAND.colors.accentCyan,
+      text: BRAND.colors.textPrimary,
+      muted: BRAND.colors.textSecondary,
+      subtle: BRAND.colors.textMuted,
+      border: 'rgba(255,255,255,0.12)',
+      panelFrame: 'rgba(11,31,58,0.72)',
+      panelCard: 'rgba(19,40,68,0.88)',
+      inputBg: 'rgba(8,23,42,0.78)',
+      inputText: '#FFFFFF',
+      consentBg: 'rgba(8,23,42,0.82)',
+      successBg: 'rgba(0,200,150,0.12)',
+      successBorder: 'rgba(0,200,150,0.22)',
+      successText: '#78E0BF',
+      errorBg: 'rgba(255,90,95,0.10)',
+      errorBorder: 'rgba(255,90,95,0.22)',
+      errorText: '#FF9A9D'
+    }),
+    []
+  );
 
   useEffect(() => {
     api
@@ -266,7 +289,7 @@ export default function AuthScreen({
     setMessage('');
     setBiometricMessage('');
     onClearExternalMessage?.();
-  }, [mode, onClearExternalMessage]);
+  }, [mode]);
 
   useEffect(() => {
     if (variant === 'returning') {
@@ -458,18 +481,18 @@ export default function AuthScreen({
           style={[
             styles.authPanelFrame,
             {
-              backgroundColor: isLight ? 'rgba(255,255,255,0.78)' : 'rgba(11,31,58,0.72)',
-              borderColor: isLight ? 'rgba(217,226,239,0.85)' : 'rgba(255,255,255,0.10)',
+              backgroundColor: authTheme.panelFrame,
+              borderColor: authTheme.border,
               shadowColor: BRAND.colors.bgDeep
             }
           ]}
         >
           <View
             style={[
-              styles.authPanelCard,
-              {
-                backgroundColor: isLight ? 'rgba(255,255,255,0.92)' : 'rgba(19,40,68,0.88)',
-                borderColor: isLight ? 'rgba(217,226,239,0.72)' : 'rgba(255,255,255,0.08)',
+            styles.authPanelCard,
+            {
+                backgroundColor: authTheme.panelCard,
+                borderColor: authTheme.border,
                 shadowColor: BRAND.colors.bgDeep
               }
             ]}
@@ -480,8 +503,8 @@ export default function AuthScreen({
             style={[
               styles.modeButton,
               {
-                backgroundColor: mode === 'login' ? (isLight ? '#1B6FCC' : '#155EAF') : (isLight ? BRAND.colors.surfaceAlt : BRAND.colors.bgElevated),
-                borderColor: mode === 'login' ? (isLight ? '#1B6FCC' : '#155EAF') : theme.border
+                backgroundColor: mode === 'login' ? authTheme.accent : authTheme.inputBg,
+                borderColor: mode === 'login' ? authTheme.accent : authTheme.border
               }
             ]}
             onPress={() => setMode('login')}
@@ -489,7 +512,7 @@ export default function AuthScreen({
             <Text
               style={[
                 styles.modeButtonText,
-                { color: mode === 'login' ? '#FFFFFF' : theme.muted }
+                { color: mode === 'login' ? '#FFFFFF' : authTheme.muted }
               ]}
             >
               {t('Login')}
@@ -499,8 +522,8 @@ export default function AuthScreen({
             style={[
               styles.modeButton,
               {
-                backgroundColor: mode === 'register' ? (isLight ? '#1B6FCC' : '#155EAF') : (isLight ? BRAND.colors.surfaceAlt : BRAND.colors.bgElevated),
-                borderColor: mode === 'register' ? (isLight ? '#1B6FCC' : '#155EAF') : theme.border
+                backgroundColor: mode === 'register' ? authTheme.accent : authTheme.inputBg,
+                borderColor: mode === 'register' ? authTheme.accent : authTheme.border
               }
             ]}
             onPress={() => setMode('register')}
@@ -508,14 +531,14 @@ export default function AuthScreen({
             <Text
               style={[
                 styles.modeButtonText,
-                { color: mode === 'register' ? '#FFFFFF' : theme.muted }
+                { color: mode === 'register' ? '#FFFFFF' : authTheme.muted }
               ]}
             >
               {t('Register')}
             </Text>
           </Pressable>
         </View>
-        <Text style={[styles.cardTitle, { color: theme.text }]}>
+        <Text style={[styles.cardTitle, { color: authTheme.text }]}>
           {isReturningVariant
             ? t('Welcome Back')
             : mode === 'register'
@@ -525,7 +548,7 @@ export default function AuthScreen({
               : t('Sign In Securely')}
         </Text>
         <Pressable style={styles.privacyInfoLinkWrap} onPress={() => setPrivacyInfoVisible(true)}>
-          <Text style={[styles.privacyInfoLink, { color: theme.info }]}>{t('Know how your privacy works?')}</Text>
+          <Text style={[styles.privacyInfoLink, { color: authTheme.info }]}>{t('Know how your privacy works?')}</Text>
         </Pressable>
         {mode === 'login' && typeof onLoginWithBiometric === 'function' && biometricReady ? (
           <>
@@ -544,58 +567,58 @@ export default function AuthScreen({
               }}
             />
             <View style={styles.orRow}>
-              <View style={[styles.orLine, { backgroundColor: theme.border }]} />
-              <Text style={[styles.orText, { color: theme.muted }]}>{t('OR')}</Text>
-              <View style={[styles.orLine, { backgroundColor: theme.border }]} />
+              <View style={[styles.orLine, { backgroundColor: authTheme.border }]} />
+              <Text style={[styles.orText, { color: authTheme.muted }]}>{t('OR')}</Text>
+              <View style={[styles.orLine, { backgroundColor: authTheme.border }]} />
             </View>
           </>
         ) : null}
 
         {mode === 'register' ? (
           <>
-            <Text style={[styles.label, { color: theme.muted }]}>{t('Your Initials (2 letters)')}</Text>
+            <Text style={[styles.label, { color: authTheme.muted }]}>{t('Your Initials (2 letters)')}</Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+              style={[styles.input, { backgroundColor: authTheme.inputBg, borderColor: authTheme.border, color: authTheme.inputText }]}
               value={fullName}
               onChangeText={handleInitialsInput}
               placeholder={t('AB')}
-              placeholderTextColor={theme.subtle}
+              placeholderTextColor={authTheme.subtle}
               autoCapitalize="characters"
               maxLength={2}
             />
 
-            <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile Number')}</Text>
-            <View style={[styles.phoneWrap, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-              <Text style={[styles.phonePrefix, { color: theme.text }]}>+91</Text>
+            <Text style={[styles.label, { color: authTheme.muted }]}>{t('Mobile Number')}</Text>
+            <View style={[styles.phoneWrap, { backgroundColor: authTheme.inputBg, borderColor: authTheme.border }]}>
+              <Text style={[styles.phonePrefix, { color: authTheme.text }]}>+91</Text>
               <TextInput
-                style={[styles.phoneInput, { color: theme.inputText }]}
+                style={[styles.phoneInput, { color: authTheme.inputText }]}
                 value={mobile}
                 onChangeText={handleMobileInput}
                 placeholder={t('10-digit Indian mobile')}
-                placeholderTextColor={theme.subtle}
+                placeholderTextColor={authTheme.subtle}
                 keyboardType="number-pad"
                 autoCapitalize="none"
                 maxLength={10}
               />
             </View>
 
-            <View style={[styles.consentWrap, { borderColor: theme.border, backgroundColor: isLight ? BRAND.colors.surfaceAlt : BRAND.colors.bgElevated }]}> 
+            <View style={[styles.consentWrap, { borderColor: authTheme.border, backgroundColor: authTheme.consentBg }]}> 
               <Pressable style={styles.consentRow} onPress={() => setConsentPrivacy((v) => !v)}>
-                <View style={[styles.checkbox, { borderColor: theme.border, backgroundColor: theme.card }, consentPrivacy && { backgroundColor: theme.accent, borderColor: theme.accent }]}> 
+                <View style={[styles.checkbox, { borderColor: authTheme.border, backgroundColor: authTheme.panelCard }, consentPrivacy && { backgroundColor: authTheme.accent, borderColor: authTheme.accent }]}> 
                   {consentPrivacy ? <Text style={styles.checkboxTick}>✓</Text> : null}
                 </View>
-                <Text style={[styles.consentText, { color: theme.muted }]}>{t('I agree to the ')}</Text>
+                <Text style={[styles.consentText, { color: authTheme.muted }]}>{t('I agree to the ')}</Text>
                 <Pressable onPress={() => setLegalDocVisible('privacy')}>
-                  <Text style={[styles.linkText, { color: theme.info }]}>{t('Privacy Policy')}</Text>
+                  <Text style={[styles.linkText, { color: authTheme.info }]}>{t('Privacy Policy')}</Text>
                 </Pressable>
               </Pressable>
               <Pressable style={styles.consentRow} onPress={() => setConsentTerms((v) => !v)}>
-                <View style={[styles.checkbox, { borderColor: theme.border, backgroundColor: theme.card }, consentTerms && { backgroundColor: theme.accent, borderColor: theme.accent }]}> 
+                <View style={[styles.checkbox, { borderColor: authTheme.border, backgroundColor: authTheme.panelCard }, consentTerms && { backgroundColor: authTheme.accent, borderColor: authTheme.accent }]}> 
                   {consentTerms ? <Text style={styles.checkboxTick}>✓</Text> : null}
                 </View>
-                <Text style={[styles.consentText, { color: theme.muted }]}>{t('I agree to the ')}</Text>
+                <Text style={[styles.consentText, { color: authTheme.muted }]}>{t('I agree to the ')}</Text>
                 <Pressable onPress={() => setLegalDocVisible('terms')}>
-                  <Text style={[styles.linkText, { color: theme.info }]}>{t('Terms of Service')}</Text>
+                  <Text style={[styles.linkText, { color: authTheme.info }]}>{t('Terms of Service')}</Text>
                 </Pressable>
               </Pressable>
             </View>
@@ -604,15 +627,15 @@ export default function AuthScreen({
 
         {mode !== 'register' ? (
           <>
-            <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile Number')}</Text>
-            <View style={[styles.phoneWrap, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-              <Text style={[styles.phonePrefix, { color: theme.text }]}>+91</Text>
+            <Text style={[styles.label, { color: authTheme.muted }]}>{t('Mobile Number')}</Text>
+            <View style={[styles.phoneWrap, { backgroundColor: authTheme.inputBg, borderColor: authTheme.border }]}>
+              <Text style={[styles.phonePrefix, { color: authTheme.text }]}>+91</Text>
               <TextInput
-                style={[styles.phoneInput, { color: theme.inputText }]}
+                style={[styles.phoneInput, { color: authTheme.inputText }]}
                 value={mobile}
                 onChangeText={handleMobileInput}
                 placeholder={t('10-digit Indian mobile')}
-                placeholderTextColor={theme.subtle}
+                placeholderTextColor={authTheme.subtle}
                 keyboardType="number-pad"
                 autoCapitalize="none"
                 maxLength={10}
@@ -623,13 +646,13 @@ export default function AuthScreen({
 
         {requiresOtp && otpRequested ? (
           <>
-            <Text style={[styles.label, { color: theme.muted }]}>{t('OTP (6 digits)')}</Text>
+            <Text style={[styles.label, { color: authTheme.muted }]}>{t('OTP (6 digits)')}</Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+              style={[styles.input, { backgroundColor: authTheme.inputBg, borderColor: authTheme.border, color: authTheme.inputText }]}
               value={otp}
               onChangeText={(text) => setOtp(String(text || '').replace(/\D/g, '').slice(0, 6))}
               placeholder={t('Enter OTP')}
-              placeholderTextColor={theme.subtle}
+              placeholderTextColor={authTheme.subtle}
               keyboardType="number-pad"
             />
           </>
@@ -665,16 +688,16 @@ export default function AuthScreen({
             style={[
               styles.messageBanner,
               messageTone === 'success'
-                ? { backgroundColor: isLight ? '#ECFDF3' : 'rgba(0,200,150,0.12)', borderColor: isLight ? '#ABEFC6' : 'rgba(0,200,150,0.22)' }
-                : { backgroundColor: isLight ? '#FEF2F2' : 'rgba(255,90,95,0.10)', borderColor: isLight ? '#FECACA' : 'rgba(255,90,95,0.22)' }
+                ? { backgroundColor: authTheme.successBg, borderColor: authTheme.successBorder }
+                : { backgroundColor: authTheme.errorBg, borderColor: authTheme.errorBorder }
             ]}
           >
-            <Text style={[styles.message, { color: messageTone === 'success' ? (isLight ? '#067647' : '#78E0BF') : (isLight ? '#B42318' : '#FF9A9D') }]}>{effectiveMessage}</Text>
+            <Text style={[styles.message, { color: messageTone === 'success' ? authTheme.successText : authTheme.errorText }]}>{effectiveMessage}</Text>
           </View>
         )}
         {!!biometricMessage && (
-          <View style={[styles.messageBanner, { backgroundColor: isLight ? '#FEF2F2' : 'rgba(255,90,95,0.10)', borderColor: isLight ? '#FECACA' : 'rgba(255,90,95,0.22)' }]}>
-            <Text style={[styles.message, { color: isLight ? '#B42318' : '#FF9A9D' }]}>{biometricMessage}</Text>
+          <View style={[styles.messageBanner, { backgroundColor: authTheme.errorBg, borderColor: authTheme.errorBorder }]}>
+            <Text style={[styles.message, { color: authTheme.errorText }]}>{biometricMessage}</Text>
           </View>
         )}
           </View>
@@ -683,10 +706,10 @@ export default function AuthScreen({
       </View>
       <View style={styles.legalRow}>
         <Pressable onPress={() => setLegalDocVisible('terms')}>
-          <Text style={[styles.legalLink, { color: theme.subtle }]}>{t('Terms')}</Text>
+          <Text style={[styles.legalLink, { color: authTheme.subtle }]}>{t('Terms')}</Text>
         </Pressable>
         <Pressable onPress={() => setLegalDocVisible('privacy')}>
-          <Text style={[styles.legalLink, { color: theme.subtle }]}>{t('Privacy Policy')}</Text>
+          <Text style={[styles.legalLink, { color: authTheme.subtle }]}>{t('Privacy Policy')}</Text>
         </Pressable>
       </View>
       <Modal visible={!!legalDocVisible} transparent animationType="slide" onRequestClose={() => setLegalDocVisible(null)}>
@@ -720,8 +743,8 @@ export default function AuthScreen({
             <Text style={[styles.infoModalTitle, { color: BRAND.colors.accentCyan }]}>{t('How Your Privacy Works')}</Text>
             <ScrollView style={styles.infoModalBody} contentContainerStyle={styles.infoModalBodyContent} showsVerticalScrollIndicator={false}>
               <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F8FBFF' : BRAND.colors.surfaceAlt, borderColor: 'rgba(10,132,255,0.18)' }]}>
-                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#DBEAFE' : 'rgba(10,132,255,0.18)' }]}>
-                  <NoLinkIcon stroke={isLight ? '#0A84FF' : '#CFE7FF'} />
+                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#E8F7F2' : 'rgba(10,132,255,0.18)' }]}>
+                  <NoLinkIcon stroke={isLight ? '#0E8A72' : '#CFE7FF'} />
                 </View>
                 <View style={styles.infoTrustCopy}>
                   <Text style={[styles.infoTrustTitle, { color: theme.text }]}>{t('No Bank Linking Required')}</Text>
@@ -730,9 +753,9 @@ export default function AuthScreen({
                   </Text>
                 </View>
               </View>
-              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F8FBFF' : BRAND.colors.surfaceAlt, borderColor: 'rgba(10,132,255,0.18)' }]}>
-                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#DBEAFE' : 'rgba(10,132,255,0.18)' }]}>
-                  <PhoneBadgeIcon color={isLight ? '#0A84FF' : '#CFE7FF'} />
+              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F8FBFF' : BRAND.colors.surfaceAlt, borderColor: isLight ? 'rgba(14,138,114,0.18)' : 'rgba(10,132,255,0.18)' }]}>
+                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#E8F7F2' : 'rgba(10,132,255,0.18)' }]}>
+                  <PhoneBadgeIcon color={isLight ? '#0E8A72' : '#CFE7FF'} />
                 </View>
                 <View style={styles.infoTrustCopy}>
                   <Text style={[styles.infoTrustTitle, { color: theme.text }]}>{t('Private by Design')}</Text>
@@ -741,8 +764,8 @@ export default function AuthScreen({
                   </Text>
                 </View>
               </View>
-              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F6FCFF' : BRAND.colors.surfaceAlt, borderColor: 'rgba(46,211,247,0.18)' }]}>
-                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#D7F3FA' : 'rgba(46,211,247,0.18)' }]}>
+              <View style={[styles.infoTrustCard, { backgroundColor: isLight ? '#F2FBF8' : BRAND.colors.surfaceAlt, borderColor: isLight ? 'rgba(14,138,114,0.18)' : 'rgba(46,211,247,0.18)' }]}>
+                <View style={[styles.infoTrustIconWrap, { backgroundColor: isLight ? '#E2F7F0' : 'rgba(46,211,247,0.18)' }]}>
                   <LockBadgeIcon color={isLight ? '#1389B5' : '#D8F7FF'} />
                 </View>
                 <View style={styles.infoTrustCopy}>
@@ -775,7 +798,7 @@ export default function AuthScreen({
                 </View>
               </View>
             </ScrollView>
-            <PillButton label={t('Close')} kind="primary" onPress={() => setPrivacyInfoVisible(false)} />
+            <PillButton label={t('Close')} kind="ghost" onPress={() => setPrivacyInfoVisible(false)} />
           </View>
         </View>
       </Modal>

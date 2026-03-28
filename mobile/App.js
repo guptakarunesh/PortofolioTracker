@@ -34,7 +34,6 @@ import AuthScreen from './src/screens/AuthScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import FamilyScreen from './src/screens/FamilyScreen';
-import WorthioSplash from './src/screens/LaunchScreen';
 import OnboardingModal from './src/components/OnboardingModal';
 import PillButton from './src/components/PillButton';
 import { api, setAuthToken } from './src/api/client';
@@ -64,7 +63,6 @@ const REMINDER_NOTIFICATION_CACHE_KEY = 'reminder_notification_cache_v1';
 const BRAND_ICON = require('./src/assets/networth-icon.png');
 const HEADER_BRAND_ICON = require('./src/assets/app-icon.png');
 const AUTH_HEADER_LOCKUP = require('./src/assets/worthio-logo-lockup-header.png');
-const AUTH_LAUNCH_SPLASH = require('./src/assets/worthio-splash-screen.png');
 const AUTH_LOGON_BACKGROUND = require('./src/assets/worthio-logon-background.png');
 const REMINDER_NOTIFICATION_TYPE = 'reminder_due';
 const EXPO_PUSH_ENABLED = String(process.env.EXPO_PUBLIC_ENABLE_EXPO_PUSH || '').trim() === '1';
@@ -510,7 +508,6 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [user, setUser] = useState(null);
   const [otpFlowProvider, setOtpFlowProvider] = useState(null);
-  const [showSplash, setShowSplash] = useState(true);
   const [sessionRestoring, setSessionRestoring] = useState(true);
   const [authIntroSeen, setAuthIntroSeen] = useState(false);
   const [authInitialExposureActive, setAuthInitialExposureActive] = useState(false);
@@ -541,6 +538,9 @@ export default function App() {
   const [accessRole, setAccessRole] = useState('admin');
   const [accountOwner, setAccountOwner] = useState(null);
   const [isAccountOwner, setIsAccountOwner] = useState(true);
+  const [canManageSubscription, setCanManageSubscription] = useState(true);
+  const [subscriptionAdminInitials, setSubscriptionAdminInitials] = useState([]);
+  const [leaveFamilyLoading, setLeaveFamilyLoading] = useState(false);
   const [prevTab, setPrevTab] = useState(null);
   const [lastNotifId, setLastNotifId] = useState(null);
   const [reminderSyncVersion, setReminderSyncVersion] = useState(0);
@@ -1081,10 +1081,16 @@ export default function App() {
       setAccessRole(String(info?.role || 'admin'));
       setAccountOwner(info?.owner || null);
       setIsAccountOwner(Boolean(info?.is_owner));
+      setCanManageSubscription(Boolean(info?.can_manage_subscription));
+      setSubscriptionAdminInitials(Array.isArray(info?.admin_initials) ? info.admin_initials : []);
+      return info;
     } catch (_e) {
       setAccessRole('admin');
       setAccountOwner(null);
       setIsAccountOwner(true);
+      setCanManageSubscription(true);
+      setSubscriptionAdminInitials([]);
+      return null;
     }
   };
 
@@ -1092,8 +1098,10 @@ export default function App() {
     try {
       const status = await api.getSubscriptionStatus();
       setSubscriptionStatus(status);
+      return status;
     } catch (_e) {
       setSubscriptionStatus(null);
+      return null;
     }
   };
 
@@ -1309,6 +1317,9 @@ export default function App() {
     setAccessRole('admin');
     setAccountOwner(null);
     setIsAccountOwner(true);
+    setCanManageSubscription(true);
+    setSubscriptionAdminInitials([]);
+    setLeaveFamilyLoading(false);
     setAuthInitialExposureActive(false);
     setAuthIntroSeen(true);
     await SecureStore.setItemAsync(AUTH_INTRO_SEEN_KEY, '1').catch(() => {});
@@ -1611,6 +1622,22 @@ export default function App() {
     setActiveTab(prevTab || 'dashboard');
   };
 
+  const handleLeaveFamilyAccess = async () => {
+    try {
+      setLeaveFamilyLoading(true);
+      await api.leaveFamilyAccess();
+      const [nextStatus] = await Promise.all([refreshSubscription(), refreshAccessContext()]);
+      setActiveTab('dashboard');
+      if (nextStatus?.status !== 'active') {
+        openSubscription();
+      }
+    } catch (e) {
+      Alert.alert(t('Could not update family access'), e?.message || t('Please try again.'));
+    } finally {
+      setLeaveFamilyLoading(false);
+    }
+  };
+
   const closeOnboarding = () => {
     setOnboardingVisible(false);
     setOnboardingIndex(0);
@@ -1661,6 +1688,44 @@ export default function App() {
     .trim()
     .split(/\s+/)
     .filter(Boolean)[0] || t('Account');
+  const isFamilyMember = !isAccountOwner;
+  const normalizedAdminInitials = React.useMemo(
+    () =>
+      [...new Set((Array.isArray(subscriptionAdminInitials) ? subscriptionAdminInitials : [])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean))],
+    [subscriptionAdminInitials]
+  );
+  const subscriptionDaysRemaining = React.useMemo(() => {
+    if (subscriptionStatus?.status !== 'active' || !subscriptionStatus?.current_period_end) return null;
+    const end = new Date(subscriptionStatus.current_period_end);
+    const now = new Date(subscriptionStatus?.now || Date.now());
+    if (Number.isNaN(end.getTime()) || Number.isNaN(now.getTime())) return null;
+    const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    return Math.round((endDay.getTime() - nowDay.getTime()) / (24 * 60 * 60 * 1000));
+  }, [subscriptionStatus]);
+  const accountExpiryNotice =
+    subscriptionDaysRemaining == null || subscriptionDaysRemaining < 0 || subscriptionDaysRemaining > 5
+      ? ''
+      : subscriptionDaysRemaining === 0
+        ? t('Ends today')
+        : subscriptionDaysRemaining === 1
+          ? t('1 day left')
+          : t('{count} days left', { count: subscriptionDaysRemaining });
+  const subscriptionExpired = Boolean(user && subscriptionStatus && subscriptionStatus.status !== 'active');
+  const nonManagingFamilyMember = isFamilyMember && !canManageSubscription;
+  const subscriptionExpiryModalVisible =
+    subscriptionExpired && !(activeTab === 'subscription' && canManageSubscription);
+  const adminInitialsLabel = normalizedAdminInitials.length ? normalizedAdminInitials.join(', ') : t('Admin');
+  const subscriptionExpiryTitle = nonManagingFamilyMember
+    ? t('Family Premium Expired')
+    : t('Premium Access Expired');
+  const subscriptionExpiryBody = nonManagingFamilyMember
+    ? t('This family account needs an active premium plan to continue. Admins who can renew: {initials}.', {
+        initials: adminInitialsLabel
+      })
+    : t('Your premium access has ended. Renew now to continue using premium features and editing tools.');
   const requestMainScroll = React.useCallback((targetY = 0) => {
     const scroller = contentScrollRef.current;
     if (!scroller || typeof scroller.scrollTo !== 'function') return;
@@ -1707,6 +1772,10 @@ export default function App() {
     setAuthIntroSeen(true);
     SecureStore.setItemAsync(AUTH_INTRO_SEEN_KEY, '1').catch(() => {});
   }, [authIntroSeen, sessionRestoring, user]);
+
+  const clearAuthError = React.useCallback(() => {
+    setAuthError('');
+  }, []);
 
   const authLayoutVariant = authInitialExposureActive
     ? 'fresh'
@@ -1760,7 +1829,7 @@ export default function App() {
                 biometricReady={biometricEnrolled || (__DEV__ && authPreviewVariant === 'returning')}
                 loading={authLoading}
                 externalMessage={authError}
-                onClearExternalMessage={() => setAuthError('')}
+                onClearExternalMessage={clearAuthError}
                 variant={authPreviewVariant}
                 initialMobile={lastKnownUserMobile}
               />
@@ -1804,6 +1873,11 @@ export default function App() {
                     {accountShortName}
                   </Text>
                   <Text style={[styles.accountRoleText, { color: theme.info }]}>{roleLabel}</Text>
+                  {accountExpiryNotice ? (
+                    <Text style={[styles.accountExpiryNotice, { color: theme.warn }]} numberOfLines={1}>
+                      {accountExpiryNotice}
+                    </Text>
+                  ) : null}
                 </View>
                 <Text style={[styles.accountChevron, { color: theme.info }]}>{'\u203A'}</Text>
               </AnimatedPressable>
@@ -2121,7 +2195,6 @@ export default function App() {
         <ThemeContext.Provider value={{ theme, themeKey: normalizedThemeKey, setThemeKey }}>
           <View style={{ flex: 1 }}>
             {mainContent}
-            {showSplash ? <WorthioSplash dark onFinish={() => setShowSplash(false)} /> : null}
           <Modal visible={aiVisible} transparent animationType="fade">
           <View style={styles.modalBackdrop}>
             <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setAiVisible(false)} />
@@ -2216,7 +2289,7 @@ export default function App() {
             </View>
           </View>
         </Modal>
-          <Modal visible={!!premiumPrompt} transparent animationType="fade" onRequestClose={() => setPremiumPrompt(null)}>
+          <Modal visible={!!premiumPrompt && !subscriptionExpiryModalVisible} transparent animationType="fade" onRequestClose={() => setPremiumPrompt(null)}>
             <View style={styles.modalBackdrop}>
               <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setPremiumPrompt(null)} />
               <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -2231,6 +2304,44 @@ export default function App() {
               </View>
             </View>
           </Modal>
+          {subscriptionExpiryModalVisible ? (
+            <Modal visible transparent animationType="fade">
+              <View style={styles.modalBackdrop}>
+                <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>{subscriptionExpiryTitle}</Text>
+                  <Text style={[styles.modalSub, { color: theme.muted }]}>{subscriptionExpiryBody}</Text>
+                  {nonManagingFamilyMember ? (
+                    <Text style={[styles.modalInfoText, { color: theme.info }]}>
+                      {t('Subscription can be renewed by admins: {initials}', { initials: adminInitialsLabel })}
+                    </Text>
+                  ) : null}
+                  <View style={styles.modalActions}>
+                    {nonManagingFamilyMember ? (
+                      <>
+                        <PillButton
+                          label={t('Ask Admins to Renew')}
+                          kind="ghost"
+                          onPress={() =>
+                            Alert.alert(
+                              t('Admins Can Renew'),
+                              t('Subscription can be renewed by admins: {initials}', { initials: adminInitialsLabel })
+                            )
+                          }
+                        />
+                        <PillButton
+                          label={leaveFamilyLoading ? t('Please wait...') : t('Leave Family & Continue')}
+                          onPress={() => handleLeaveFamilyAccess().catch(() => {})}
+                          disabled={leaveFamilyLoading}
+                        />
+                      </>
+                    ) : (
+                      <PillButton label={t('Go to Subscription')} onPress={openSubscription} />
+                    )}
+                  </View>
+                </View>
+              </View>
+            </Modal>
+          ) : null}
           {supportVisible ? (
             <SafeAreaView style={[styles.supportOverlay, { backgroundColor: theme.background }]}>
               <View style={[styles.supportPageHeader, { borderBottomColor: theme.border, backgroundColor: theme.card }]}>
@@ -2789,6 +2900,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     textTransform: 'uppercase'
   },
+  accountExpiryNotice: {
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.1
+  },
   accountChevron: {
     fontSize: 20,
     fontWeight: '800',
@@ -3058,6 +3175,12 @@ const styles = StyleSheet.create({
   modalSub: {
     color: '#64748B',
     marginTop: 4,
+    marginBottom: 8
+  },
+  modalInfoText: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
     marginBottom: 8
   },
   modalInput: {

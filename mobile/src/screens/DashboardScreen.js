@@ -12,13 +12,16 @@ import { useI18n } from '../i18n';
 import { BRAND } from '../brand';
 
 const ASSET_TARGET_CATEGORIES = [
-  'Banking & Deposits',
-  'Market Investments',
-  'Precious Metals',
-  'Real Estate',
+  'Cash & Bank Accounts',
+  'Market Stocks & RSUs',
   'Retirement Funds',
-  'Insurance (Cash Value)',
-  'Other Assets'
+  'Real Estate',
+  'Vehicles',
+  'Business Equity',
+  'Precious Metals',
+  'Jewelry & Watches',
+  'Collectibles',
+  'Insurance & Other'
 ];
 
 const PIE_COLORS = [
@@ -49,7 +52,7 @@ const targetProgressColor = (pct) => {
   return `hsl(${hue}, 72%, 42%)`;
 };
 
-function BrandSummaryIntro({ theme, isLight }) {
+function BrandSummaryIntro({ theme, isLight, t }) {
   return (
     <View
       style={[
@@ -74,10 +77,10 @@ function BrandSummaryIntro({ theme, isLight }) {
             <Rect x="0" y="0" width="100" height="12" rx="6" fill="url(#worthioDashboardGradient)" opacity="0.95" />
           </Svg>
         </View>
-        <Text style={[styles.gradientBannerEyebrow, { color: theme.info }]}>WORTHIO VIEW</Text>
+        <Text style={[styles.gradientBannerEyebrow, { color: theme.info }]}>{t('WORTHIO VIEW')}</Text>
       </View>
       <View style={styles.summaryIntroCopy}>
-        <Text style={[styles.gradientBannerTitle, { color: theme.text }]}>Track growth with a clear view of your full worth.</Text>
+        <Text style={[styles.gradientBannerTitle, { color: theme.text }]}>{t('Track growth with a clear view of your full worth.')}</Text>
       </View>
     </View>
   );
@@ -141,10 +144,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
   return (
     <View>
       <SectionCard title={t('Net Worth Summary')} titleStyle={styles.sectionTitle}>
-        <BrandSummaryIntro theme={theme} isLight={isLight} />
-        <Text style={[styles.summaryLead, { color: theme.muted }]}>
-          {t('A calm view of your full worth across assets, liabilities, and net worth.')}
-        </Text>
+        <BrandSummaryIntro theme={theme} isLight={isLight} t={t} />
         <View style={styles.row}>
           <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} positive />
           <StatTile label={t('Liabilities')} value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} positive={false} />
@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    marginBottom: 16,
+    marginBottom: 8,
     shadowOpacity: 0.08,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },

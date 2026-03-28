@@ -136,7 +136,7 @@ export default function TrackersScreen({ hideSensitive = false }) {
             </View>
             <View style={styles.actionsRow}>
               <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} />
-              <PillButton label={t('Delete')} kind="ghost" onPress={() => remove(item.id).catch((e) => setMessage(e.message))} />
+              <PillButton label={t('Delete')} kind="danger" onPress={() => remove(item.id).catch((e) => setMessage(e.message))} />
             </View>
           </View>
         ))}

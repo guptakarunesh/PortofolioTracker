@@ -69,11 +69,23 @@ const translations = {
     'Liabilities': 'देयताएँ',
     'Net Worth': 'निवल मूल्य',
     'Last updated: {date}': 'अंतिम अपडेट: {date}',
+    'Last updated: {value}': 'अंतिम अपडेट: {value}',
+    'Ends today': 'आज समाप्त हो रहा है',
+    '1 day left': '1 दिन बाकी',
+    '{count} days left': '{count} दिन बाकी',
     'Asset Allocation': 'एसेट एलोकेशन',
+    'Portfolio Highlights': 'पोर्टफोलियो हाइलाइट्स',
     'Asset Mix': 'एसेट मिक्स',
+    'Allocation': 'एलोकेशन',
     'Chart view (with value and %)': 'चार्ट व्यू (मूल्य और % के साथ)',
     'Yearly Target Progress': 'वार्षिक लक्ष्य प्रगति',
     'Target Progress': 'लक्ष्य प्रगति',
+    'Trend': 'ट्रेंड',
+    'View how assets are distributed': 'देखें कि एसेट्स कैसे वितरित हैं।',
+    'Track yearly target progress': 'वार्षिक लक्ष्य प्रगति ट्रैक करें।',
+    'See net worth over time': 'समय के साथ नेट वर्थ देखें।',
+    'WORTHIO VIEW': 'वर्थियो व्यू',
+    'Track growth with a clear view of your full worth.': 'अपने पूरे नेट वर्थ को स्पष्ट रूप से देखकर वृद्धि ट्रैक करें।',
     'Created from month-end snapshots captured after each month closes.':
       'हर महीने के अंत में कैप्चर किए गए स्नैपशॉट से तैयार किया गया।',
     'No yearly targets set yet. Add them in Settings.':
@@ -85,12 +97,18 @@ const translations = {
     'Session expired. Please login again.': 'सेशन समाप्त हो गया है। कृपया फिर से लॉगिन करें।',
     'Pick Snapshot Day': 'स्नैपशॉट दिन चुनें',
     'Assets Overview': 'परिसंपत्ति अवलोकन',
+    'Everything you own, in one place': 'जो कुछ आपका है, सब एक ही जगह।',
+    'Track bank balances, investments, gold, property, and every other asset with a cleaner overview.':
+      'बैंक बैलेंस, निवेश, सोना, प्रॉपर्टी और हर दूसरे एसेट को एक साफ़ ओवरव्यू में ट्रैक करें।',
     'Add Asset': 'एसेट जोड़ें',
     'Edit Asset': 'एसेट संपादित करें',
     'Save Asset': 'एसेट सेव करें',
     'Delete Asset': 'एसेट हटाएँ',
     'No assets yet. Add your first asset.': 'अभी कोई एसेट नहीं है। अपना पहला एसेट जोड़ें।',
     'Liabilities Overview': 'देयता अवलोकन',
+    'See every obligation clearly': 'हर देयता को साफ़ तौर पर देखें।',
+    'Review loans, credit dues, and outstanding amounts together so net worth stays honest and current.':
+      'लोन, क्रेडिट बकाया और बाकी राशियाँ एक साथ देखें ताकि नेट वर्थ सही और अपडेटेड रहे।',
     'Add Liability': 'देयता जोड़ें',
     'Edit Liability': 'देयता संपादित करें',
     'Save Liability': 'देयता सेव करें',
@@ -100,12 +118,21 @@ const translations = {
     'Premium subscription required to view performance insights.':
       'प्रदर्शन इनसाइट्स देखने के लिए प्रीमियम सब्सक्रिप्शन आवश्यक है।',
     'Reminders & Alerts': 'रिमाइंडर्स और अलर्ट',
+    'Stay ahead of due dates': 'ड्यू डेट्स से पहले तैयार रहें।',
+    'Keep renewals, premiums, and review dates visible so important financial actions do not slip.':
+      'रिन्युअल, प्रीमियम और रिव्यू डेट्स को सामने रखें ताकि ज़रूरी वित्तीय काम छूट न जाएँ।',
     'Premium subscription required to manage reminders.':
       'रिमाइंडर्स मैनेज करने के लिए प्रीमियम सब्सक्रिप्शन आवश्यक है।',
     'Targets & Goals': 'लक्ष्य और उद्देश्य',
+    'Set the numbers you want to grow into': 'वे लक्ष्य तय करें जिन तक आप पहुँचना चाहते हैं।',
+    'Define yearly targets category by category and measure progress without digging through multiple screens.':
+      'हर श्रेणी के लिए वार्षिक लक्ष्य तय करें और कई स्क्रीन देखे बिना प्रगति मापें।',
     'Premium subscription required to manage targets.':
       'लक्ष्य मैनेज करने के लिए प्रीमियम सब्सक्रिप्शन आवश्यक है।',
     'Profile': 'प्रोफाइल',
+    'Control access, privacy, and support': 'एक्सेस, प्राइवेसी और सपोर्ट को नियंत्रित करें।',
+    'Manage security settings, family access, subscription details, and support options from one place.':
+      'सिक्योरिटी सेटिंग्स, फैमिली एक्सेस, सब्सक्रिप्शन विवरण और सपोर्ट विकल्प एक ही जगह से मैनेज करें।',
     'Privacy & Security': 'प्राइवेसी और सिक्योरिटी',
     'Enable PIN protection if you want a 4-digit PIN prompt when Privacy mode is turned ON.':
       'यदि प्राइवेसी मोड ऑन होने पर 4-अंकों का पिन चाहिए तो पिन प्रोटेक्शन सक्षम करें।',
@@ -146,6 +173,20 @@ const translations = {
     'Expired': 'समाप्त',
     'Choose Plan': 'प्लान चुनें',
     'Family Members': 'परिवार सदस्य',
+    'Family Premium Expired': 'फैमिली प्रीमियम समाप्त',
+    'Premium Access Expired': 'प्रीमियम एक्सेस समाप्त',
+    'This family account needs an active premium plan to continue. Admins who can renew: {initials}.':
+      'जारी रखने के लिए इस फैमिली अकाउंट में सक्रिय प्रीमियम प्लान होना चाहिए। रिन्यू कर सकने वाले एडमिन: {initials}।',
+    'Your premium access has ended. Renew now to continue using premium features and editing tools.':
+      'आपका प्रीमियम एक्सेस समाप्त हो गया है। प्रीमियम फीचर्स और एडिटिंग जारी रखने के लिए अभी रिन्यू करें।',
+    'Subscription can be renewed by admins: {initials}':
+      'सब्सक्रिप्शन इन एडमिन्स द्वारा रिन्यू किया जा सकता है: {initials}',
+    'Ask Admins to Renew': 'एडमिन्स से रिन्यू करने को कहें',
+    'Admins Can Renew': 'एडमिन्स रिन्यू कर सकते हैं',
+    'Leave Family & Continue': 'फैमिली छोड़ें और जारी रखें',
+    'Share visibility with the right people': 'सही लोगों के साथ दृश्यता साझा करें।',
+    'Grant access carefully, review permissions, and keep family sharing limited to what is actually needed.':
+      'सोच-समझकर एक्सेस दें, अनुमतियाँ जाँचें और फैमिली शेयरिंग उतनी ही रखें जितनी वास्तव में ज़रूरी हो।',
     'Add Family Member': 'परिवार सदस्य जोड़ें',
     'Remaining slots: {count}': 'बाकी स्लॉट: {count}',
     'Trackers': 'ट्रैकर्स',
@@ -164,6 +205,13 @@ const translations = {
     ,
     'Insights': 'इनसाइट्स',
     'Worthio': 'वर्थियो',
+    'Start on Dashboard': 'डैशबोर्ड से शुरू करें',
+    'Track your Assets': 'अपने एसेट्स ट्रैक करें',
+    'Track your Liabilities': 'अपनी देयताएँ ट्रैक करें',
+    'Set yearly Targets': 'वार्षिक लक्ष्य सेट करें',
+    'Use smart Reminders': 'स्मार्ट रिमाइंडर्स इस्तेमाल करें',
+    'Use AI Insights': 'AI Insights इस्तेमाल करें',
+    'Manage Account': 'अकाउंट मैनेज करें',
     'Create account or login using OTP. Biometric login can be enabled after setup.':
       'ओटीपी का उपयोग करके अकाउंट बनाएं या लॉगिन करें। सेटअप के बाद बायोमेट्रिक लॉगिन सक्षम किया जा सकता है।',
     'Welcome, {name}': 'स्वागत है, {name}',
@@ -244,17 +292,32 @@ const translations = {
     'Current Liabilities': 'वर्तमान देयताएँ',
     'Due date, category and description are required.': 'ड्यू डेट, श्रेणी और विवरण आवश्यक हैं।',
     'Reminder added.': 'रिमाइंडर जोड़ दिया गया।',
+    'Reminder updated.': 'रिमाइंडर अपडेट कर दिया गया।',
     'Reminder snoozed by 1 day.': 'रिमाइंडर 1 दिन के लिए स्नूज़ किया गया।',
     'Reminders (Premium)': 'रिमाइंडर्स (प्रीमियम)',
     'Reminders are available with Premium.': 'रिमाइंडर्स प्रीमियम में उपलब्ध हैं।',
     'Add Reminder': 'रिमाइंडर जोड़ें',
+    'Edit Reminder': 'रिमाइंडर एडिट करें',
     'Due Date (YYYY-MM-DD)': 'ड्यू डेट (YYYY-MM-DD)',
     'Description': 'विवरण',
+    'Type': 'प्रकार',
     'Amount': 'राशि',
+    'Repeats': 'दोहराव',
+    'One Time': 'एक बार',
+    'Daily': 'रोज़ाना',
+    'Weekly': 'साप्ताहिक',
+    'Every X Days': 'हर X दिन',
+    'Monthly': 'मासिक',
+    'Yearly': 'वार्षिक',
+    'Every {count} Days': 'हर {count} दिन',
+    'Repeats: {value}': 'दोहराव: {value}',
+    'Enter a valid repeat interval between 2 and 365 days.': '2 से 365 दिनों के बीच सही दोहराव अंतराल दर्ज करें।',
     'Alert Days Before': 'कितने दिन पहले अलर्ट',
     '{count} day(s)': '{count} दिन',
     'Save Reminder': 'रिमाइंडर सेव करें',
+    'Update Reminder': 'रिमाइंडर अपडेट करें',
     'Upcoming Reminders': 'आगामी रिमाइंडर्स',
+    'No active reminders yet.': 'अभी कोई सक्रिय रिमाइंडर नहीं है।',
     'Upcoming Reminder': 'आने वाला रिमाइंडर',
     'Reminder Due Today': 'रिमाइंडर आज देय है',
     '{name} due on {date}': '{name} {date} को देय है',
@@ -267,6 +330,8 @@ const translations = {
     'Done': 'पूर्ण',
     'Completed': 'पूर्ण',
     'Pending': 'लंबित',
+    'Reminder marked complete.': 'रिमाइंडर पूर्ण चिह्नित किया गया।',
+    'Recurring reminder moved to the next occurrence.': 'दोहराया जाने वाला रिमाइंडर अगली तारीख पर भेज दिया गया।',
     'Settings saved.': 'सेटिंग्स सेव हो गईं।',
     'Targets (Premium)': 'लक्ष्य (प्रीमियम)',
     'Targets are available with Premium.': 'लक्ष्य प्रीमियम में उपलब्ध हैं।',
@@ -275,6 +340,7 @@ const translations = {
     '2030-12-31': '2030-12-31',
     '0': '0',
     'Save Settings & Targets': 'सेटिंग्स और लक्ष्य सेव करें',
+    'Set My Targets': 'मेरे लक्ष्य सेट करें',
     'Performance (Premium)': 'प्रदर्शन (प्रीमियम)',
     'Net Worth Trend (Premium)': 'नेट वर्थ ट्रेंड (प्रीमियम)',
     'Performance insights are available with Premium.': 'प्रदर्शन इनसाइट्स प्रीमियम में उपलब्ध हैं।',
@@ -507,11 +573,32 @@ const translations = {
     'Could not connect to support right now. Please check your network and try again.':
       'अभी सपोर्ट से कनेक्ट नहीं हो सका। कृपया नेटवर्क जांचें और फिर से प्रयास करें।',
     'Could not create PDF receipt.': 'PDF रसीद नहीं बन सकी।',
+    'Could not update family access': 'फैमिली एक्सेस अपडेट नहीं हो सका',
     'Could not load receipt.': 'रसीद लोड नहीं हो सकी।',
     'Current active plan: {value}': 'वर्तमान सक्रिय प्लान: {value}',
     'Current period ends: {date}': 'वर्तमान अवधि समाप्त: {date}',
     'Dashboard gives a quick snapshot of assets, liabilities, and net worth in one view.':
       'डैशबोर्ड एक ही जगह एसेट, देयता और नेट वर्थ का त्वरित स्नैपशॉट देता है।',
+    'See net worth, assets, and liabilities together.\nUse this page first for a quick financial check.':
+      'नेट वर्थ, एसेट्स और देयताएँ साथ में देखें।\nत्वरित वित्तीय जाँच के लिए यह पेज पहले उपयोग करें।',
+    'Add investments, deposits, property, and cash here.\nKeep values updated so your totals stay accurate.':
+      'यहाँ निवेश, डिपॉजिट्स, प्रॉपर्टी और कैश जोड़ें।\nकुल राशि सही रखने के लिए वैल्यू अपडेट रखें।',
+    'Record loans, cards, and dues in one place.\nThis keeps your net worth realistic and current.':
+      'लोन, कार्ड और बकाया एक ही जगह दर्ज करें।\nइससे आपका नेट वर्थ वास्तविक और अपडेटेड रहता है।',
+    'Add yearly goals for the categories that matter.\nThe dashboard will show how close you are to target.':
+      'महत्वपूर्ण श्रेणियों के लिए वार्षिक लक्ष्य जोड़ें।\nडैशबोर्ड बताएगा कि आप लक्ष्य के कितने करीब हैं।',
+    'Add yearly goals for the categories that matter. The dashboard will show how close you are to target.':
+      'महत्वपूर्ण श्रेणियों के लिए वार्षिक लक्ष्य जोड़ें। डैशबोर्ड बताएगा कि आप लक्ष्य के कितने करीब हैं।',
+    'Track bills, renewals, and follow-ups here.\nStay ahead of due dates from one screen.':
+      'यहाँ बिल, रिन्युअल और फॉलो-अप ट्रैक करें।\nएक ही स्क्रीन से ड्यू डेट्स से आगे रहें।',
+    'Track bills, renewals, and follow-ups here. Stay ahead of due dates from one screen.':
+      'यहाँ बिल, रिन्युअल और फॉलो-अप ट्रैक करें। एक ही स्क्रीन से ड्यू डेट्स से आगे रहें।',
+    'Get a quick summary of your portfolio here.\nUse it when you want the main takeaways fast.':
+      'यहाँ अपने पोर्टफोलियो की त्वरित समरी पाएँ।\nमुख्य बातें जल्दी जाननी हों तो इसका उपयोग करें।',
+    'Get a quick summary of your portfolio here. Use it when you want the main takeaways fast.':
+      'यहाँ अपने पोर्टफोलियो की त्वरित समरी पाएँ। मुख्य बातें जल्दी जाननी हों तो इसका उपयोग करें।',
+    'Open Account to manage biometrics, privacy, language, theme, and subscription.\nYou can review family access, support options, and security settings here.\nUse this area whenever you need control changes instead of portfolio updates.':
+      'बायोमेट्रिक्स, प्राइवेसी, भाषा, थीम और सब्सक्रिप्शन मैनेज करने के लिए Account खोलें।\nयहाँ आप फैमिली एक्सेस, सपोर्ट विकल्प और सिक्योरिटी सेटिंग्स देख सकते हैं।\nजब भी पोर्टफोलियो अपडेट के बजाय कंट्रोल बदलने हों, इस सेक्शन का उपयोग करें।',
     'Date: {value}': 'तारीख: {value}',
     'Describe your issue': 'अपनी समस्या बताएं',
     'Download GST Receipt': 'GST रसीद डाउनलोड करें',
@@ -579,6 +666,7 @@ const translations = {
     'Pick Date': 'तारीख चुनें',
     'Please correct highlighted fields.': 'कृपया हाइलाइट किए गए फ़ील्ड ठीक करें।',
     'Please review these FAQs first.': 'कृपया पहले इन FAQs को देखें।',
+    'Please try again.': 'कृपया फिर प्रयास करें।',
     'Privacy': 'प्राइवेसी',
     'Provider: {value}': 'प्रदाता: {value}',
     'Purchase History': 'खरीद इतिहास',
@@ -639,6 +727,7 @@ const translations = {
       'समय के साथ ट्रेंड्स और प्रगति की समीक्षा के लिए Performance का उपयोग करें।',
     'Use Net Worth Trend to review trends and progress over time.':
       'समय के साथ ट्रेंड्स और प्रगति की समीक्षा के लिए Net Worth Trend का उपयोग करें।',
+    'Review how net worth is moving': 'देखें कि नेट वर्थ कैसे बदल रहा है।',
     'Read month-end snapshots and compare asset, liability, and net worth movement over time.':
       'महीने-अंत स्नैपशॉट पढ़ें और समय के साथ एसेट, देयता और नेट वर्थ की चाल की तुलना करें।',
     'Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.':
@@ -692,11 +781,18 @@ const translations = {
     'Premium Yearly': 'प्रीमियम वार्षिक',
     'Banking & Deposits': 'बैंकिंग और डिपॉजिट्स',
     'Market Investments': 'मार्केट निवेश',
+    'Cash & Bank Accounts': 'कैश और बैंक अकाउंट्स',
+    'Market Stocks & RSUs': 'मार्केट स्टॉक्स और आरएसयू',
+    'Vehicles': 'वाहन',
+    'Business Equity': 'बिजनेस इक्विटी',
     'Precious Metals': 'कीमती धातुएँ',
+    'Jewelry & Watches': 'ज्वेलरी और वॉचेस',
+    'Collectibles': 'कलेक्टिबल्स',
     'Real Estate': 'रियल एस्टेट',
     'Retirement Funds': 'रिटायरमेंट फंड्स',
     'Insurance (Cash Value)': 'बीमा (कैश वैल्यू)',
     'Other Assets': 'अन्य एसेट्स',
+    'Insurance & Other': 'बीमा और अन्य',
     'Home Loan': 'होम लोन',
     'Car Loan': 'कार लोन',
     'Personal Loan': 'पर्सनल लोन',

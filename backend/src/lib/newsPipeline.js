@@ -2,6 +2,7 @@ import { db, nowIso } from './db.js';
 import {
   CURATED_NEWS_CATEGORIES,
   CURATED_NEWS_SOURCES,
+  GOLD_SILVER_SOURCE_KEYS,
   NEWS_MAX_AGE_HOURS,
   categoryByKey,
   sourceByKey,
@@ -273,6 +274,7 @@ function normalizeIngestedItem(rawItem = {}) {
   if (!source) return null;
 
   const category = normalizeCategory(rawItem.category);
+  if (category === 'gold_metals' && !GOLD_SILVER_SOURCE_KEYS.includes(source.key)) return null;
   const publishedAt = parseIsoDate(rawItem.published_at);
   if (!publishedAt || !withinFreshWindow(publishedAt.toISOString())) return null;
 
@@ -352,6 +354,7 @@ export async function ingestCuratedNews({
     buildCategoryInstructions(),
     'Rules:',
     '- Only include items with a visible publish timestamp in the last 48 hours.',
+    `- For gold_metals items, use only these sources: ${GOLD_SILVER_SOURCE_KEYS.join(', ')}.`,
     '- Prefer official sources for policy, retirement, compliance, and rule changes.',
     '- Prefer Reuters and major Indian finance publishers for fast market-moving coverage.',
     '- Deduplicate near-identical stories.',
@@ -438,6 +441,67 @@ function fallbackBulletForItem(item) {
   return `[${item.investment_label}] What happened: ${item.title}. Why it matters: ${item.summary || 'recent market or policy context may affect this bucket.'} What to consider: ${guidance}. Source: ${item.source_name} - ${item.canonical_url}.`;
 }
 
+function inferCategoryFromBullet(text = '') {
+  const value = String(text || '').toLowerCase();
+  if (value.includes('gold / silver / metals') || value.includes('gold / silver') || value.includes('gold') || value.includes('silver') || value.includes('metals') || value.includes('commodit')) return 'gold_metals';
+  if (value.includes('fds / savings / rds') || value.includes('bank savings') || value.includes('deposit') || value.includes('rates')) return 'bank_savings';
+  if (value.includes('epf / nps / retirement') || value.includes('retirement') || value.includes('epf') || value.includes('nps')) return 'retirement';
+  if (value.includes('stocks / etfs / mutual funds') || value.includes('stock') || value.includes('mutual fund') || value.includes('etf')) return 'stocks';
+  if (value.includes('real estate') || value.includes('property')) return 'real_estate';
+  if (value.includes('insurance / bonds / other savings') || value.includes('bond') || value.includes('insurance') || value.includes('other savings')) return 'other_savings';
+  return 'other_savings';
+}
+
+function bulletMentionsGoldMetals(text = '') {
+  const value = String(text || '').toLowerCase();
+  return (
+    value.includes('gold / silver / metals') ||
+    value.includes('gold / silver') ||
+    value.includes('gold') ||
+    value.includes('silver') ||
+    value.includes('metals') ||
+    value.includes('commodit')
+  );
+}
+
+function buildRepresentativeItems(items = []) {
+  const byCategory = new Map();
+  for (const item of items) {
+    if (!item?.category) continue;
+    const current = byCategory.get(item.category);
+    if (!current) {
+      byCategory.set(item.category, item);
+      continue;
+    }
+    const currentPriority = Number(current.is_official ? 1000 : 0) + Number(current.source_priority || 0);
+    const nextPriority = Number(item.is_official ? 1000 : 0) + Number(item.source_priority || 0);
+    if (nextPriority > currentPriority) {
+      byCategory.set(item.category, item);
+      continue;
+    }
+    if ((item.published_at || '') > (current.published_at || '')) {
+      byCategory.set(item.category, item);
+    }
+  }
+
+  const representatives = [...byCategory.values()].sort((a, b) => {
+    const ap = Number(a.is_official ? 1000 : 0) + Number(a.source_priority || 0);
+    const bp = Number(b.is_official ? 1000 : 0) + Number(b.source_priority || 0);
+    if (bp !== ap) return bp - ap;
+    return String(b.published_at || '').localeCompare(String(a.published_at || ''));
+  });
+
+  const goldMetals = representatives.find((item) => item.category === 'gold_metals') || null;
+  const selected = [];
+  if (goldMetals) selected.push(goldMetals);
+  for (const item of representatives) {
+    if (selected.some((current) => current.category === item.category)) continue;
+    selected.push(item);
+    if (selected.length === 5) break;
+  }
+  return selected.slice(0, 5);
+}
+
 export async function buildInsightNewsBullets({
   apiKey,
   items = [],
@@ -450,9 +514,12 @@ export async function buildInsightNewsBullets({
   if (!curated.length) {
     return { bullets: [], source: 'empty' };
   }
+  const representativeItems = buildRepresentativeItems(curated);
+  const goldMetalsItem = representativeItems.find((item) => item.category === 'gold_metals') || null;
 
   if (!apiKey) {
-    return { bullets: curated.slice(0, 5).map(fallbackBulletForItem), source: 'rule_based' };
+    const fallbackBullets = representativeItems.map(fallbackBulletForItem);
+    return { bullets: fallbackBullets, source: 'rule_based' };
   }
 
   const prompt = [
@@ -464,10 +531,14 @@ export async function buildInsightNewsBullets({
     'Each bullet must be at most 42 words.',
     'Bullet format: [Investment Type] What happened: short fact. Why it matters: short impact. What to consider: short practical review point. Source: Site Name - URL.',
     'Do not use the words Bullish, Bearish, Neutral, or Wallet Impact.',
+    'Use at most one bullet per category. Do not repeat the same category twice.',
+    goldMetalsItem
+      ? 'Coverage requirement: include exactly one bullet for Gold / Silver / Metals when curated items contain that category.'
+      : 'Coverage requirement: do not invent Gold / Silver / Metals coverage unless the curated items include it.',
     `Country: ${country}`,
     `Currency: ${currency}`,
     `Portfolio context: ${JSON.stringify(portfolio)}`,
-    `Curated news items: ${JSON.stringify(curated)}`
+    `Curated news items: ${JSON.stringify(representativeItems)}`
   ].join('\n');
 
   const out = await callOpenAIResponses({
@@ -480,7 +551,24 @@ export async function buildInsightNewsBullets({
 
   const bullets = Array.isArray(out?.bullets) ? out.bullets.map((item) => normalizeWhitespace(item)).filter(Boolean).slice(0, 5) : [];
   if (bullets.length !== 5) {
-    return { bullets: curated.slice(0, 5).map(fallbackBulletForItem), source: 'rule_based_invalid_ai' };
+    const fallbackBullets = representativeItems.map(fallbackBulletForItem);
+    return { bullets: fallbackBullets, source: 'rule_based_invalid_ai' };
+  }
+  const seenCategories = new Set();
+  let hasDuplicateCategory = false;
+  for (const bullet of bullets) {
+    const category = inferCategoryFromBullet(bullet);
+    if (seenCategories.has(category)) {
+      hasDuplicateCategory = true;
+      break;
+    }
+    seenCategories.add(category);
+  }
+  if (hasDuplicateCategory) {
+    return { bullets: representativeItems.map(fallbackBulletForItem), source: 'rule_based_duplicate_category_rejected' };
+  }
+  if (goldMetalsItem && !bullets.some(bulletMentionsGoldMetals)) {
+    return { bullets: representativeItems.map(fallbackBulletForItem), source: 'rule_based_missing_gold_metals_rejected' };
   }
   return { bullets, source: 'ai_from_curated_news' };
 }

@@ -9,6 +9,26 @@ const TARGET_KEYS = new Set(['target_date', 'target_net_worth']);
 const TARGET_PREFIX = 'yearly_target_';
 const DEFAULT_COUNTRY = 'India';
 const DEFAULT_CURRENCY = 'INR';
+const TARGETS_LAST_UPDATED_KEY = 'targets_last_updated_at';
+
+function buildSettingsResponse(rows, premiumActive) {
+  let targetsLastUpdatedAt = '';
+  const map = rows.reduce((acc, row) => {
+    const isTargetSetting = TARGET_KEYS.has(row.key) || row.key.startsWith(TARGET_PREFIX);
+    if (!premiumActive && isTargetSetting) {
+      return acc;
+    }
+    if (isTargetSetting && row.updated_at && String(row.updated_at) > String(targetsLastUpdatedAt || '')) {
+      targetsLastUpdatedAt = String(row.updated_at);
+    }
+    acc[row.key] = ENCRYPTED_SETTING_KEYS.has(row.key) ? decryptString(row.value) : row.value;
+    return acc;
+  }, {});
+  if (premiumActive && targetsLastUpdatedAt) {
+    map[TARGETS_LAST_UPDATED_KEY] = targetsLastUpdatedAt;
+  }
+  return map;
+}
 
 router.get('/', (req, res) => {
   const subscription = ensureSubscriptionForUser(req.userId);
@@ -41,14 +61,7 @@ router.get('/', (req, res) => {
         .prepare('SELECT key, value, updated_at FROM user_settings WHERE user_id = ? ORDER BY key ASC')
         .all(req.userId)
     : rows;
-  const map = refreshedRows.reduce((acc, row) => {
-    if (!premiumActive && (TARGET_KEYS.has(row.key) || row.key.startsWith(TARGET_PREFIX))) {
-      return acc;
-    }
-    acc[row.key] = ENCRYPTED_SETTING_KEYS.has(row.key) ? decryptString(row.value) : row.value;
-    return acc;
-  }, {});
-  res.json(map);
+  res.json(buildSettingsResponse(refreshedRows, premiumActive));
 });
 
 router.put('/', (req, res) => {
@@ -84,13 +97,9 @@ router.put('/', (req, res) => {
 
   tx(payload);
   const rows = db
-    .prepare('SELECT key, value FROM user_settings WHERE user_id = ? ORDER BY key ASC')
+    .prepare('SELECT key, value, updated_at FROM user_settings WHERE user_id = ? ORDER BY key ASC')
     .all(req.userId);
-  const map = rows.reduce((acc, row) => {
-    acc[row.key] = ENCRYPTED_SETTING_KEYS.has(row.key) ? decryptString(row.value) : row.value;
-    return acc;
-  }, {});
-  res.json(map);
+  res.json(buildSettingsResponse(rows, premiumActive));
 });
 
 export default router;

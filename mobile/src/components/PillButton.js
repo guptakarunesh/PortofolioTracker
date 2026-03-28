@@ -17,11 +17,15 @@ export default function PillButton({
   const [buttonSize, setButtonSize] = React.useState({ width: 0, height: 44 });
   const isGhost = kind === 'ghost';
   const isStatus = kind === 'status';
-  const showGradient = !isGhost;
+  const isDanger = kind === 'danger';
+  const showGradient = !isGhost && !isStatus && !isDanger;
   const primaryTextColor = '#FFFFFF';
   const ghostTextColor = theme.text;
   const ghostBg = theme.cardAlt || theme.card;
   const ghostBorder = theme.border;
+  const dangerBg = theme.key === 'light' ? '#FEF2F2' : 'rgba(255,90,95,0.10)';
+  const dangerBorder = theme.key === 'light' ? '#FECACA' : 'rgba(255,90,95,0.22)';
+  const dangerTextColor = theme.key === 'light' ? theme.danger : '#FFB3B5';
   return (
     <Pressable
       onLayout={(event) => {
@@ -39,6 +43,8 @@ export default function PillButton({
         showGradient && styles.gradientBtn,
         isGhost && styles.ghost,
         isGhost && { borderColor: ghostBorder, backgroundColor: ghostBg },
+        isDanger && styles.danger,
+        isDanger && { borderColor: dangerBorder, backgroundColor: dangerBg },
         isStatus && styles.status,
         isStatus && { borderColor: theme.accent },
         style,
@@ -81,6 +87,8 @@ export default function PillButton({
           showGradient && { color: primaryTextColor },
           isGhost && styles.ghostText,
           isGhost && { color: ghostTextColor },
+          isDanger && styles.dangerText,
+          isDanger && { color: dangerTextColor },
           isStatus && styles.statusText,
           textStyle
         ]}>
@@ -134,6 +142,12 @@ const styles = StyleSheet.create({
   },
   ghostText: {
     color: '#FFFFFF',
+    textShadowColor: 'transparent'
+  },
+  danger: {
+    borderWidth: 1
+  },
+  dangerText: {
     textShadowColor: 'transparent'
   },
   status: {

@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
 import { decryptString, encryptString, hashLookup } from '../lib/crypto.js';
 import { normalizeMobile, isValidIndianMobile } from '../lib/auth.js';
-import { ensureSubscriptionForUser, isPremiumActive } from '../lib/subscription.js';
+import {
+  ensureStandaloneSubscriptionAfterFamilyLeave,
+  ensureSubscriptionForUser,
+  isPremiumActive
+} from '../lib/subscription.js';
 import { requireAccountAdmin } from '../middleware/accountAccess.js';
 
 const router = Router();
@@ -46,6 +50,22 @@ function memberRow(row) {
       email: decryptString(row.email || '')
     }
   };
+}
+
+function adminInitialsForOwner(ownerId) {
+  const owner = db.prepare('SELECT full_name FROM users WHERE id = ?').get(ownerId);
+  const names = [decryptString(owner?.full_name || '')];
+  const adminMembers = db
+    .prepare(`
+      SELECT u.full_name
+      FROM family_members fm
+      JOIN users u ON u.id = fm.member_user_id
+      WHERE fm.owner_user_id = ? AND fm.role = 'admin'
+      ORDER BY fm.created_at ASC
+    `)
+    .all(ownerId);
+  adminMembers.forEach((row) => names.push(decryptString(row?.full_name || '')));
+  return [...new Set(names.map((value) => initialsFromName(value)).filter(Boolean))];
 }
 
 function inviteRow(row) {
@@ -123,12 +143,53 @@ router.get('/access', (req, res) => {
   return res.json({
     role: req.accessRole,
     is_owner: req.isAccountOwner,
+    can_manage_subscription: Boolean(req.isAccountOwner || req.isAccountAdmin),
+    admin_initials: adminInitialsForOwner(ownerId),
     owner: owner
       ? {
           id: owner.id,
           full_name: initialsFromName(decryptString(owner.full_name)),
           mobile: decryptString(owner.mobile),
           email: decryptString(owner.email || '')
+        }
+      : null
+  });
+});
+
+router.post('/leave', (req, res) => {
+  if (req.isAccountOwner) {
+    return res.status(400).json({ error: 'owner_cannot_leave_family', message: 'Account owner cannot leave family access.' });
+  }
+
+  const membership = db
+    .prepare(`
+      SELECT id, owner_user_id, role
+      FROM family_members
+      WHERE owner_user_id = ? AND member_user_id = ?
+      LIMIT 1
+    `)
+    .get(req.accountOwnerId || req.accountUserId, req.userId);
+
+  if (!membership) {
+    return res.status(404).json({ error: 'family_membership_not_found', message: 'Family membership not found.' });
+  }
+
+  db.prepare('DELETE FROM family_members WHERE id = ?').run(membership.id);
+  logFamilyAudit(membership.owner_user_id, req.userId, 'member_left', {
+    member_user_id: req.userId,
+    role: membership.role
+  });
+
+  const subscription = ensureStandaloneSubscriptionAfterFamilyLeave(req.userId, nowIso());
+  return res.json({
+    ok: true,
+    subscription: subscription
+      ? {
+          plan: subscription.plan || 'none',
+          status: subscription.status || 'expired',
+          started_at: subscription.started_at || null,
+          current_period_end: subscription.current_period_end || null,
+          provider: subscription.provider || null
         }
       : null
   });

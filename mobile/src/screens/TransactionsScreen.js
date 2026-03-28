@@ -9,13 +9,16 @@ import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
 const TRANSACTION_CATEGORY_OPTIONS = [
-  'Banking & Deposits',
-  'Market Investments',
-  'Precious Metals',
-  'Real Estate',
+  'Cash & Bank Accounts',
+  'Market Stocks & RSUs',
   'Retirement Funds',
-  'Insurance (Cash Value)',
-  'Other Assets'
+  'Real Estate',
+  'Vehicles',
+  'Business Equity',
+  'Precious Metals',
+  'Jewelry & Watches',
+  'Collectibles',
+  'Insurance & Other'
 ];
 
 const TRANSACTION_TYPE_OPTIONS = [
@@ -107,7 +110,7 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.category === category && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.category === category && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, category }));
@@ -144,7 +147,7 @@ export default function TransactionsScreen({ hideSensitive = false, readOnly = f
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.tx_type === txType && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.tx_type === txType && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, tx_type: txType }));

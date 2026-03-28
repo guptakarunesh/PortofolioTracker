@@ -9,13 +9,16 @@ import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
 const CATEGORY_OPTIONS = [
-  'Banking & Deposits',
-  'Market Investments',
-  'Precious Metals',
-  'Real Estate',
+  'Cash & Bank Accounts',
+  'Market Stocks & RSUs',
   'Retirement Funds',
-  'Insurance (Cash Value)',
-  'Other Assets'
+  'Real Estate',
+  'Vehicles',
+  'Business Equity',
+  'Precious Metals',
+  'Jewelry & Watches',
+  'Collectibles',
+  'Insurance & Other'
 ];
 
 const REACH_OPTIONS = ['Branch', 'RM', 'Customer Care', 'Portal'];
@@ -23,7 +26,6 @@ const blankForm = {
   category: CATEGORY_OPTIONS[0],
   reach_via: REACH_OPTIONS[0],
   name: '',
-  relationship_mobile: '',
   account_ref: '',
   tracking_url: '',
   current_value: '',
@@ -78,7 +80,6 @@ export default function AssetsScreen({
   const [revealLoading, setRevealLoading] = useState(false);
   const [expandedAssetId, setExpandedAssetId] = useState(null);
   const nameInputRef = useRef(null);
-  const relationshipMobileInputRef = useRef(null);
   const trackingUrlInputRef = useRef(null);
   const currentValueInputRef = useRef(null);
   const investedAmountInputRef = useRef(null);
@@ -113,7 +114,6 @@ export default function AssetsScreen({
 
   const focusField = useCallback((key) => {
     if (key === 'name' && nameInputRef.current?.focus) nameInputRef.current.focus();
-    if (key === 'relationship_mobile' && relationshipMobileInputRef.current?.focus) relationshipMobileInputRef.current.focus();
     if (key === 'tracking_url' && trackingUrlInputRef.current?.focus) trackingUrlInputRef.current.focus();
     if (key === 'current_value' && currentValueInputRef.current?.focus) currentValueInputRef.current.focus();
     if (key === 'invested_amount' && investedAmountInputRef.current?.focus) investedAmountInputRef.current.focus();
@@ -155,7 +155,6 @@ export default function AssetsScreen({
       category: item.category || CATEGORY_OPTIONS[0],
       reach_via: item.reach_via || REACH_OPTIONS[0],
       name: item.institution || item.name || '',
-      relationship_mobile: '',
       account_ref: '',
       tracking_url: item.tracking_url || '',
       current_value: String(item.current_value ?? ''),
@@ -222,11 +221,6 @@ export default function AssetsScreen({
       registerError('name', t('Institution Name is required.'));
     }
 
-    const normalizedRelationship = String(form.relationship_mobile || '').replace(/\D/g, '').slice(0, 10);
-    if (form.relationship_mobile && normalizedRelationship.length !== 10) {
-      registerError('relationship_mobile', t('Enter a valid 10-digit mobile number.'));
-    }
-
     const trackingUrl = String(form.tracking_url || '').trim();
     if (trackingUrl) {
       const host = trackingUrl.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
@@ -270,7 +264,6 @@ export default function AssetsScreen({
     try {
       if (editingId) {
         const payload = { ...basePayload };
-        if (normalizedRelationship) payload.relationship_mobile = normalizedRelationship;
         if (normalizedAccountRef) payload.account_ref = normalizedAccountRef;
         if (normalizedNotes) payload.notes_for_family = normalizedNotes;
         await api.updateAsset(editingId, payload);
@@ -279,7 +272,6 @@ export default function AssetsScreen({
       } else {
         await api.createAsset({
           ...basePayload,
-          relationship_mobile: normalizedRelationship,
           account_ref: normalizedAccountRef,
           notes_for_family: normalizedNotes
         });
@@ -401,7 +393,7 @@ export default function AssetsScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.category === category && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.category === category && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, category }));
@@ -467,7 +459,7 @@ export default function AssetsScreen({
                 style={[
                   styles.dropdownItem,
                   { borderBottomColor: theme.border },
-                  form.reach_via === reachVia && { backgroundColor: isLight ? '#E7F1FF' : '#155EAF' }
+                  form.reach_via === reachVia && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                 ]}
                 onPress={() => {
                   setForm((f) => ({ ...f, reach_via: reachVia }));
@@ -486,42 +478,6 @@ export default function AssetsScreen({
               </Pressable>
             ))}
           </View>
-        ) : null}
-
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Relationship / Branch Manager Mobile')}</Text>
-        <HelpLine
-          theme={theme}
-          text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
-        />
-        <View
-          ref={relationshipMobileInputRef}
-          collapsable={false}
-          onLayout={(event) => setFieldOffset('relationship_mobile', event.nativeEvent.layout.y)}
-          style={[
-            styles.phoneWrap,
-            {
-              backgroundColor: readOnly ? theme.background : theme.inputBg,
-              borderColor: fieldErrors.relationship_mobile ? theme.danger : theme.border
-            }
-          ]}
-        >
-          <Text style={[styles.phonePrefix, { color: readOnly ? theme.muted : theme.text }]}>+91</Text>
-          <TextInput
-            style={[styles.phoneInput, { color: readOnly ? theme.muted : theme.inputText }]}
-            onFocus={() => scrollToField('relationship_mobile')}
-            value={form.relationship_mobile}
-            onChangeText={(v) => {
-              clearFieldError('relationship_mobile');
-              setForm((f) => ({ ...f, relationship_mobile: String(v || '').replace(/\D/g, '').slice(0, 10) }));
-            }}
-            placeholder={editingId ? t('Enter new mobile to replace existing') : t('10-digit mobile number')}
-            keyboardType="number-pad"
-            placeholderTextColor={theme.muted}
-            editable={!readOnly}
-          />
-        </View>
-        {!!fieldErrors.relationship_mobile ? (
-          <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.relationship_mobile}</Text>
         ) : null}
 
         <Text style={[styles.label, { color: theme.muted }]}>{t('Asset Account / Unique Number')}</Text>
@@ -712,7 +668,7 @@ export default function AssetsScreen({
             <Text style={[styles.planLimitText, { color: theme.warn }]}>
               {t('Basic plan: {used}/{total} assets used', { used: items.length, total: maxAssets })}
             </Text>
-            <PillButton label={t('Upgrade')} kind="ghost" onPress={onOpenSubscription} />
+            <PillButton label={t('Upgrade')} kind="primary" onPress={onOpenSubscription} />
           </View>
         ) : null}
         {visibleItems.map((item) => (
@@ -735,9 +691,6 @@ export default function AssetsScreen({
                 <View style={styles.metaBlock}>
                   {hasInfo(item.reach_via) ? (
                     <Text style={[styles.sub, { color: theme.muted }]}>{t('Reach via: {value}', { value: t(item.reach_via) })}</Text>
-                  ) : null}
-                  {hasInfo(item.relationship_mobile) ? (
-                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Relationship / Branch Manager: {value}', { value: item.relationship_mobile })}</Text>
                   ) : null}
                   {hasInfo(item.account_ref) ? (
                     <Text style={[styles.sub, { color: theme.muted }]}>{t('Account Ref: {value}', { value: item.account_ref })}</Text>
@@ -765,7 +718,7 @@ export default function AssetsScreen({
                   <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
                   <PillButton
                     label={t('Delete')}
-                    kind="ghost"
+                    kind="danger"
                     onPress={() => confirmRemove(item)}
                     disabled={readOnly}
                   />
@@ -784,14 +737,13 @@ export default function AssetsScreen({
             {revealData ? (
               <View style={styles.revealDetails}>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Identifier: {value}', { value: revealData.account_ref || '-' })}</Text>
-                <Text style={[styles.revealLine, { color: theme.text }]}>{t('Contact: {value}', { value: revealData.relationship_mobile || '-' })}</Text>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Tracking URL: {value}', { value: revealData.tracking_url || '-' })}</Text>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Notes: {value}', { value: revealData.notes || '-' })}</Text>
               </View>
             ) : (
               <>
                 <Text style={[styles.modalSub, { color: theme.muted }]}> 
-                  {t('Enter your security PIN to view full identifier, contact, and notes.')}
+                  {t('Enter your security PIN to view full identifier and notes.')}
                 </Text>
                 <TextInput
                   style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
@@ -883,13 +835,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#D9E2EF'
   },
   dropdownItemActive: {
-    backgroundColor: '#EEF7FF'
+    backgroundColor: '#E8F7F2'
   },
   dropdownItemText: {
     color: '#0B1F3A'
   },
   dropdownItemTextActive: {
-    color: '#0A84FF',
+    color: '#0E8A72',
     fontWeight: '700'
   },
   planLimitRow: {

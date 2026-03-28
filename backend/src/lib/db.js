@@ -429,6 +429,8 @@ CREATE TABLE IF NOT EXISTS reminders (
   amount REAL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'Pending',
   alert_days_before INTEGER DEFAULT 7,
+  repeat_type TEXT NOT NULL DEFAULT 'one_time',
+  repeat_every_days INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -783,6 +785,8 @@ ensureColumn('assets', 'user_id', 'INTEGER');
 ensureColumn('liabilities', 'user_id', 'INTEGER');
 ensureColumn('transactions', 'user_id', 'INTEGER');
 ensureColumn('reminders', 'user_id', 'INTEGER');
+ensureColumn('reminders', 'repeat_type', "TEXT DEFAULT 'one_time'");
+ensureColumn('reminders', 'repeat_every_days', 'INTEGER');
 ensureColumn('assets', 'tracking_url', 'TEXT');
 ensureColumn('assets', 'holder_type', "TEXT DEFAULT 'Self'");
 ensureColumn('assets', 'reach_via', "TEXT DEFAULT 'Branch'");
@@ -961,6 +965,117 @@ function backfillUpdatedByInitials() {
   tx();
 }
 
+const NEW_ASSET_CATEGORIES = new Set([
+  'Cash & Bank Accounts',
+  'Market Stocks & RSUs',
+  'Retirement Funds',
+  'Real Estate',
+  'Vehicles',
+  'Business Equity',
+  'Precious Metals',
+  'Jewelry & Watches',
+  'Collectibles',
+  'Insurance & Other'
+]);
+
+const LEGACY_TARGET_CATEGORY_MAP = {
+  'Banking & Deposits': 'Cash & Bank Accounts',
+  'Market Investments': 'Market Stocks & RSUs',
+  'Precious Metals': 'Precious Metals',
+  'Real Estate': 'Real Estate',
+  'Retirement Funds': 'Retirement Funds',
+  'Insurance (Cash Value)': 'Insurance & Other',
+  'Other Assets': 'Insurance & Other'
+};
+
+function targetKeyFromCategory(category = '') {
+  return `yearly_target_${String(category || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')}`;
+}
+
+function inferMigratedAssetCategory(row) {
+  const currentCategory = String(row?.category || '').trim();
+  if (!currentCategory) return currentCategory;
+  if (NEW_ASSET_CATEGORIES.has(currentCategory)) return currentCategory;
+
+  const subCategory = String(row?.sub_category || '').trim();
+  const name = decryptString(row?.name || '');
+  const institution = decryptString(row?.institution || '');
+  const notes = decryptString(row?.notes || '');
+  const lookup = [currentCategory, subCategory, name, institution, notes].join(' ').toLowerCase();
+
+  if (currentCategory === 'Banking & Deposits') {
+    if (/(epf|ppf|vpf|nps|retirement|provident)/.test(lookup)) return 'Retirement Funds';
+    return 'Cash & Bank Accounts';
+  }
+  if (currentCategory === 'Market Investments') {
+    return 'Market Stocks & RSUs';
+  }
+  if (currentCategory === 'Insurance (Cash Value)') {
+    return 'Insurance & Other';
+  }
+  if (currentCategory === 'Precious Metals') {
+    if (/(jewel|jewellery|jewelry|watch|gem|diamond|luxury)/.test(lookup)) return 'Jewelry & Watches';
+    return 'Precious Metals';
+  }
+  if (currentCategory === 'Other Assets') {
+    if (/(vehicle|car|boat|bike|scooter|motorcycle|truck|auto|powersport|atv|jet ski|yacht)/.test(lookup)) return 'Vehicles';
+    if (/(startup|private equity|business|company|shareholding|founder|partnership|ownership)/.test(lookup)) return 'Business Equity';
+    if (/(jewel|jewellery|jewelry|watch|gem|diamond|luxury)/.test(lookup)) return 'Jewelry & Watches';
+    if (/(collectible|collectibles|art|wine|memorabilia|trading card|stamp|rare coin)/.test(lookup)) return 'Collectibles';
+    return 'Insurance & Other';
+  }
+  return currentCategory;
+}
+
+function migrateAssetCategoriesAndTargets() {
+  const assetRows = db.prepare('SELECT id, category, sub_category, name, institution, notes FROM assets').all();
+  const updateAssetCategory = db.prepare('UPDATE assets SET category = ? WHERE id = ?');
+  const txAssets = db.transaction(() => {
+    assetRows.forEach((row) => {
+      const nextCategory = inferMigratedAssetCategory(row);
+      if (nextCategory && nextCategory !== row.category) {
+        updateAssetCategory.run(nextCategory, row.id);
+      }
+    });
+  });
+  txAssets();
+
+  const targetRows = db
+    .prepare("SELECT user_id, key, value FROM user_settings WHERE key LIKE 'yearly_target_%'")
+    .all();
+  const selectSetting = db.prepare('SELECT value FROM user_settings WHERE user_id = ? AND key = ? LIMIT 1');
+  const upsertSetting = db.prepare(`
+    INSERT INTO user_settings (user_id, key, value, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id, key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = excluded.updated_at
+  `);
+  const deleteSetting = db.prepare('DELETE FROM user_settings WHERE user_id = ? AND key = ?');
+
+  const txTargets = db.transaction(() => {
+    targetRows.forEach((row) => {
+      const legacyCategory = Object.keys(LEGACY_TARGET_CATEGORY_MAP).find(
+        (category) => targetKeyFromCategory(category) === row.key
+      );
+      if (!legacyCategory) return;
+      const mappedCategory = LEGACY_TARGET_CATEGORY_MAP[legacyCategory];
+      const nextKey = targetKeyFromCategory(mappedCategory);
+      if (nextKey === row.key) return;
+
+      const currentTargetValue = Number(selectSetting.get(row.user_id, nextKey)?.value || 0);
+      const legacyValue = Number(row.value || 0);
+      const mergedValue = String(currentTargetValue + legacyValue);
+      upsertSetting.run(row.user_id, nextKey, mergedValue, nowIso());
+      deleteSetting.run(row.user_id, row.key);
+    });
+  });
+  txTargets();
+}
+
 function seedSupportUsers() {
   const defaults = [
     { username: 'Admin1', password: 'Pass1' },
@@ -991,6 +1106,7 @@ migrateEncryptedColumns('transactions', 'id', ['asset_name', 'account_ref', 'rem
 migrateEncryptedColumns('reminders', 'id', ['description']);
 migrateEncryptedColumns('asset_trackers', 'id', ['asset_name', 'login_id', 'login_password', 'notes']);
 backfillUpdatedByInitials();
+migrateAssetCategoriesAndTargets();
 seedSupportUsers();
 }
 

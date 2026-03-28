@@ -169,9 +169,9 @@ function applySubscription({
   return { plan, current_period_end: validUntil, starts_at: startAt, billed_amount_inr: billedAmount, billed_period: billedPeriod };
 }
 
-function requireOwner(req, res, next) {
-  if (req.isAccountOwner === false) {
-    return res.status(403).json({ error: 'forbidden', message: 'Account owner required' });
+function requireSubscriptionManager(req, res, next) {
+  if (req.isAccountOwner === false && req.isAccountAdmin !== true) {
+    return res.status(403).json({ error: 'forbidden', message: 'Admin access required' });
   }
   return next();
 }
@@ -524,11 +524,11 @@ router.get('/history/:id/receipt', (req, res) => {
   return res.json(buildGstReceiptRow({ row, user }));
 });
 
-router.get('/google-play/config', requireOwner, (_req, res) => {
+router.get('/google-play/config', requireSubscriptionManager, (_req, res) => {
   return res.json(getGooglePlayPublicConfig());
 });
 
-router.post('/google-play/verify', requireOwner, async (req, res) => {
+router.post('/google-play/verify', requireSubscriptionManager, async (req, res) => {
   const userId = req.accountUserId || req.userId;
   const { plan, product_id: productIdRaw, purchase_token: purchaseToken } = req.body || {};
   const productId = String(productIdRaw || resolveGooglePlayProductIdForPlan(plan) || '').trim();
@@ -572,7 +572,7 @@ router.post('/google-play/verify', requireOwner, async (req, res) => {
   }
 });
 
-router.post('/google-play/sync', requireOwner, async (req, res) => {
+router.post('/google-play/sync', requireSubscriptionManager, async (req, res) => {
   const userId = req.accountUserId || req.userId;
   const purchaseToken = String(req.body?.purchase_token || '').trim();
   const existingRows = purchaseToken ? [getStoreReceiptByToken.get(purchaseToken, purchaseToken)].filter(Boolean) : getUserStoreReceipts.all(userId);
@@ -610,7 +610,7 @@ router.post('/google-play/sync', requireOwner, async (req, res) => {
   return res.json({ ok: true, synced });
 });
 
-router.post('/google-play/cancel', requireOwner, async (req, res) => {
+router.post('/google-play/cancel', requireSubscriptionManager, async (req, res) => {
   const userId = req.accountUserId || req.userId;
   const receipt = getLatestStoreReceiptForUser.get(userId);
   if (!receipt?.purchase_token || !receipt?.product_id) {
@@ -637,7 +637,7 @@ router.post('/google-play/cancel', requireOwner, async (req, res) => {
   }
 });
 
-router.post('/google-play/revoke', requireOwner, async (req, res) => {
+router.post('/google-play/revoke', requireSubscriptionManager, async (req, res) => {
   const userId = req.accountUserId || req.userId;
   const receipt = getLatestStoreReceiptForUser.get(userId);
   if (!receipt?.purchase_token || !receipt?.product_id) {
@@ -697,7 +697,7 @@ router.post('/google-play/notifications', async (req, res) => {
   }
 });
 
-router.post('/purchase', requireOwner, (req, res) => {
+router.post('/purchase', requireSubscriptionManager, (req, res) => {
   const { plan } = req.body || {};
   try {
     const terms = evaluatePlanPurchase({
@@ -725,7 +725,7 @@ router.post('/purchase', requireOwner, (req, res) => {
   }
 });
 
-router.post('/checkout', requireOwner, (req, res) => {
+router.post('/checkout', requireSubscriptionManager, (req, res) => {
   const { plan, provider } = req.body || {};
   const config = PLAN_CONFIG[plan];
   if (!config) {
@@ -754,7 +754,7 @@ router.post('/checkout', requireOwner, (req, res) => {
   }
 });
 
-router.post('/cashfree/order', requireOwner, async (req, res) => {
+router.post('/cashfree/order', requireSubscriptionManager, async (req, res) => {
   const { plan, app_return_url: appReturnUrlRaw } = req.body || {};
   const config = PLAN_CONFIG[plan];
   if (!config) {
@@ -835,7 +835,7 @@ router.post('/cashfree/order', requireOwner, async (req, res) => {
   }
 });
 
-router.post('/cashfree/verify', requireOwner, async (req, res) => {
+router.post('/cashfree/verify', requireSubscriptionManager, async (req, res) => {
   const { plan, order_id: orderId } = req.body || {};
   if (!plan || !orderId) {
     return res.status(400).json({ error: 'missing_fields', message: 'plan and order_id are required.' });
@@ -893,7 +893,7 @@ router.get('/cashfree/return', (_req, res) => {
     .send('<html><body style="font-family: sans-serif; padding:16px;">Payment response received. You can return to the app and tap Verify Payment.</body></html>');
 });
 
-router.post('/razorpay/order', requireOwner, async (req, res) => {
+router.post('/razorpay/order', requireSubscriptionManager, async (req, res) => {
   const { plan } = req.body || {};
   const config = PLAN_CONFIG[plan];
   if (!config) {
@@ -921,7 +921,7 @@ router.post('/razorpay/order', requireOwner, async (req, res) => {
   }
 });
 
-router.post('/razorpay/verify', requireOwner, (req, res) => {
+router.post('/razorpay/verify', requireSubscriptionManager, (req, res) => {
   const { plan, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
   if (!plan || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
     return res.status(400).json({ error: 'missing_fields' });

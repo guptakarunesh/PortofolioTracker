@@ -36,6 +36,29 @@ function formatInr(value) {
   }).format(Number(value || 0));
 }
 
+function normalizeCurrency(value = '') {
+  const currency = String(value || '').trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(currency) ? currency : 'INR';
+}
+
+function formatMoney(value, currency = 'INR', fxRate = 1) {
+  const amountInr = Number(value || 0);
+  if (!Number.isFinite(amountInr)) return '-';
+  const normalizedCurrency = normalizeCurrency(currency);
+  const multiplier =
+    normalizedCurrency === 'INR'
+      ? 1
+      : (Number.isFinite(Number(fxRate)) && Number(fxRate) > 0 ? Number(fxRate) : 1);
+  const amount = amountInr * multiplier;
+  const locale = normalizedCurrency === 'INR' ? 'en-IN' : 'en-US';
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency: normalizedCurrency,
+    currencyDisplay: 'narrowSymbol',
+    maximumFractionDigits: 0
+  }).format(amount);
+}
+
 function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value || '-');
@@ -195,6 +218,7 @@ function buildSnapshotPdf(report) {
   pushText(pages, 'Worthio Portfolio Snapshot', { font: FONT_BOLD, fontSize: 20, color: '#0B1F3A', leading: 24 });
   pushText(pages, `Report date: ${report.reportDate}`, { color: '#334155', leading: 16 });
   pushText(pages, `Generated: ${formatDateTime(report.generatedAt)}`, { color: '#334155', leading: 16 });
+  pushText(pages, `Display currency: ${report.displayCurrency}`, { color: '#334155', leading: 16 });
   pushText(pages, `Account ID: ${report.userId}`, { color: '#64748B', leading: 16 });
   pushSpacer(pages, 4);
   pushDivider(pages, '#CBD5E1');
@@ -202,9 +226,9 @@ function buildSnapshotPdf(report) {
   pushText(pages, 'Summary', { font: FONT_BOLD, fontSize: 14, color: '#155EAF', leading: 18 });
   pushText(pages, `Assets tracked: ${report.assets.length}`, { color: '#0F172A' });
   pushText(pages, `Liabilities tracked: ${report.liabilities.length}`, { color: '#0F172A' });
-  pushText(pages, `Total assets: ${formatInr(report.totalAssets)}`, { color: '#0F172A' });
-  pushText(pages, `Total liabilities: ${formatInr(report.totalLiabilities)}`, { color: '#0F172A' });
-  pushText(pages, `Net worth: ${formatInr(report.netWorth)}`, { font: FONT_BOLD, color: '#0B1F3A', leading: 18 });
+  pushText(pages, `Total assets: ${formatMoney(report.totalAssets, report.displayCurrency, report.displayFxRate)}`, { color: '#0F172A' });
+  pushText(pages, `Total liabilities: ${formatMoney(report.totalLiabilities, report.displayCurrency, report.displayFxRate)}`, { color: '#0F172A' });
+  pushText(pages, `Net worth: ${formatMoney(report.netWorth, report.displayCurrency, report.displayFxRate)}`, { font: FONT_BOLD, color: '#0B1F3A', leading: 18 });
 
   pushSpacer(pages, 6);
   pushDivider(pages);
@@ -212,7 +236,7 @@ function buildSnapshotPdf(report) {
   pushText(pages, 'Asset Allocation Summary', { font: FONT_BOLD, fontSize: 14, color: '#155EAF', leading: 18 });
   if (groupedAssets.length) {
     groupedAssets.forEach((row) => {
-      pushText(pages, `${row.category}: ${row.count} item(s) • ${formatInr(row.currentValue)}`, { color: '#0F172A' });
+      pushText(pages, `${row.category}: ${row.count} item(s) • ${formatMoney(row.currentValue, report.displayCurrency, report.displayFxRate)}`, { color: '#0F172A' });
     });
   } else {
     pushText(pages, 'No assets recorded yet.', { color: '#64748B' });
@@ -231,7 +255,7 @@ function buildSnapshotPdf(report) {
         leading: 16
       });
       pushText(pages, `Category: ${normalizeText(row.category)}`, { color: '#334155', indent: 14 });
-      pushText(pages, `Current value: ${formatInr(row.current_value)} • Invested value: ${formatInr(row.invested_amount)}`, {
+      pushText(pages, `Current value: ${formatMoney(row.current_value, report.displayCurrency, report.displayFxRate)} • Invested value: ${formatMoney(row.invested_amount, report.displayCurrency, report.displayFxRate)}`, {
         color: '#334155',
         indent: 14
       });
@@ -255,7 +279,7 @@ function buildSnapshotPdf(report) {
         leading: 16
       });
       pushText(pages, `Type: ${normalizeText(row.loan_type)}`, { color: '#334155', indent: 14 });
-      pushText(pages, `Outstanding amount: ${formatInr(row.outstanding_amount)}`, { color: '#334155', indent: 14 });
+      pushText(pages, `Outstanding amount: ${formatMoney(row.outstanding_amount, report.displayCurrency, report.displayFxRate)}`, { color: '#334155', indent: 14 });
       pushText(pages, `Reference: ${normalizeText(row.account_ref)}`, { color: '#334155', indent: 14 });
       pushSpacer(pages, 6);
     });
@@ -293,7 +317,25 @@ function resolveAccountUserId(req) {
   return { userId: context.accountUserId };
 }
 
-function buildSnapshotReport(userId, reportDate) {
+function resolveSnapshotDisplayOptions(req, userId) {
+  const requestedCurrency = normalizeCurrency(req.query.currency || '');
+  const requestedFxRate = Number(req.query.fx_rate || 0);
+  const storedCurrencyRow = db
+    .prepare('SELECT value FROM user_settings WHERE user_id = ? AND key = ?')
+    .get(userId, 'preferred_currency');
+  const storedCurrency = normalizeCurrency(storedCurrencyRow?.value || '');
+  const displayCurrency = requestedCurrency !== 'INR' ? requestedCurrency : storedCurrency;
+  const displayFxRate =
+    displayCurrency === 'INR'
+      ? 1
+      : (Number.isFinite(requestedFxRate) && requestedFxRate > 0 ? requestedFxRate : 1);
+  return {
+    displayCurrency: normalizeCurrency(displayCurrency || 'INR'),
+    displayFxRate
+  };
+}
+
+function buildSnapshotReport(userId, reportDate, options = {}) {
   const assets = db
     .prepare(`
       SELECT category, name, account_ref, tracking_url, current_value, invested_amount
@@ -304,6 +346,7 @@ function buildSnapshotReport(userId, reportDate) {
     .all(userId)
     .map((row) => ({
       ...row,
+      name: decryptString(row.name),
       account_ref: decryptString(row.account_ref)
     }));
 
@@ -317,6 +360,7 @@ function buildSnapshotReport(userId, reportDate) {
     .all(userId)
     .map((row) => ({
       ...row,
+      lender: decryptString(row.lender),
       account_ref: decryptString(row.account_ref)
     }));
 
@@ -327,6 +371,8 @@ function buildSnapshotReport(userId, reportDate) {
     userId,
     reportDate,
     generatedAt: new Date().toISOString(),
+    displayCurrency: normalizeCurrency(options.displayCurrency || 'INR'),
+    displayFxRate: Number(options.displayFxRate || 1) > 0 ? Number(options.displayFxRate) : 1,
     assets,
     liabilities,
     totalAssets,
@@ -347,7 +393,8 @@ router.get('/snapshot', (req, res) => {
   if (resolved.error === 'premium_required') return sendPremiumRequired(res);
 
   const reportDate = String(req.query.date || '').trim() || new Date().toISOString().slice(0, 10);
-  const report = buildSnapshotReport(resolved.userId, reportDate);
+  const displayOptions = resolveSnapshotDisplayOptions(req, resolved.userId);
+  const report = buildSnapshotReport(resolved.userId, reportDate, displayOptions);
   const pdf = buildSnapshotPdf(report);
   const filename = `worthio-portfolio-snapshot-${reportDate}.pdf`;
 
@@ -363,7 +410,8 @@ router.get('/snapshot/file', (req, res) => {
   if (resolved.error === 'premium_required') return sendPremiumRequired(res);
 
   const reportDate = String(req.query.date || '').trim() || new Date().toISOString().slice(0, 10);
-  const report = buildSnapshotReport(resolved.userId, reportDate);
+  const displayOptions = resolveSnapshotDisplayOptions(req, resolved.userId);
+  const report = buildSnapshotReport(resolved.userId, reportDate, displayOptions);
   const pdf = buildSnapshotPdf(report);
   const filename = `worthio-portfolio-snapshot-${reportDate}.pdf`;
 

@@ -26,6 +26,7 @@ export default function PillButton({
   const dangerBg = theme.key === 'light' ? '#FEF2F2' : 'rgba(255,90,95,0.10)';
   const dangerBorder = theme.key === 'light' ? '#FECACA' : 'rgba(255,90,95,0.22)';
   const dangerTextColor = theme.key === 'light' ? theme.danger : '#FFB3B5';
+  const crispDarkText = theme.key === 'light' && (isGhost || isDanger);
   return (
     <Pressable
       onLayout={(event) => {
@@ -90,6 +91,7 @@ export default function PillButton({
           isDanger && styles.dangerText,
           isDanger && { color: dangerTextColor },
           isStatus && styles.statusText,
+          crispDarkText && styles.crispText,
           textStyle
         ]}>
           {label}
@@ -142,13 +144,17 @@ const styles = StyleSheet.create({
   },
   ghostText: {
     color: '#FFFFFF',
-    textShadowColor: 'transparent'
+    textShadowColor: 'transparent',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 0
   },
   danger: {
     borderWidth: 1
   },
   dangerText: {
-    textShadowColor: 'transparent'
+    textShadowColor: 'transparent',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 0
   },
   status: {
     borderWidth: 2
@@ -156,6 +162,14 @@ const styles = StyleSheet.create({
   statusText: {
     color: '#fff',
     letterSpacing: 0.3
+  },
+  crispText: {
+    fontWeight: '700',
+    letterSpacing: 0.1,
+    textShadowColor: 'transparent',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 0,
+    includeFontPadding: false
   },
   pressed: {
     transform: [{ scale: 0.98 }],

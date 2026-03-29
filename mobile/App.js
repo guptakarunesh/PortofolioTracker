@@ -34,6 +34,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import FamilyScreen from './src/screens/FamilyScreen';
+import WorthioSplash from './src/screens/LaunchScreen';
 import OnboardingModal from './src/components/OnboardingModal';
 import PillButton from './src/components/PillButton';
 import { api, setAuthToken } from './src/api/client';
@@ -443,6 +444,7 @@ function ScreenRenderer({
           premiumActive={premiumActive}
           onOpenSubscription={onOpenSubscription}
           readOnly={readOnly}
+          preferredCurrency={preferredCurrency}
           onRequestScrollTo={onRequestScrollTo}
         />
       );
@@ -466,6 +468,7 @@ function ScreenRenderer({
           onGetOnboardingZoomStyle={onGetOnboardingZoomStyle}
           premiumActive={premiumActive}
           preferredCurrency={preferredCurrency}
+          fxRates={fxRates}
           onThemeChange={onThemeChange}
           themeKey={themeKey}
           onRequestScrollTo={onRequestScrollTo}
@@ -509,6 +512,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [otpFlowProvider, setOtpFlowProvider] = useState(null);
   const [sessionRestoring, setSessionRestoring] = useState(true);
+  const [launchSplashVisible, setLaunchSplashVisible] = useState(true);
   const [authIntroSeen, setAuthIntroSeen] = useState(false);
   const [authInitialExposureActive, setAuthInitialExposureActive] = useState(false);
   const [lastKnownUserMobile, setLastKnownUserMobile] = useState('');
@@ -529,6 +533,10 @@ export default function App() {
   const [supportChatLoading, setSupportChatLoading] = useState(false);
   const [supportHistoryLoading, setSupportHistoryLoading] = useState(false);
   const [supportChatMessages, setSupportChatMessages] = useState([]);
+  const [recentActivityVisible, setRecentActivityVisible] = useState(false);
+  const [recentActivityLoading, setRecentActivityLoading] = useState(false);
+  const [recentActivityError, setRecentActivityError] = useState('');
+  const [recentActivityItems, setRecentActivityItems] = useState([]);
   const [premiumPrompt, setPremiumPrompt] = useState(null);
   const [onboardingVisible, setOnboardingVisible] = useState(false);
   const [onboardingIndex, setOnboardingIndex] = useState(0);
@@ -1683,7 +1691,11 @@ export default function App() {
     setPinSetupInput('');
     setPinSetupError('');
   };
-  const roleLabel = String(accessRole || 'admin').toLowerCase() === 'admin' ? t('Admin') : t('Family');
+  const roleLabel = isAccountOwner
+    ? t('Owner Account')
+    : String(accessRole || 'read').toLowerCase() === 'admin'
+      ? t('Family Admin')
+      : t('Family Viewer');
   const accountShortName = String(user?.full_name || '')
     .trim()
     .split(/\s+/)
@@ -1734,6 +1746,46 @@ export default function App() {
     scroller.scrollTo({ y, animated: true });
   }, []);
 
+  const formatRecentActivityDate = React.useCallback((value = '') => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || '-');
+    return date.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  }, []);
+
+  const formatRecentActivityLine = React.useCallback((item = {}) => {
+    const initials = String(item?.actor_initials || 'NA').trim() || 'NA';
+    const label = String(item?.label || '').trim() || t('Account');
+    switch (String(item?.kind || '').trim()) {
+      case 'asset_updated':
+        return t('{initials} updated asset {name}', { initials, name: label });
+      case 'liability_updated':
+        return t('{initials} updated liability {name}', { initials, name: label });
+      case 'family_invite_created':
+        return t('{initials} sent a family invite', { initials });
+      case 'family_invite_accepted':
+        return t('{initials} accepted a family invite', { initials });
+      case 'family_invite_canceled':
+        return t('{initials} canceled a family invite', { initials });
+      case 'family_invite_resent':
+        return t('{initials} resent a family invite', { initials });
+      case 'family_member_added':
+        return t('{initials} added a family member', { initials });
+      case 'family_member_removed':
+        return t('{initials} removed a family member', { initials });
+      case 'family_role_updated':
+        return t('{initials} updated a family role', { initials });
+      case 'family_member_left':
+        return t('{initials} left family access', { initials });
+      default:
+        return t('{initials} updated family access', { initials });
+    }
+  }, [t]);
+
   useEffect(() => {
     if (!user || onboardingVisible || activeTab === 'subscription') return;
     const timer = setTimeout(() => {
@@ -1773,8 +1825,28 @@ export default function App() {
     SecureStore.setItemAsync(AUTH_INTRO_SEEN_KEY, '1').catch(() => {});
   }, [authIntroSeen, sessionRestoring, user]);
 
+  useEffect(() => {
+    if (!user || !launchSplashVisible) return;
+    setLaunchSplashVisible(false);
+  }, [launchSplashVisible, user]);
+
   const clearAuthError = React.useCallback(() => {
     setAuthError('');
+  }, []);
+
+  const openRecentActivity = React.useCallback(async () => {
+    setRecentActivityVisible(true);
+    setRecentActivityLoading(true);
+    setRecentActivityError('');
+    try {
+      const data = await api.getRecentActivity();
+      setRecentActivityItems(Array.isArray(data?.items) ? data.items : []);
+    } catch (e) {
+      setRecentActivityItems([]);
+      setRecentActivityError(String(e?.message || e));
+    } finally {
+      setRecentActivityLoading(false);
+    }
   }, []);
 
   const authLayoutVariant = authInitialExposureActive
@@ -1836,6 +1908,14 @@ export default function App() {
             </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      {launchSplashVisible ? (
+        <WorthioSplash
+          dark
+          onFinish={() => {
+            setLaunchSplashVisible(false);
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   ) : (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
@@ -1873,6 +1953,11 @@ export default function App() {
                     {accountShortName}
                   </Text>
                   <Text style={[styles.accountRoleText, { color: theme.info }]}>{roleLabel}</Text>
+                  <Pressable onPress={() => openRecentActivity().catch(() => {})} hitSlop={8}>
+                    <Text style={[styles.accountActivityLink, { color: theme.accent }]} numberOfLines={1}>
+                      {t('Recent Activity')}
+                    </Text>
+                  </Pressable>
                   {accountExpiryNotice ? (
                     <Text style={[styles.accountExpiryNotice, { color: theme.warn }]} numberOfLines={1}>
                       {accountExpiryNotice}
@@ -1882,8 +1967,19 @@ export default function App() {
                 <Text style={[styles.accountChevron, { color: theme.info }]}>{'\u203A'}</Text>
               </AnimatedPressable>
               <View style={styles.headerBrandActions}>
-                <View style={[styles.headerLogoBadge, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-                  <Image source={HEADER_BRAND_ICON} style={styles.headerLogoCompact} resizeMode="cover" />
+                <View
+                  style={[
+                    styles.headerLogoBadge,
+                    isDarkTheme
+                      ? { backgroundColor: theme.inputBg, borderColor: theme.border }
+                      : styles.headerLogoBadgeLight
+                  ]}
+                >
+                  <Image
+                    source={HEADER_BRAND_ICON}
+                    style={[styles.headerLogoCompact, !isDarkTheme && styles.headerLogoCompactLight]}
+                    resizeMode="contain"
+                  />
                 </View>
                 <Pressable
                   style={[
@@ -2247,7 +2343,19 @@ export default function App() {
                         <>
                           {personal.length ? (
                             <>
-                              <Text style={[styles.aiSectionTitle, { color: theme.text }]}>{t('What You May Want To Review')}</Text>
+                              <View
+                                style={[
+                                  styles.aiSectionHeader,
+                                  {
+                                    backgroundColor: isDarkTheme ? 'rgba(36,178,214,0.16)' : '#E8F4FF',
+                                    borderColor: isDarkTheme ? 'rgba(36,178,214,0.28)' : '#C9E0FF'
+                                  }
+                                ]}
+                              >
+                                <Text style={[styles.aiSectionTitle, { color: isDarkTheme ? '#8FDEEF' : '#1B5FB8' }]}>
+                                  {t('What You May Want To Review')}
+                                </Text>
+                              </View>
                               {personal.slice(0, 4).map((line, idx) => (
                                 <Text key={`p-${idx}-${String(line).slice(0, 20)}`} style={[styles.aiBulletText, { color: theme.text }]}>
                                   • {String(line)}
@@ -2257,9 +2365,20 @@ export default function App() {
                           ) : null}
                           {news.length ? (
                             <>
-                              <Text style={[styles.aiSectionTitle, { color: theme.text, marginTop: 10 }]}>
-                                {t('News & Market Context In Simple Terms')}
-                              </Text>
+                              <View
+                                style={[
+                                  styles.aiSectionHeader,
+                                  styles.aiSectionHeaderSpaced,
+                                  {
+                                    backgroundColor: isDarkTheme ? 'rgba(22,170,138,0.16)' : '#EAF8F3',
+                                    borderColor: isDarkTheme ? 'rgba(22,170,138,0.28)' : '#BFE9D9'
+                                  }
+                                ]}
+                              >
+                                <Text style={[styles.aiSectionTitle, { color: isDarkTheme ? '#7CE5C6' : '#0E8A72' }]}>
+                                  {t('News & Market Context In Simple Terms')}
+                                </Text>
+                              </View>
                               {news.slice(0, 5).map((line, idx) => (
                                 <Text key={`n-${idx}-${String(line).slice(0, 20)}`} style={[styles.aiBulletText, { color: theme.text }]}>
                                   • {String(line)}
@@ -2444,6 +2563,37 @@ export default function App() {
               )}
             </SafeAreaView>
           ) : null}
+          <Modal visible={recentActivityVisible} transparent animationType="fade" onRequestClose={() => setRecentActivityVisible(false)}>
+            <View style={styles.modalBackdrop}>
+              <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setRecentActivityVisible(false)} />
+              <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{t('Recent Activity')}</Text>
+                <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollBody}>
+                  {recentActivityLoading ? (
+                    <Text style={[styles.modalSub, { color: theme.muted }]}>{t('Loading recent activity...')}</Text>
+                  ) : recentActivityError ? (
+                    <Text style={[styles.authError, { color: theme.danger }]}>{recentActivityError}</Text>
+                  ) : recentActivityItems.length ? (
+                    recentActivityItems.map((item) => (
+                      <View key={item.id} style={[styles.recentActivityRow, { borderBottomColor: theme.border }]}>
+                        <Text style={[styles.recentActivityText, { color: theme.text }]}>
+                          {formatRecentActivityLine(item)}
+                        </Text>
+                        <Text style={[styles.recentActivityDate, { color: theme.muted }]}>
+                          {formatRecentActivityDate(item.created_at)}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={[styles.modalSub, { color: theme.muted }]}>{t('No recent activity yet.')}</Text>
+                  )}
+                </ScrollView>
+                <View style={styles.modalActions}>
+                  <PillButton label={t('Close')} kind="ghost" onPress={() => setRecentActivityVisible(false)} />
+                </View>
+              </View>
+            </View>
+          </Modal>
           <OnboardingModal
             visible={onboardingVisible}
             steps={onboardingSteps}
@@ -2821,9 +2971,18 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     overflow: 'hidden'
   },
+  headerLogoBadgeLight: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    overflow: 'visible'
+  },
   headerLogoCompact: {
     width: 46,
     height: 46
+  },
+  headerLogoCompactLight: {
+    width: 50,
+    height: 50
   },
   headerLogoutButton: {
     width: 44,
@@ -2899,6 +3058,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.3,
     textTransform: 'uppercase'
+  },
+  accountActivityLink: {
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.1,
+    textDecorationLine: 'underline'
   },
   accountExpiryNotice: {
     marginTop: 2,
@@ -3044,6 +3210,16 @@ const styles = StyleSheet.create({
   aiBullets: {
     marginTop: 10,
     gap: 8
+  },
+  aiSectionHeader: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  aiSectionHeaderSpaced: {
+    marginTop: 10
   },
   aiSectionTitle: {
     fontSize: 12,
@@ -3205,6 +3381,19 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 8,
     marginTop: 10
+  },
+  recentActivityRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1
+  },
+  recentActivityText: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18
+  },
+  recentActivityDate: {
+    marginTop: 4,
+    fontSize: 11
   },
   modalBtn: {
     borderRadius: 16,

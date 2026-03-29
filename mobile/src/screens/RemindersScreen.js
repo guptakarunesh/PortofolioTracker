@@ -383,44 +383,85 @@ export default function RemindersScreen({
       <SectionCard title={t('Upcoming Reminders')}>
         {items.length ? items.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.name, { color: theme.text }]}>{item.description}</Text>
-              <Text style={[styles.sub, { color: theme.muted }]}>{t('{category} · {date}', { category: t(item.category), date: formatDate(item.due_date) })}</Text>
-              <Text style={[styles.sub, { color: theme.muted }]}>{t('Repeats: {value}', { value: repeatLabel(item.repeat_type, item.repeat_every_days, t) })}</Text>
-              <Text style={[styles.sub, { color: theme.muted }]}>{t('Status: {value}', { value: t(item.status) })}</Text>
-            </View>
-            <View style={styles.right}>
-              <Text style={[styles.amount, { color: theme.text }]}>{displayAmount(item.amount, hideSensitive, preferredCurrency, fxRates)}</Text>
-              {item.status !== 'Completed' ? (
-                <>
-                  <PillButton
-                    label={t('Edit')}
-                    kind="ghost"
-                    onPress={() => startEdit(item)}
-                  />
-                  <PillButton
-                    label={t('Snooze +1d')}
-                    kind="ghost"
-                    onPress={() =>
-                      snoozeReminder(item.id).catch((e) => {
-                        setMessage(e.message);
-                        setMessageKind('error');
-                      })
+            <View style={styles.rowHeader}>
+              <View style={styles.rowHeaderText}>
+                <Text style={[styles.name, { color: theme.text }]}>{item.description}</Text>
+                <Text style={[styles.sub, { color: theme.muted }]}>
+                  {t('{category} · {date}', { category: t(item.category), date: formatDate(item.due_date) })}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.statusBadge,
+                  {
+                    backgroundColor:
+                      item.status === 'Completed'
+                        ? (isLight ? '#E8F7F2' : 'rgba(22,170,138,0.18)')
+                        : (isLight ? '#EEF5FF' : 'rgba(36,178,214,0.18)'),
+                    borderColor:
+                      item.status === 'Completed'
+                        ? (isLight ? '#B7E7DA' : 'rgba(22,170,138,0.3)')
+                        : (isLight ? '#CFE3FF' : 'rgba(36,178,214,0.3)')
+                  }
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusBadgeText,
+                    {
+                      color:
+                        item.status === 'Completed'
+                          ? (isLight ? '#0E8A72' : '#7CE5C6')
+                          : (isLight ? '#1B6FCC' : '#8FDEEF')
                     }
-                  />
-                  <PillButton
-                    label={t('Done')}
-                    kind="ghost"
-                    onPress={() =>
-                      markComplete(item.id).catch((e) => {
-                        setMessage(e.message);
-                        setMessageKind('error');
-                      })
-                    }
-                  />
-                </>
-              ) : null}
+                  ]}
+                >
+                  {t(item.status)}
+                </Text>
+              </View>
             </View>
+            <View style={styles.rowMeta}>
+              <Text style={[styles.sub, { color: theme.muted }]}>
+                {t('Repeats: {value}', { value: repeatLabel(item.repeat_type, item.repeat_every_days, t) })}
+              </Text>
+              <Text style={[styles.amount, { color: theme.text }]}>
+                {displayAmount(item.amount, hideSensitive, preferredCurrency, fxRates)}
+              </Text>
+            </View>
+            {item.status !== 'Completed' ? (
+              <View style={styles.rowActions}>
+                <PillButton
+                  label={t('Edit')}
+                  kind="ghost"
+                  style={styles.rowActionButton}
+                  textStyle={styles.rowActionText}
+                  onPress={() => startEdit(item)}
+                />
+                <PillButton
+                  label={t('Snooze +1d')}
+                  kind="ghost"
+                  style={styles.rowActionButton}
+                  textStyle={styles.rowActionText}
+                  onPress={() =>
+                    snoozeReminder(item.id).catch((e) => {
+                      setMessage(e.message);
+                      setMessageKind('error');
+                    })
+                  }
+                />
+                <PillButton
+                  label={t('Done')}
+                  style={styles.rowActionButtonPrimary}
+                  textStyle={styles.rowActionText}
+                  onPress={() =>
+                    markComplete(item.id).catch((e) => {
+                      setMessage(e.message);
+                      setMessageKind('error');
+                    })
+                  }
+                />
+              </View>
+            ) : null}
           </View>
         )) : <Text style={[styles.sub, { color: theme.muted }]}>{t('No active reminders yet.')}</Text>}
       </SectionCard>
@@ -492,19 +533,72 @@ const styles = StyleSheet.create({
     marginBottom: 12
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: '#D9E2EF',
-    borderRadius: 12,
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
-    marginBottom: 8
+    marginBottom: 10,
+    gap: 10,
+    shadowColor: '#0B1F3A',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2
   },
-  right: { gap: 8, alignItems: 'flex-end' },
-  name: { color: '#0B1F3A', fontWeight: '800' },
+  rowHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  rowHeaderText: {
+    flex: 1,
+    gap: 4
+  },
+  rowMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap'
+  },
+  rowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap'
+  },
+  rowActionButton: {
+    minHeight: 38,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 14
+  },
+  rowActionButtonPrimary: {
+    minHeight: 38,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    borderRadius: 14
+  },
+  rowActionText: {
+    fontSize: 13,
+    lineHeight: 17
+  },
+  statusBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2
+  },
+  name: { color: '#0B1F3A', fontWeight: '800', fontSize: 16, lineHeight: 21 },
   sub: { color: '#64748B' },
-  amount: { color: '#0B1F3A', fontWeight: '800' },
+  amount: { color: '#0B1F3A', fontWeight: '800', fontSize: 15 },
   message: { color: '#0B1F3A', marginBottom: 20, fontWeight: '600' }
 });

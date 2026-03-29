@@ -52,6 +52,7 @@ export default function FamilyScreen({
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const isDark = theme.key === 'worthio' || theme.key === 'dark';
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [audit, setAudit] = useState([]);
@@ -201,6 +202,25 @@ export default function FamilyScreen({
 
   const filteredInvites =
     inviteFilter === 'all' ? invites : invites.filter((row) => row.status === inviteFilter);
+  const selectorButtonStyle = useCallback(
+    (selected) => [
+      styles.selectorButton,
+      {
+        borderColor: selected ? theme.accent : theme.border,
+        backgroundColor: selected
+          ? (isDark ? 'rgba(36,178,214,0.18)' : theme.accentSoft)
+          : (isDark ? 'rgba(255,255,255,0.06)' : (theme.cardAlt || '#F8FAFC'))
+      }
+    ],
+    [isDark, theme.accent, theme.accentSoft, theme.border, theme.cardAlt]
+  );
+  const selectorTextStyle = useCallback(
+    (selected) => [
+      styles.selectorButtonText,
+      { color: selected ? theme.accent : theme.text }
+    ],
+    [theme.accent, theme.text]
+  );
 
   return (
     <View style={styles.container}>
@@ -259,7 +279,9 @@ export default function FamilyScreen({
                 <PillButton
                   key={opt.key}
                   label={t(opt.label)}
-                  kind={role === opt.key ? 'primary' : 'ghost'}
+                  kind="ghost"
+                  style={selectorButtonStyle(role === opt.key)}
+                  textStyle={selectorTextStyle(role === opt.key)}
                   onPress={() => setRole(opt.key)}
                 />
               ))}
@@ -287,7 +309,9 @@ export default function FamilyScreen({
                       <PillButton
                         key={`${row.id}-${opt.key}`}
                         label={t(opt.label)}
-                        kind={row.role === opt.key ? 'primary' : 'ghost'}
+                        kind="ghost"
+                        style={selectorButtonStyle(row.role === opt.key)}
+                        textStyle={selectorTextStyle(row.role === opt.key)}
                         onPress={() => handleRoleChange(row.id, opt.key)}
                       />
                     ))}
@@ -309,7 +333,9 @@ export default function FamilyScreen({
                 <PillButton
                   key={opt.key}
                   label={t(opt.label)}
-                  kind={inviteFilter === opt.key ? 'primary' : 'ghost'}
+                  kind="ghost"
+                  style={selectorButtonStyle(inviteFilter === opt.key)}
+                  textStyle={selectorTextStyle(inviteFilter === opt.key)}
                   onPress={() => setInviteFilter(opt.key)}
                 />
               ))}
@@ -416,6 +442,12 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 10,
     marginBottom: 10
+  },
+  selectorButton: {
+    minWidth: 96
+  },
+  selectorButtonText: {
+    fontWeight: '900'
   },
   limitRow: {
     flexDirection: 'row',

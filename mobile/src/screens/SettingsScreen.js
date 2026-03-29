@@ -4,6 +4,8 @@ import { api } from '../api/client';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import DateField from '../components/DateField';
+import { getCategoryDisplayLabel } from '../utils/categoryLabels';
+import { formatINR } from '../utils/format';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -26,12 +28,10 @@ const targetSettingKey = (category) =>
 const sanitizeTargetDigits = (value = '') => String(value || '').replace(/\D/g, '');
 const TARGETS_LAST_UPDATED_KEY = 'targets_last_updated_at';
 
-const formatTargetDigits = (value = '') => {
+const formatTargetDigits = (value = '', currency = 'INR') => {
   const digits = sanitizeTargetDigits(value);
   if (!digits) return '';
-  return new Intl.NumberFormat('en-IN', {
-    maximumFractionDigits: 0
-  }).format(Number(digits));
+  return formatINR(Number(digits), currency);
 };
 
 const formatLastUpdated = (value = '') => {
@@ -65,6 +65,7 @@ const normalizeSettingsForm = (data = {}) => {
 export default function SettingsScreen({
   premiumActive = false,
   onOpenSubscription,
+  preferredCurrency = 'INR',
   readOnly = false,
   onRequestScrollTo = () => {}
 }) {
@@ -139,7 +140,7 @@ export default function SettingsScreen({
           const key = targetSettingKey(category);
           return (
             <View key={key}>
-              <Text style={[styles.label, { color: theme.muted }]}>{t(category)}</Text>
+              <Text style={[styles.label, { color: theme.muted }]}>{getCategoryDisplayLabel(category, t)}</Text>
               <TextInput
                 onLayout={(event) => setFieldOffset(key, event.nativeEvent.layout.y)}
                 onFocus={() => {
@@ -155,7 +156,7 @@ export default function SettingsScreen({
                 value={
                   focusedTargetKey === key
                     ? sanitizeTargetDigits(form[key])
-                    : formatTargetDigits(form[key])
+                    : formatTargetDigits(form[key], preferredCurrency)
                 }
                 onChangeText={(v) =>
                   setForm((prev) => ({

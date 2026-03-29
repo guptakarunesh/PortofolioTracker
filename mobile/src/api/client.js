@@ -295,6 +295,7 @@ export const api = {
 
   getFamilyMembers: () => apiRequest('/api/family'),
   getFamilyAccess: () => apiRequest('/api/family/access'),
+  getRecentActivity: () => apiRequest('/api/family/recent-activity'),
   addFamilyMember: (payload) => apiRequest('/api/family', { method: 'POST', body: JSON.stringify(payload) }),
   updateFamilyMember: (id, payload) =>
     apiRequest(`/api/family/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),

@@ -80,6 +80,34 @@ function inviteRow(row) {
   };
 }
 
+function normalizeActorInitials(value = '') {
+  const text = String(value || '').trim().toUpperCase();
+  return text || 'NA';
+}
+
+function formatRecentFamilyAction(action = '') {
+  switch (String(action || '').trim()) {
+    case 'invite_created':
+      return 'family_invite_created';
+    case 'invite_accepted':
+      return 'family_invite_accepted';
+    case 'invite_canceled':
+      return 'family_invite_canceled';
+    case 'invite_resent':
+      return 'family_invite_resent';
+    case 'member_added':
+      return 'family_member_added';
+    case 'member_removed':
+      return 'family_member_removed';
+    case 'member_role_updated':
+      return 'family_role_updated';
+    case 'member_left':
+      return 'family_member_left';
+    default:
+      return 'family_updated';
+  }
+}
+
 function logFamilyAudit(ownerUserId, actorUserId, action, meta = {}) {
   db.prepare(`
     INSERT INTO family_audit (owner_user_id, actor_user_id, action, meta, created_at)
@@ -388,6 +416,70 @@ router.get('/audit', requireFamilyPremium, requireAccountAdmin, (req, res) => {
         : null
     }));
   res.json({ audit: rows });
+});
+
+router.get('/recent-activity', (req, res) => {
+  const ownerId = req.accountUserId;
+
+  const assetRows = db
+    .prepare(`
+      SELECT id, name, category, updated_by_initials, updated_at
+      FROM assets
+      WHERE user_id = ?
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 10
+    `)
+    .all(ownerId)
+    .map((row) => ({
+      id: `asset-${row.id}`,
+      kind: 'asset_updated',
+      actor_initials: normalizeActorInitials(row.updated_by_initials),
+      created_at: row.updated_at,
+      label: decryptString(row.name) || String(row.category || 'Asset').trim() || 'Asset'
+    }));
+
+  const liabilityRows = db
+    .prepare(`
+      SELECT id, lender, loan_type, updated_by_initials, updated_at
+      FROM liabilities
+      WHERE user_id = ?
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 10
+    `)
+    .all(ownerId)
+    .map((row) => ({
+      id: `liability-${row.id}`,
+      kind: 'liability_updated',
+      actor_initials: normalizeActorInitials(row.updated_by_initials),
+      created_at: row.updated_at,
+      label: decryptString(row.lender) || String(row.loan_type || 'Liability').trim() || 'Liability'
+    }));
+
+  const familyRows = db
+    .prepare(
+      `
+      SELECT a.id, a.action, a.created_at, u.full_name
+      FROM family_audit a
+      LEFT JOIN users u ON u.id = a.actor_user_id
+      WHERE a.owner_user_id = ?
+      ORDER BY a.created_at DESC, a.id DESC
+      LIMIT 10
+    `
+    )
+    .all(ownerId)
+    .map((row) => ({
+      id: `family-${row.id}`,
+      kind: formatRecentFamilyAction(row.action),
+      actor_initials: initialsFromName(decryptString(row.full_name || '')),
+      created_at: row.created_at,
+      label: ''
+    }));
+
+  const items = [...assetRows, ...liabilityRows, ...familyRows]
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .slice(0, 5);
+
+  return res.json({ items });
 });
 
 router.delete('/:id', requireFamilyPremium, requireAccountAdmin, (req, res) => {

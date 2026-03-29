@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, Linking, Share, Pressable, Animated, Modal, ScrollView } from 'react-native';
-import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { api, buildApiUrl } from '../api/client';
+import { formatAmountFromInr } from '../utils/format';
 import {
   canUseNativePhoneAuth,
   completeNativePhoneOtp,
@@ -87,6 +87,213 @@ function toMoney(value) {
   return Number(value || 0).toFixed(2);
 }
 
+function formatExportDateTime(value = '') {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || '-');
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function formatExportMoney(value, currency = 'INR', fxRates = { INR: 1 }) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return '-';
+  return formatAmountFromInr(num, currency, fxRates);
+}
+
+function renderKeyValueRows(rows = []) {
+  return rows
+    .map(
+      ([label, value]) =>
+        `<tr><td class="kv-key">${escapeHtml(label)}</td><td class="kv-value">${escapeHtml(value == null || value === '' ? '-' : value)}</td></tr>`
+    )
+    .join('');
+}
+
+function renderDataTable(title, columns = [], rows = []) {
+  if (!rows.length) {
+    return `<section class="section"><h3>${escapeHtml(title)}</h3><div class="empty">No records available.</div></section>`;
+  }
+  const head = columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join('');
+  const body = rows
+    .map((row) => {
+      const cells = columns
+        .map((column) => `<td>${escapeHtml(row?.[column.key] == null || row?.[column.key] === '' ? '-' : row[column.key])}</td>`)
+        .join('');
+      return `<tr>${cells}</tr>`;
+    })
+    .join('');
+  return `<section class="section"><h3>${escapeHtml(title)}</h3><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></section>`;
+}
+
+function buildExportPdfHtml(payload, { t, preferredCurrency = 'INR', fxRates = { INR: 1 } }) {
+  const exportedAt = formatExportDateTime(payload?.exportedAt);
+  const userRows = [
+    [t('Full Name'), payload?.user?.full_name || '-'],
+    [t('Mobile'), payload?.user?.mobile || '-'],
+    [t('Email'), payload?.user?.email || '-'],
+    [t('Created'), formatExportDateTime(payload?.user?.created_at)],
+    [t('Last Login'), formatExportDateTime(payload?.user?.last_login_at)]
+  ];
+
+  const assets = Array.isArray(payload?.assets)
+    ? payload.assets.map((row) => ({
+        category: row?.category || '-',
+        name: row?.name || '-',
+        institution: row?.institution || '-',
+        current_value: formatExportMoney(row?.current_value, preferredCurrency, fxRates),
+        invested_amount: formatExportMoney(row?.invested_amount, preferredCurrency, fxRates),
+        account_ref: row?.account_ref || '-'
+      }))
+    : [];
+
+  const liabilities = Array.isArray(payload?.liabilities)
+    ? payload.liabilities.map((row) => ({
+        loan_type: row?.loan_type || '-',
+        lender: row?.lender || '-',
+        outstanding_amount: formatExportMoney(row?.outstanding_amount, preferredCurrency, fxRates),
+        account_ref: row?.account_ref || '-',
+        interest_rate: row?.interest_rate ? `${row.interest_rate}%` : '-'
+      }))
+    : [];
+
+  const reminders = Array.isArray(payload?.reminders)
+    ? payload.reminders.map((row) => ({
+        category: row?.category || '-',
+        description: row?.description || '-',
+        due_date: row?.due_date || '-',
+        amount: formatExportMoney(row?.amount, preferredCurrency, fxRates),
+        status: row?.status || '-'
+      }))
+    : [];
+
+  const trackers = Array.isArray(payload?.trackers)
+    ? payload.trackers.map((row) => ({
+        category: row?.category || '-',
+        asset_name: row?.asset_name || '-',
+        login_id: row?.login_id || '-',
+        tracking_url: row?.tracking_url || '-',
+        notes: row?.notes || '-'
+      }))
+    : [];
+
+  const settings = Array.isArray(payload?.settings)
+    ? payload.settings.map((row) => ({
+        key: row?.key || '-',
+        value: row?.value || '-',
+        updated_at: formatExportDateTime(row?.updated_at)
+      }))
+    : [];
+
+  const consents = Array.isArray(payload?.consents)
+    ? payload.consents.map((row) => ({
+        privacy_policy_version: row?.privacy_policy_version || '-',
+        terms_version: row?.terms_version || '-',
+        consented_at: formatExportDateTime(row?.consented_at),
+        consent_source: row?.consent_source || '-'
+      }))
+    : [];
+
+  const performance = Array.isArray(payload?.performanceSnapshots)
+    ? payload.performanceSnapshots.map((row) => ({
+        period: row?.quarter_start || '-',
+        assets: formatExportMoney(row?.total_assets, preferredCurrency, fxRates),
+        liabilities: formatExportMoney(row?.total_liabilities, preferredCurrency, fxRates),
+        net_worth: formatExportMoney(row?.net_worth, preferredCurrency, fxRates)
+      }))
+    : [];
+
+  return `<!doctype html>
+  <html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; padding: 24px; color: #0f172a; }
+      h1 { margin: 0 0 6px; font-size: 24px; color: #0b1f3a; }
+      .meta { margin: 0 0 4px; color: #475569; font-size: 12px; }
+      .section { margin-top: 18px; }
+      h3 { margin: 0 0 8px; color: #155eaf; font-size: 15px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { border: 1px solid #d9e2ef; padding: 7px 8px; vertical-align: top; font-size: 11px; word-break: break-word; }
+      th { background: #edf5ff; color: #0b1f3a; text-align: left; font-weight: 700; }
+      .kv-key { width: 32%; font-weight: 700; background: #f8fafc; }
+      .kv-value { width: 68%; }
+      .empty { padding: 10px 12px; border: 1px solid #d9e2ef; border-radius: 8px; color: #64748b; font-size: 12px; }
+      .note { margin-top: 18px; color: #64748b; font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <h1>${escapeHtml(t('Worthio Data Export'))}</h1>
+    <p class="meta">${escapeHtml(t('Generated: {date}', { date: exportedAt }))}</p>
+    <p class="meta">${escapeHtml(t('Display Currency: {value}', { value: preferredCurrency }))}</p>
+
+    <section class="section">
+      <h3>${escapeHtml(t('Account Summary'))}</h3>
+      <table><tbody>${renderKeyValueRows(userRows)}</tbody></table>
+    </section>
+
+    ${renderDataTable(t('Assets'), [
+      { key: 'category', label: t('Category') },
+      { key: 'name', label: t('Institution Name') },
+      { key: 'institution', label: t('Institution') },
+      { key: 'current_value', label: t('Current Value') },
+      { key: 'invested_amount', label: t('Invested Amount') },
+      { key: 'account_ref', label: t('Account Ref') }
+    ], assets)}
+
+    ${renderDataTable(t('Liabilities'), [
+      { key: 'loan_type', label: t('Loan Type') },
+      { key: 'lender', label: t('Lender') },
+      { key: 'outstanding_amount', label: t('Outstanding Amount') },
+      { key: 'account_ref', label: t('Account Ref') },
+      { key: 'interest_rate', label: t('Interest Rate') }
+    ], liabilities)}
+
+    ${renderDataTable(t('Reminders'), [
+      { key: 'category', label: t('Category') },
+      { key: 'description', label: t('Description') },
+      { key: 'due_date', label: t('Due Date') },
+      { key: 'amount', label: t('Amount') },
+      { key: 'status', label: t('Status') }
+    ], reminders)}
+
+    ${renderDataTable(t('Trackers'), [
+      { key: 'category', label: t('Category') },
+      { key: 'asset_name', label: t('Asset Name') },
+      { key: 'login_id', label: t('Login ID') },
+      { key: 'tracking_url', label: t('Tracking Website URL') },
+      { key: 'notes', label: t('Notes') }
+    ], trackers)}
+
+    ${renderDataTable(t('Performance Snapshots'), [
+      { key: 'period', label: t('Period') },
+      { key: 'assets', label: t('Assets') },
+      { key: 'liabilities', label: t('Liabilities') },
+      { key: 'net_worth', label: t('Net Worth') }
+    ], performance)}
+
+    ${renderDataTable(t('Settings'), [
+      { key: 'key', label: t('Key') },
+      { key: 'value', label: t('Value') },
+      { key: 'updated_at', label: t('Last updated: {value}', { value: '' }).replace(': ', '').trim() || 'Updated At' }
+    ], settings)}
+
+    ${renderDataTable(t('Consents'), [
+      { key: 'privacy_policy_version', label: t('Privacy Policy') },
+      { key: 'terms_version', label: t('Terms') },
+      { key: 'consented_at', label: t('Consented At') },
+      { key: 'consent_source', label: t('Source') }
+    ], consents)}
+
+    <p class="note">${escapeHtml(t('Prepared for secure offline review and sharing from Worthio.'))}</p>
+  </body>
+  </html>`;
+}
+
 function buildReceiptHtml(receipt, t) {
   const rows = [
     [t('Invoice Number'), receipt?.invoice_number],
@@ -137,6 +344,7 @@ export default function AccountScreen({
   onOpenOnboarding,
   premiumActive = false,
   preferredCurrency = 'INR',
+  fxRates = { INR: 1 },
   onRegisterOnboardingTarget,
   onMeasureOnboardingTarget,
   onGetOnboardingZoomStyle,
@@ -230,6 +438,20 @@ export default function AccountScreen({
     ],
     [theme.accent, theme.text]
   );
+  const faqSections = useMemo(() => {
+    const grouped = FAQ_ITEMS.reduce((acc, item) => {
+      const section = String(item.section || 'faq_section_account');
+      if (!acc[section]) acc[section] = [];
+      acc[section].push(item);
+      return acc;
+    }, {});
+    return Object.entries(grouped)
+      .map(([section, items]) => ({
+        section,
+        items: [...items].sort((a, b) => t(a.q).localeCompare(t(b.q)))
+      }))
+      .sort((a, b) => t(a.section).localeCompare(t(b.section)));
+  }, [t]);
 
   const saveSecurityPin = async () => {
     if (!/^\d{4}$/.test(pin)) {
@@ -298,27 +520,16 @@ export default function AccountScreen({
 
   const exportData = async () => {
     const payload = await api.exportUserData();
-    const text = JSON.stringify(payload, null, 2);
-    const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-    if (!baseDir) {
-      await Share.share({ message: text });
-      setMessage(t('Data export prepared.'));
-      return;
-    }
-    const dateStamp = new Date().toISOString().slice(0, 10);
-    const mobileSuffix = String(user?.mobile || '').replace(/\D/g, '').slice(-4) || 'account';
-    const fileUri = `${baseDir}nwm-export-${mobileSuffix}-${dateStamp}.json`;
-    await FileSystem.writeAsStringAsync(fileUri, text, {
-      encoding: FileSystem.EncodingType.UTF8
-    });
+    const html = buildExportPdfHtml(payload, { t, preferredCurrency, fxRates });
+    const { uri } = await Print.printToFileAsync({ html });
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(fileUri, {
-        mimeType: 'application/json',
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
         dialogTitle: t('Export My Data'),
-        UTI: 'public.json'
+        UTI: 'com.adobe.pdf'
       });
     } else {
-      await Share.share({ message: fileUri });
+      await Share.share({ message: uri });
     }
     setMessage(t('Data export prepared.'));
   };
@@ -652,7 +863,7 @@ export default function AccountScreen({
         <PillButton label={t('Buy Subscription')} kind="primary" style={isDark ? styles.accountPrimaryButtonDark : null} onPress={onOpenSubscription} />
       </SectionCard>
 
-      <SectionCard title={t('NWM Support')}>
+      <SectionCard title={t('Worthio Support')}>
         <Text style={[styles.helper, { color: theme.muted }]}>
           {t('Open support for FAQs and AI-assisted help with login, subscription, family access, and setup.')}
         </Text>
@@ -660,17 +871,22 @@ export default function AccountScreen({
       </SectionCard>
 
       <SectionCard title={t('FAQs')}>
-        {FAQ_ITEMS.map((item) => (
-          <View key={item.q} style={styles.faqItem}>
-            <Pressable style={styles.faqHeader} onPress={() => toggleFaq(item.q)}>
-              <Text style={[styles.faqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
-              <Text style={[styles.faqChevron, { color: theme.muted }]}>
-                {openFaqs[item.q] ? '−' : '+'}
-              </Text>
-            </Pressable>
-            {openFaqs[item.q] ? (
-              <Text style={[styles.faqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
-            ) : null}
+        {faqSections.map((group) => (
+          <View key={group.section} style={styles.faqSection}>
+            <Text style={[styles.faqSectionTitle, { color: theme.muted }]}>{t(group.section)}</Text>
+            {group.items.map((item) => (
+              <View key={item.q} style={styles.faqItem}>
+                <Pressable style={styles.faqHeader} onPress={() => toggleFaq(item.q)}>
+                  <Text style={[styles.faqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
+                  <Text style={[styles.faqChevron, { color: theme.muted }]}>
+                    {openFaqs[item.q] ? '−' : '+'}
+                  </Text>
+                </Pressable>
+                {openFaqs[item.q] ? (
+                  <Text style={[styles.faqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
+                ) : null}
+              </View>
+            ))}
           </View>
         ))}
       </SectionCard>
@@ -844,7 +1060,7 @@ const styles = StyleSheet.create({
   biometricEnabledRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     gap: 10,
     flexWrap: 'wrap'
   },
@@ -862,6 +1078,16 @@ const styles = StyleSheet.create({
   },
   faqItem: {
     marginBottom: 10
+  },
+  faqSection: {
+    marginBottom: 10
+  },
+  faqSectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginBottom: 8
   },
   faqHeader: {
     flexDirection: 'row',

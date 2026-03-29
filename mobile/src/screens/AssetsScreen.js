@@ -5,6 +5,7 @@ import FeedbackBanner from '../components/FeedbackBanner';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { formatAmountFromInr } from '../utils/format';
+import { getCategoryDisplayLabel } from '../utils/categoryLabels';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -382,7 +383,9 @@ export default function AssetsScreen({
           disabled={readOnly}
           onPress={() => setShowCategoryOptions((v) => !v)}
         >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.category || 'Select category')}</Text>
+          <Text style={[styles.dropdownText, { color: theme.inputText }]}>
+            {form.category ? getCategoryDisplayLabel(form.category, t) : t('Select category')}
+          </Text>
           <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showCategoryOptions ? '▲' : '▼'}</Text>
         </Pressable>
         {showCategoryOptions ? (
@@ -407,7 +410,7 @@ export default function AssetsScreen({
                     form.category === category && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
                   ]}
                 >
-                  {t(category)}
+                  {getCategoryDisplayLabel(category, t)}
                 </Text>
               </Pressable>
             ))}

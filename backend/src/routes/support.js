@@ -58,6 +58,12 @@ function addDaysIso(baseIso, days) {
   return d.toISOString();
 }
 
+function subtractDaysIso(baseIso, days) {
+  const d = new Date(baseIso);
+  d.setDate(d.getDate() - Number(days || 0));
+  return d.toISOString();
+}
+
 function safeJsonParse(raw, fallback = {}) {
   try {
     return raw ? JSON.parse(raw) : fallback;
@@ -583,7 +589,11 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
       const config = PLAN_CONFIG[plan];
       const periodDays = Number(payload.period_days || config?.periodDays || 30);
       const now = nowIso();
-      const end = payload.current_period_end ? String(payload.current_period_end) : addDaysIso(now, periodDays);
+      const explicitEnd = String(payload.current_period_end || '').trim();
+      let end = explicitEnd || null;
+      if (!end && plan !== 'none') {
+        end = status === 'active' ? addDaysIso(now, periodDays) : subtractDaysIso(now, 1);
+      }
       db.prepare(`
         INSERT INTO subscriptions (user_id, plan, status, started_at, current_period_end, provider, updated_at)
         VALUES (?, ?, ?, ?, ?, 'support_console', ?)
@@ -595,7 +605,7 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
           provider=excluded.provider,
           updated_at=excluded.updated_at
       `).run(targetUserId, plan, status, now, end, now);
-      if (status === 'active') {
+      if (status === 'active' && end) {
         const amount = Number(payload.amount_inr ?? config?.amount ?? 0);
         const period = String(payload.period || config?.period || 'manual');
         db.prepare(`
@@ -901,6 +911,7 @@ consoleRouter.get('/', (_req, res) => {
         <div class="row">
           <button class="pill" data-quick="force_logout_all">Quick: Force Logout</button>
           <button class="pill" data-quick="set_subscription">Quick: Set Premium Monthly</button>
+          <button class="pill" data-quick="expire_trial_premium">Quick: Expire Trial Premium</button>
           <button class="pill" data-quick="cancel_family_invite">Quick: Cancel Invite</button>
         </div>
         <div class="row">
@@ -971,7 +982,8 @@ consoleRouter.get('/', (_req, res) => {
               { value: 'expired', label: 'Expired' }
             ]
           },
-          { key: 'period_days', label: 'Period Days (optional)', type: 'number' }
+          { key: 'period_days', label: 'Period Days (optional)', type: 'number' },
+          { key: 'current_period_end', label: 'Current Period End ISO (optional)', type: 'text' }
         ]
       },
       remove_family_member: {
@@ -1379,9 +1391,11 @@ consoleRouter.get('/', (_req, res) => {
       btn.addEventListener('click', () => {
         const action = String(btn.getAttribute('data-quick') || '');
         if (!action) return;
-        el('actionType').value = action;
+        el('actionType').value = action === 'expire_trial_premium' ? 'set_subscription' : action;
         if (action === 'set_subscription') {
           renderActionFields(action, { plan: 'premium_monthly', status: 'active' });
+        } else if (action === 'expire_trial_premium') {
+          renderActionFields('set_subscription', { plan: 'trial_premium', status: 'expired' });
         } else {
           renderActionFields(action);
         }

@@ -186,7 +186,11 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
                     setError(t('Session expired. Please login again.'));
                     return;
                   }
-                  const url = buildApiUrl(`/api/reports/snapshot/file?date=${encodeURIComponent(reportDate)}&token=${encodeURIComponent(token)}`);
+                  const currency = String(preferredCurrency || 'INR').toUpperCase();
+                  const fxRate = currency === 'INR' ? 1 : Number(fxRates?.[currency] || 0);
+                  const url = buildApiUrl(
+                    `/api/reports/snapshot/file?date=${encodeURIComponent(reportDate)}&token=${encodeURIComponent(token)}&currency=${encodeURIComponent(currency)}&fx_rate=${encodeURIComponent(fxRate || 1)}`
+                  );
                   Linking.openURL(url).catch((e) => setError(e.message));
                 }}
               />

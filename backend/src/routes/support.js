@@ -332,7 +332,7 @@ apiRouter.get('/users', (req, res) => {
       .all(limit);
   } else {
     const qDigits = query.replace(/\D/g, '');
-    const byId = /^\d+$/.test(query)
+    const byId = /^\d+$/.test(query) && qDigits.length > 0 && qDigits.length < 10
       ? db.prepare('SELECT id, full_name, mobile, email, created_at, last_login_at FROM users WHERE id = ?').get(Number(query))
       : null;
     const byMobile = qDigits.length === 10

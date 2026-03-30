@@ -65,3 +65,45 @@ test('support can expire a user trial with a past period end for expiry-flow tes
   assert.equal(status.body.status, 'expired');
   assert.ok(new Date(status.body.current_period_end).getTime() < Date.now());
 });
+
+test('support can search users by exact 10-digit mobile number', async () => {
+  process.env.DB_PATH = buildTestDbPath();
+  process.env.OTP_PROVIDER = 'mock';
+  process.env.OTP_TEST_ECHO = '1';
+
+  const app = await loadApp();
+
+  const register = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: {
+      full_name: 'SM',
+      mobile: '6666666602',
+      email: 'search-mobile@example.com',
+      country: 'India',
+      firebase_id_token: 'mock:6666666602',
+      consent_privacy: true,
+      consent_terms: true,
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'test-device' }
+    }
+  });
+  assert.equal(register.status, 201);
+
+  const supportLogin = await appRequest(app, {
+    method: 'POST',
+    path: '/api/support/auth/login',
+    body: { username: 'Admin1', password: 'Pass1' }
+  });
+  assert.equal(supportLogin.status, 200);
+
+  const search = await appRequest(app, {
+    method: 'GET',
+    path: '/api/support/users?query=6666666602&include_sensitive=1',
+    token: supportLogin.body.token
+  });
+  assert.equal(search.status, 200);
+  assert.ok(Array.isArray(search.body.users));
+  assert.equal(search.body.users[0]?.mobile, '6666666602');
+});

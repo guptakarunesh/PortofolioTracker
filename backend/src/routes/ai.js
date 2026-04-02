@@ -283,7 +283,7 @@ router.get('/insights', async (req, res) => {
     totals: portfolio.totals,
     allocation_pct: portfolio.allocation.by_bucket_pct
   };
-  const hasPreciousMetalsExposure = safeNumber(byBucket['Gold / Commodities']) > 0;
+  const hasPreciousMetalsExposure = safeNumber(byBucket['Precious Metals']) > 0;
 
   const conservativeGaps = getConservativeGaps(assets);
   const topGaps = conservativeGaps.slice(0, 2);
@@ -317,11 +317,6 @@ router.get('/insights', async (req, res) => {
   const cachedAt = cache?.cached_at ? new Date(cache.cached_at).getTime() : 0;
   const within24h = cachedAt && Date.now() - cachedAt < AI_CACHE_TTL_MS;
   const cacheDisplayAsOf = cache?.cached_at || nowIso();
-
-  if (forceRefresh) {
-    deleteUserSetting(accountUserId, 'ai_insights_cache');
-    cache = null;
-  }
 
   const personalBullets = [
     gapBullets[0],
@@ -400,7 +395,7 @@ router.get('/insights', async (req, res) => {
     });
   } catch (e) {
     const errText = String(e?.message || e);
-    if (!forceRefresh && within24h && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
+    if (within24h && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
       return res.status(200).json({
         personal_bullets: personalBullets,
         news_bullets: ensureMetalsCoverage(cache.news_bullets, {
@@ -410,7 +405,7 @@ router.get('/insights', async (req, res) => {
         disclaimer: defaultDisclaimer,
         as_of: cacheDisplayAsOf,
         cached: true,
-        warning: 'news_error_using_cached',
+        warning: forceRefresh ? 'news_error_using_cached_after_refresh' : 'news_error_using_cached',
         error: errText,
         portfolio
       });

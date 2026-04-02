@@ -107,3 +107,186 @@ test('support can search users by exact 10-digit mobile number', async () => {
   assert.ok(Array.isArray(search.body.users));
   assert.equal(search.body.users[0]?.mobile, '6666666602');
 });
+
+test('support can disable an account with a reason and block session + otp access', async () => {
+  process.env.DB_PATH = buildTestDbPath();
+  process.env.OTP_PROVIDER = 'mock';
+  process.env.OTP_TEST_ECHO = '1';
+
+  const app = await loadApp();
+
+  const register = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: {
+      full_name: 'DA',
+      mobile: '6666666603',
+      email: 'disabled-account@example.com',
+      country: 'India',
+      firebase_id_token: 'mock:6666666603',
+      consent_privacy: true,
+      consent_terms: true,
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'test-device' }
+    }
+  });
+  assert.equal(register.status, 201);
+  const userId = register.body.user?.id;
+  assert.ok(userId);
+
+  const supportLogin = await appRequest(app, {
+    method: 'POST',
+    path: '/api/support/auth/login',
+    body: { username: 'Admin1', password: 'Pass1' }
+  });
+  assert.equal(supportLogin.status, 200);
+
+  const disable = await appRequest(app, {
+    method: 'POST',
+    path: `/api/support/users/${userId}/actions`,
+    token: supportLogin.body.token,
+    body: {
+      action: 'disable_account',
+      payload: {
+        reason: 'Fraud review test'
+      }
+    }
+  });
+  assert.equal(disable.status, 200);
+  assert.equal(disable.body.status, 'disabled');
+  assert.equal(disable.body.reason, 'Fraud review test');
+
+  const overview = await appRequest(app, {
+    method: 'GET',
+    path: `/api/support/users/${userId}/overview?include_sensitive=1`,
+    token: supportLogin.body.token
+  });
+  assert.equal(overview.status, 200);
+  assert.equal(overview.body.account_access?.status, 'disabled');
+  assert.equal(overview.body.account_access?.reason, 'Fraud review test');
+
+  const me = await appRequest(app, {
+    method: 'GET',
+    path: '/api/auth/me',
+    token: register.body.token
+  });
+  assert.equal(me.status, 401);
+
+  const otpSend = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/otp/send',
+    body: { mobile: '6666666603' }
+  });
+  assert.equal(otpSend.status, 403);
+  assert.equal(otpSend.body.error, 'account_disabled');
+});
+
+test('support can delete an account and clear linked references with a reason note', async () => {
+  process.env.DB_PATH = buildTestDbPath();
+  process.env.OTP_PROVIDER = 'mock';
+  process.env.OTP_TEST_ECHO = '1';
+
+  const app = await loadApp();
+  const { db, nowIso } = await import('../src/lib/db.js');
+  const { encryptString, hashLookup } = await import('../src/lib/crypto.js');
+
+  const owner = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: {
+      full_name: 'OW',
+      mobile: '6666666604',
+      email: 'owner-delete@example.com',
+      country: 'India',
+      firebase_id_token: 'mock:6666666604',
+      consent_privacy: true,
+      consent_terms: true,
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'owner-device' }
+    }
+  });
+  assert.equal(owner.status, 201);
+
+  const target = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: {
+      full_name: 'TD',
+      mobile: '6666666605',
+      email: 'target-delete@example.com',
+      country: 'India',
+      firebase_id_token: 'mock:6666666605',
+      consent_privacy: true,
+      consent_terms: true,
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'target-device' }
+    }
+  });
+  assert.equal(target.status, 201);
+  const targetId = target.body.user?.id;
+  assert.ok(targetId);
+
+  const targetMobileHash = hashLookup('6666666605');
+  db.prepare(`
+    INSERT INTO family_invites (owner_user_id, mobile_hash, mobile_encrypted, role, status, expires_at, created_at, updated_at)
+    VALUES (?, ?, ?, 'read', 'pending', ?, ?, ?)
+  `).run(owner.body.user.id, targetMobileHash, encryptString('6666666605'), '2099-01-01T00:00:00.000Z', nowIso(), nowIso());
+  db.prepare(`
+    INSERT INTO assets (user_id, category, name, current_value, updated_at)
+    VALUES (?, 'Cash & Bank Accounts', ?, 12345, ?)
+  `).run(targetId, encryptString('Delete Test Asset'), nowIso());
+  db.prepare(`
+    INSERT INTO auth_login_log (user_id, mobile_hash, event_type, auth_method, status, created_at)
+    VALUES (?, ?, 'login_success', 'otp', 'ok', ?)
+  `).run(targetId, targetMobileHash, nowIso());
+
+  const supportLogin = await appRequest(app, {
+    method: 'POST',
+    path: '/api/support/auth/login',
+    body: { username: 'Admin1', password: 'Pass1' }
+  });
+  assert.equal(supportLogin.status, 200);
+
+  const deleted = await appRequest(app, {
+    method: 'POST',
+    path: `/api/support/users/${targetId}/actions`,
+    token: supportLogin.body.token,
+    body: {
+      action: 'delete_account',
+      payload: {
+        reason: 'Reset account for family test cycle'
+      }
+    }
+  });
+  assert.equal(deleted.status, 200);
+  assert.equal(deleted.body.reason, 'Reset account for family test cycle');
+
+  const userRow = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+  assert.equal(userRow, undefined);
+  assert.equal(db.prepare('SELECT COUNT(*) AS c FROM assets WHERE user_id = ?').get(targetId)?.c, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS c FROM sessions WHERE user_id = ?').get(targetId)?.c, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS c FROM family_invites WHERE mobile_hash = ?').get(targetMobileHash)?.c, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS c FROM auth_login_log WHERE mobile_hash = ?').get(targetMobileHash)?.c, 0);
+
+  const deleteLog = db
+    .prepare('SELECT reason FROM account_deletion_log WHERE mobile_hash = ? ORDER BY id DESC LIMIT 1')
+    .get(targetMobileHash);
+  assert.match(String(deleteLog?.reason || ''), /Reset account for family test cycle/);
+
+  const me = await appRequest(app, {
+    method: 'GET',
+    path: '/api/auth/me',
+    token: target.body.token
+  });
+  assert.equal(me.status, 401);
+
+  const otpSend = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/otp/send',
+    body: { mobile: '6666666605' }
+  });
+  assert.equal(otpSend.status, 404);
+});

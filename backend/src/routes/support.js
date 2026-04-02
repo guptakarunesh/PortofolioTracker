@@ -3,6 +3,7 @@ import { db, nowIso } from '../lib/db.js';
 import { decryptString, hashLookup } from '../lib/crypto.js';
 import { createSessionToken, hashPin, hashToken, verifyPin } from '../lib/auth.js';
 import { ingestCuratedNews } from '../lib/newsPipeline.js';
+import { deleteAccountCompletely, disableAccount, enableAccount, getAccountAccessState } from '../lib/accountLifecycle.js';
 import requireSupportAuth from '../middleware/requireSupportAuth.js';
 
 const apiRouter = Router();
@@ -463,6 +464,7 @@ apiRouter.get('/users/:id/overview', (req, res) => {
     `
     )
     .all(ownerId);
+  const accountAccess = getAccountAccessState(userId);
 
   logSupportAction({
     actor: req.supportActor,
@@ -476,6 +478,7 @@ apiRouter.get('/users/:id/overview', (req, res) => {
     requested_user: buildUserCard(user, includeSensitive),
     account_owner: owner ? buildUserCard(owner, includeSensitive) : null,
     account_context: ctx,
+    account_access: accountAccess,
     subscription: subscription || null,
     settings: settingsRows,
     stats: {
@@ -562,9 +565,36 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
 
   try {
     let result = { ok: true };
+    let logTargetUserId = targetUserId;
     if (action === 'force_logout_all') {
       const deleted = db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetUserId);
       result = { ok: true, removed_sessions: deleted.changes };
+    } else if (action === 'disable_account') {
+      const reason = String(payload.reason || payload.note || '').trim();
+      if (!reason) return res.status(400).json({ error: 'reason_required' });
+      result = disableAccount({
+        userId: targetUserId,
+        reason,
+        actor
+      });
+    } else if (action === 'enable_account') {
+      const reason = String(payload.reason || payload.note || '').trim();
+      result = enableAccount({
+        userId: targetUserId,
+        reason,
+        actor
+      });
+    } else if (action === 'delete_account') {
+      const reason = String(payload.reason || payload.note || '').trim();
+      if (!reason) return res.status(400).json({ error: 'reason_required' });
+      const deleted = deleteAccountCompletely({
+        userId: targetUserId,
+        reason,
+        actor
+      });
+      if (!deleted) return res.status(404).json({ error: 'user_not_found' });
+      result = deleted;
+      logTargetUserId = null;
     } else if (action === 'trust_device') {
       const deviceId = String(payload.device_id || '').trim();
       if (!deviceId) return res.status(400).json({ error: 'device_id_required' });
@@ -730,9 +760,9 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
     logSupportAction({
       actor,
       action,
-      targetUserId,
+      targetUserId: logTargetUserId,
       status: 'ok',
-      meta: { payload, result }
+      meta: { payload, result, deleted_target_user_id: action === 'delete_account' ? targetUserId : null }
     });
     return res.json(result);
   } catch (e) {
@@ -794,6 +824,7 @@ apiRouter.get('/users/:id/agent-context', (req, res) => {
     `
     )
     .all(ownerId);
+  const accountAccess = getAccountAccessState(userId);
 
   logSupportAction({
     actor: req.supportActor,
@@ -805,6 +836,7 @@ apiRouter.get('/users/:id/agent-context', (req, res) => {
   return res.json({
     user: buildUserCard(user, false),
     account_context: account,
+    account_access: accountAccess,
     subscription: subscription || { plan: 'none', status: 'expired', current_period_end: null },
     family: {
       members_count: Number(familyCounts?.members_count || 0),
@@ -913,10 +945,15 @@ consoleRouter.get('/', (_req, res) => {
           <button class="pill" data-quick="set_subscription">Quick: Set Premium Monthly</button>
           <button class="pill" data-quick="expire_trial_premium">Quick: Expire Trial Premium</button>
           <button class="pill" data-quick="cancel_family_invite">Quick: Cancel Invite</button>
+          <button class="pill" data-quick="disable_account">Quick: Disable Account</button>
+          <button class="pill" data-quick="delete_account">Quick: Delete Account</button>
         </div>
         <div class="row">
           <select id="actionType" class="grow">
             <option value="force_logout_all">Force Logout All Sessions</option>
+            <option value="disable_account">Disable Account</option>
+            <option value="enable_account">Enable Account</option>
+            <option value="delete_account">Delete Account</option>
             <option value="trust_device">Mark Device As Trusted</option>
             <option value="revoke_device">Revoke Device Access</option>
             <option value="set_subscription">Set Subscription Plan</option>
@@ -944,6 +981,18 @@ consoleRouter.get('/', (_req, res) => {
       force_logout_all: {
         hint: 'Logs out the user from all devices.',
         fields: []
+      },
+      disable_account: {
+        hint: 'Disables account access, revokes sessions, and stores a support reason note.',
+        fields: [{ key: 'reason', label: 'Reason / Notes', type: 'text', required: true }]
+      },
+      enable_account: {
+        hint: 'Re-enables a disabled account. Optional note can explain the change.',
+        fields: [{ key: 'reason', label: 'Reason / Notes (optional)', type: 'text' }]
+      },
+      delete_account: {
+        hint: 'Permanently deletes the account and clears linked references while logging the support reason.',
+        fields: [{ key: 'reason', label: 'Reason / Notes', type: 'text', required: true }]
       },
       trust_device: {
         hint: 'Mark a device as trusted. Use exact device_id from overview.',
@@ -1057,6 +1106,10 @@ consoleRouter.get('/', (_req, res) => {
       lines.push('Account Context');
       lines.push('Owner User: #' + (owner.id ?? '-') + ' (' + (owner.initials || '-') + ')');
       lines.push('Role: ' + (out?.account_context?.role || '-'));
+      lines.push('Access: ' + (out?.account_access?.status || 'active'));
+      if (out?.account_access?.reason) {
+        lines.push('Access Note: ' + out.account_access.reason);
+      }
       lines.push('');
       lines.push('Subscription');
       lines.push('Plan: ' + (sub.plan || 'none'));
@@ -1111,6 +1164,10 @@ consoleRouter.get('/', (_req, res) => {
       lines.push('Mobile: ' + (user.mobile || '-'));
       lines.push('Email: ' + (user.email || '-'));
       lines.push('Role in Account: ' + (out?.account_context?.role || '-'));
+      lines.push('Access: ' + (out?.account_access?.status || 'active'));
+      if (out?.account_access?.reason) {
+        lines.push('Access Note: ' + out.account_access.reason);
+      }
       lines.push('');
       lines.push('Subscription: ' + (sub.plan || 'none') + ' | ' + (sub.status || 'expired'));
       lines.push('Period End: ' + fmtDate(sub.current_period_end));

@@ -30,6 +30,7 @@ import {
   logAuthEvent,
   upsertUserDevice
 } from '../lib/deviceSecurity.js';
+import { getAccountAccessState } from '../lib/accountLifecycle.js';
 import requireAuth from '../middleware/requireAuth.js';
 
 const router = Router();
@@ -121,6 +122,27 @@ function setUserSettingValue(userId, key, value) {
       value=excluded.value,
       updated_at=excluded.updated_at
   `).run(userId, key, String(value ?? ''), nowIso());
+}
+
+function rejectDisabledAccount({ res, userId, mobileHash, eventType, authMethod, context, req }) {
+  if (!userId) return false;
+  const access = getAccountAccessState(userId);
+  if (access.status !== 'disabled') return false;
+  logAuthEvent({
+    userId,
+    mobileHash,
+    eventType,
+    authMethod,
+    status: 'blocked',
+    reason: 'account_disabled',
+    context,
+    req
+  });
+  res.status(403).json({
+    error: 'account_disabled',
+    message: 'This account is disabled. Contact support to regain access.'
+  });
+  return true;
 }
 
 function lockKeys(prefix) {
@@ -595,6 +617,12 @@ router.post('/register', async (req, res) => {
   const mobileHash = hashLookup(cleanMobile);
   const exists = db.prepare('SELECT id FROM users WHERE mobile_hash = ?').get(mobileHash);
   if (exists) {
+    if (getAccountAccessState(exists.id).status === 'disabled') {
+      return res.status(403).json({
+        error: 'account_disabled',
+        message: 'This account is disabled. Contact support to regain access.'
+      });
+    }
     return res.status(409).json({ error: 'An account with this mobile already exists' });
   }
 
@@ -773,6 +801,17 @@ router.post('/login', (req, res) => {
   }
 
   const user = db.prepare('SELECT * FROM users WHERE mobile_hash = ?').get(mobileHash);
+  if (rejectDisabledAccount({
+    res,
+    userId: user?.id || null,
+    mobileHash,
+    eventType: 'login_blocked_disabled_account',
+    authMethod: 'mpin',
+    context,
+    req
+  })) {
+    return;
+  }
   if (!user || !verifyPin(String(mpin), user.mpin_hash)) {
     logAuthEvent({
       userId: user?.id || null,
@@ -886,6 +925,17 @@ router.post('/biometric/login', (req, res) => {
     });
     return res.status(404).json({ error: 'Account not found for this mobile number' });
   }
+  if (rejectDisabledAccount({
+    res,
+    userId: user.id,
+    mobileHash,
+    eventType: 'biometric_login_blocked_disabled_account',
+    authMethod: 'biometric',
+    context,
+    req
+  })) {
+    return;
+  }
 
   if (!isTrustedDevice(user.id, context.device_id)) {
     logAuthEvent({
@@ -960,6 +1010,12 @@ router.post('/otp/send', async (req, res) => {
   if (!user) {
     return res.status(404).json({ error: 'Account not found for this mobile number' });
   }
+  if (getAccountAccessState(user.id).status === 'disabled') {
+    return res.status(403).json({
+      error: 'account_disabled',
+      message: 'This account is disabled. Contact support to regain access.'
+    });
+  }
   const otpResp = await sendOtpForPurpose(cleanMobile, mobileHash, OTP_PURPOSE_LOGIN, req.body || {});
   return res.status(otpResp.status).json(otpResp.body);
 });
@@ -1001,6 +1057,17 @@ router.post('/otp/verify', async (req, res) => {
       req
     });
     return res.status(404).json({ error: 'Account not found for this mobile number' });
+  }
+  if (rejectDisabledAccount({
+    res,
+    userId: user.id,
+    mobileHash,
+    eventType: 'otp_login_blocked_disabled_account',
+    authMethod: 'otp',
+    context,
+    req
+  })) {
+    return;
   }
   const verified = firebaseIdToken
     ? await (async () => {
@@ -1062,6 +1129,12 @@ router.post('/mpin/reset/request', async (req, res) => {
   if (!user) {
     return res.status(404).json({ error: 'Account not found for this mobile number' });
   }
+  if (getAccountAccessState(user.id).status === 'disabled') {
+    return res.status(403).json({
+      error: 'account_disabled',
+      message: 'This account is disabled. Contact support to regain access.'
+    });
+  }
   if (requireUnlockedReset(res, user.id, 'mpin_reset')) return;
 
   const otpResp = await sendOtpForPurpose(cleanMobile, mobileHash, OTP_PURPOSE_MPIN_RESET, req.body || {});
@@ -1089,6 +1162,12 @@ router.post('/mpin/reset/confirm', async (req, res) => {
   const user = db.prepare('SELECT id, mobile_hash FROM users WHERE mobile_hash = ?').get(mobileHash);
   if (!user) {
     return res.status(404).json({ error: 'Account not found for this mobile number' });
+  }
+  if (getAccountAccessState(user.id).status === 'disabled') {
+    return res.status(403).json({
+      error: 'account_disabled',
+      message: 'This account is disabled. Contact support to regain access.'
+    });
   }
   if (requireUnlockedReset(res, user.id, 'mpin_reset')) return;
 

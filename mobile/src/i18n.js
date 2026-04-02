@@ -174,7 +174,13 @@ const translations = {
     'Disable Biometric Login': 'बायोमेट्रिक लॉगिन अक्षम करें',
     'Theme': 'थीम',
     'Choose the app color scheme.': 'ऐप की रंग योजना चुनें।',
+    'Choose between the standard Worthio theme and a clean light theme.':
+      'स्टैंडर्ड वर्थियो थीम और साफ़ हल्की थीम में से चुनें।',
+    'Light': 'लाइट',
+    'Dark': 'डार्क',
     'Language': 'भाषा',
+    'Display Currency': 'प्रदर्शित करेंसी',
+    'Display Currency: {value}': 'प्रदर्शित करेंसी: {value}',
     'Choose your preferred language. Hindi labels will appear where available.':
       'अपनी पसंदीदा भाषा चुनें। जहाँ उपलब्ध होगा वहाँ हिंदी लेबल दिखेंगे।',
     'English': 'English',

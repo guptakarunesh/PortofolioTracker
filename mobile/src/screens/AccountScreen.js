@@ -102,7 +102,12 @@ function formatExportDateTime(value = '') {
 function formatExportMoney(value, currency = 'INR', fxRates = { INR: 1 }) {
   const num = Number(value || 0);
   if (!Number.isFinite(num)) return '-';
-  return formatAmountFromInr(num, currency, fxRates);
+  const normalizedCurrency = String(currency || 'INR').trim().toUpperCase() || 'INR';
+  const formatted = formatAmountFromInr(num, normalizedCurrency, fxRates);
+  const numericOnly = String(formatted || '')
+    .replace(/[^\d.,\-]/g, '')
+    .trim();
+  return `${normalizedCurrency} ${numericOnly || '0'}`;
 }
 
 function renderKeyValueRows(rows = []) {
@@ -137,7 +142,8 @@ function buildExportPdfHtml(payload, { t, preferredCurrency = 'INR', fxRates = {
     [t('Mobile'), payload?.user?.mobile || '-'],
     [t('Email'), payload?.user?.email || '-'],
     [t('Created'), formatExportDateTime(payload?.user?.created_at)],
-    [t('Last Login'), formatExportDateTime(payload?.user?.last_login_at)]
+    [t('Last Login'), formatExportDateTime(payload?.user?.last_login_at)],
+    [t('Display Currency'), String(preferredCurrency || 'INR').toUpperCase()]
   ];
 
   const assets = Array.isArray(payload?.assets)

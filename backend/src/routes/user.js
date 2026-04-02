@@ -1,7 +1,7 @@
-import crypto from 'node:crypto';
 import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
-import { decryptString, hashLookup } from '../lib/crypto.js';
+import { decryptString } from '../lib/crypto.js';
+import { deleteAccountCompletely } from '../lib/accountLifecycle.js';
 
 const router = Router();
 
@@ -92,27 +92,14 @@ router.delete('/account', (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  const mobileHash = user.mobile_hash || hashLookup(decryptString(user.mobile || '')) || crypto
-    .createHash('sha256')
-    .update(String(user.mobile || ''))
-    .digest('hex');
-
-  const tx = db.transaction(() => {
-    db.prepare('INSERT INTO account_deletion_log (user_id, mobile_hash, deleted_at, reason) VALUES (?, ?, ?, ?)')
-      .run(user.id, mobileHash, nowIso(), reason);
-
-    db.prepare('DELETE FROM consent_log WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM asset_trackers WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM performance_snapshots WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM reminders WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM liabilities WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM assets WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM user_settings WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+  const deleted = deleteAccountCompletely({
+    userId: user.id,
+    reason,
+    actor: 'user_request'
   });
-
-  tx();
+  if (!deleted) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
   return res.status(204).send();
 });

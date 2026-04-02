@@ -1,6 +1,7 @@
 import { db } from '../lib/db.js';
 import { hashToken } from '../lib/auth.js';
 import { decryptString } from '../lib/crypto.js';
+import { getAccountAccessState } from '../lib/accountLifecycle.js';
 import { extractDeviceContext, logAuthEvent, touchDeviceForUser, touchSession } from '../lib/deviceSecurity.js';
 
 export default function requireAuth(req, res, next) {
@@ -30,6 +31,25 @@ export default function requireAuth(req, res, next) {
   if (new Date(session.expires_at).getTime() < Date.now()) {
     db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
     return res.status(401).json({ error: 'Session expired' });
+  }
+
+  const access = getAccountAccessState(session.user_id);
+  if (access.status === 'disabled') {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(session.user_id);
+    logAuthEvent({
+      userId: session.user_id,
+      mobileHash: '',
+      eventType: 'session_rejected_disabled_account',
+      authMethod: session.auth_method || 'session',
+      status: 'blocked',
+      reason: 'account_disabled',
+      context,
+      req
+    });
+    return res.status(403).json({
+      error: 'account_disabled',
+      message: 'This account is disabled. Contact support to regain access.'
+    });
   }
 
   const sessionDeviceId = String(session.device_id || '').trim();

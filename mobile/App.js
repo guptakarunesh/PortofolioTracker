@@ -499,7 +499,9 @@ function ScreenRenderer({
 }
 
 export default function App() {
-  const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const minScreenDimension = Math.min(screenWidth, screenHeight);
+  const isTabletLayout = minScreenDimension >= 700;
   const [themeKey, setThemeKey] = useState('worthio');
   const normalizedThemeKey = normalizeThemeKey(themeKey);
   const theme = THEMES[normalizedThemeKey] || THEMES.worthio;
@@ -694,7 +696,7 @@ export default function App() {
     setAiVisible(true);
     try {
       setAiLoading(true);
-      const data = await api.getAiInsights({ forceRefresh: __DEV__ });
+      const data = await api.getAiInsights({ forceRefresh: true });
       setAiPayload(data || null);
     } catch (e) {
       setAiError(String(e?.message || e));
@@ -1692,7 +1694,7 @@ export default function App() {
     setPinSetupError('');
   };
   const roleLabel = isAccountOwner
-    ? t('Owner Account')
+    ? t('Owner')
     : String(accessRole || 'read').toLowerCase() === 'admin'
       ? t('Family Admin')
       : t('Family Viewer');
@@ -1825,11 +1827,6 @@ export default function App() {
     SecureStore.setItemAsync(AUTH_INTRO_SEEN_KEY, '1').catch(() => {});
   }, [authIntroSeen, sessionRestoring, user]);
 
-  useEffect(() => {
-    if (!user || !launchSplashVisible) return;
-    setLaunchSplashVisible(false);
-  }, [launchSplashVisible, user]);
-
   const clearAuthError = React.useCallback(() => {
     setAuthError('');
   }, []);
@@ -1855,7 +1852,14 @@ export default function App() {
       ? 'returning'
       : 'light-new';
   const authPreviewVariant = __DEV__ && !user ? 'returning' : authLayoutVariant;
-  const authHeroOffset = Math.max(92, Math.min(136, Math.round(screenHeight * 0.11)));
+  const authHeroOffset = isTabletLayout
+    ? Math.max(140, Math.min(220, Math.round(screenHeight * 0.16)))
+    : Math.max(92, Math.min(136, Math.round(screenHeight * 0.11)));
+  const authFormOffset = isTabletLayout
+    ? authLayoutVariant === 'fresh'
+      ? 92
+      : 104
+    : 150;
 
   const mainContent = sessionRestoring ? (
     <SafeAreaView style={[styles.root, { backgroundColor: BRAND.colors.bgBase }]}>
@@ -1869,7 +1873,11 @@ export default function App() {
   ) : !user ? (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} />
-      <ImageBackground source={AUTH_LOGON_BACKGROUND} style={styles.authPageBackdrop} imageStyle={styles.authPageBackdropImage}>
+      <ImageBackground
+        source={AUTH_LOGON_BACKGROUND}
+        style={styles.authPageBackdrop}
+        imageStyle={[styles.authPageBackdropImage, isTabletLayout ? styles.authPageBackdropImageTablet : null]}
+      >
         <View style={styles.authPageBackdropOverlay} />
       </ImageBackground>
       <KeyboardAvoidingView
@@ -1879,7 +1887,11 @@ export default function App() {
       >
         <ScrollView
           style={styles.body}
-          contentContainerStyle={[styles.authPageContent, { paddingTop: authHeroOffset }]}
+          contentContainerStyle={[
+            styles.authPageContent,
+            isTabletLayout ? styles.authPageContentTablet : null,
+            { paddingTop: authHeroOffset }
+          ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           contentInsetAdjustmentBehavior="automatic"
@@ -1889,8 +1901,8 @@ export default function App() {
             <View
               style={[
                 styles.authFormSection,
-                styles.authFormSectionRaised,
-                authLayoutVariant === 'fresh' ? styles.authFormSectionFresh : null
+                { marginTop: authFormOffset },
+                isTabletLayout ? styles.authFormSectionTablet : null
               ]}
             >
               <AuthScreen
@@ -1908,14 +1920,6 @@ export default function App() {
             </View>
         </ScrollView>
       </KeyboardAvoidingView>
-      {launchSplashVisible ? (
-        <WorthioSplash
-          dark
-          onFinish={() => {
-            setLaunchSplashVisible(false);
-          }}
-        />
-      ) : null}
     </SafeAreaView>
   ) : (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
@@ -2291,6 +2295,14 @@ export default function App() {
         <ThemeContext.Provider value={{ theme, themeKey: normalizedThemeKey, setThemeKey }}>
           <View style={{ flex: 1 }}>
             {mainContent}
+            {launchSplashVisible ? (
+              <WorthioSplash
+                dark
+                onFinish={() => {
+                  setLaunchSplashVisible(false);
+                }}
+              />
+            ) : null}
           <Modal visible={aiVisible} transparent animationType="fade">
           <View style={styles.modalBackdrop}>
             <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setAiVisible(false)} />
@@ -2714,6 +2726,9 @@ const styles = StyleSheet.create({
   authPageBackdropImage: {
     resizeMode: 'cover'
   },
+  authPageBackdropImageTablet: {
+    resizeMode: 'contain'
+  },
   authPageBackdropOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(11,31,58,0.14)'
@@ -2829,6 +2844,10 @@ const styles = StyleSheet.create({
   },
   authFormSection: {
     marginTop: 18
+  },
+  authFormSectionTablet: {
+    alignItems: 'center',
+    width: '100%'
   },
   authFormSectionRaised: {
     marginTop: 150
@@ -3050,17 +3069,16 @@ const styles = StyleSheet.create({
   },
   accountMeta: {
     flex: 1,
-    minWidth: 0
+    minWidth: 0,
+    gap: 1
   },
   accountRoleText: {
-    marginTop: 1,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.3,
     textTransform: 'uppercase'
   },
   accountActivityLink: {
-    marginTop: 2,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.1,
@@ -3150,6 +3168,9 @@ const styles = StyleSheet.create({
   authPageContent: {
     flexGrow: 1,
     paddingBottom: 84
+  },
+  authPageContentTablet: {
+    paddingHorizontal: 32
   },
   authRestoreState: {
     flex: 1,

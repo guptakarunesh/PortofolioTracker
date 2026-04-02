@@ -51,12 +51,12 @@ function formatMoney(value, currency = 'INR', fxRate = 1) {
       : (Number.isFinite(Number(fxRate)) && Number(fxRate) > 0 ? Number(fxRate) : 1);
   const amount = amountInr * multiplier;
   const locale = normalizedCurrency === 'INR' ? 'en-IN' : 'en-US';
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: normalizedCurrency,
-    currencyDisplay: 'narrowSymbol',
+  const formatted = new Intl.NumberFormat(locale, {
+    style: 'decimal',
+    minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount);
+  return `${normalizedCurrency} ${formatted}`;
 }
 
 function formatDateTime(value) {

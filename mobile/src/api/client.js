@@ -224,7 +224,10 @@ export const api = {
     }),
   confirmSecurityPinReset: (payload) =>
     apiRequest('/api/auth/security-pin/reset/confirm', { method: 'POST', body: JSON.stringify(payload) }),
-  me: () => apiRequest('/api/auth/me'),
+  me: async () => {
+    const data = await apiRequest('/api/auth/me');
+    return data?.user || null;
+  },
   logout: () => apiRequest('/api/auth/logout', { method: 'POST' }),
   postSecurityContext: async () =>
     apiRequest('/api/auth/security/context', {

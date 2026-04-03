@@ -682,6 +682,18 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
         .run(nowIso(), inviteId, targetUserId);
       if (!updated.changes) return res.status(404).json({ error: 'invite_not_found' });
       result = { ok: true, canceled_invite_id: inviteId };
+    } else if (action === 'expire_family_invite') {
+      const inviteId = Number(payload.invite_id || 0);
+      if (!inviteId) return res.status(400).json({ error: 'invite_id_required' });
+      const invite = db
+        .prepare(`SELECT id, status FROM family_invites WHERE id = ? AND owner_user_id = ?`)
+        .get(inviteId, targetUserId);
+      if (!invite) return res.status(404).json({ error: 'invite_not_found' });
+      if (invite.status !== 'pending') return res.status(400).json({ error: 'invite_not_pending' });
+      const expiredAt = nowIso();
+      db.prepare(`UPDATE family_invites SET status = 'expired', expires_at = ?, updated_at = ? WHERE id = ?`)
+        .run(expiredAt, expiredAt, inviteId);
+      result = { ok: true, expired_invite_id: inviteId, expires_at: expiredAt };
     } else if (action === 'resend_family_invite') {
       const inviteId = Number(payload.invite_id || 0);
       if (!inviteId) return res.status(400).json({ error: 'invite_id_required' });
@@ -957,6 +969,7 @@ consoleRouter.get('/', (_req, res) => {
           <button class="pill" data-quick="set_subscription">Quick: Set Premium Monthly</button>
           <button class="pill" data-quick="expire_trial_premium">Quick: Expire Trial Premium</button>
           <button class="pill" data-quick="cancel_family_invite">Quick: Cancel Invite</button>
+          <button class="pill" data-quick="expire_family_invite">Quick: Expire Invite</button>
           <button class="pill" data-quick="disable_account">Quick: Disable Account</button>
           <button class="pill" data-quick="delete_account">Quick: Delete Account</button>
         </div>
@@ -972,6 +985,7 @@ consoleRouter.get('/', (_req, res) => {
             <option value="remove_family_member">Remove Family Member</option>
             <option value="set_family_role">Change Family Member Role</option>
             <option value="cancel_family_invite">Cancel Family Invite</option>
+            <option value="expire_family_invite">Expire Family Invite</option>
             <option value="resend_family_invite">Resend Family Invite</option>
           </select>
           <button id="runAction">Run Action</button>
@@ -1071,6 +1085,10 @@ consoleRouter.get('/', (_req, res) => {
       },
       cancel_family_invite: {
         hint: 'Cancel invite by invite_id.',
+        fields: [{ key: 'invite_id', label: 'Invite ID', type: 'number', required: true }]
+      },
+      expire_family_invite: {
+        hint: 'Force-expire a pending invite by invite_id before its normal expiry time.',
         fields: [{ key: 'invite_id', label: 'Invite ID', type: 'number', required: true }]
       },
       resend_family_invite: {

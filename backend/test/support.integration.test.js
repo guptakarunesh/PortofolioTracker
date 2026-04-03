@@ -289,4 +289,12 @@ test('support can delete an account and clear linked references with a reason no
     body: { mobile: '6666666605' }
   });
   assert.equal(otpSend.status, 404);
+
+  const historyAfterDelete = await appRequest(app, {
+    method: 'GET',
+    path: `/api/support/users/${targetId}/history`,
+    token: supportLogin.body.token
+  });
+  assert.equal(historyAfterDelete.status, 404);
+  assert.equal(historyAfterDelete.body.error, 'user_not_found');
 });

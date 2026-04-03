@@ -502,6 +502,18 @@ apiRouter.get('/users/:id/history', (req, res) => {
   const userId = Number(req.params.id);
   if (!userId) return res.status(400).json({ error: 'invalid_user_id' });
   const limit = Math.max(10, Math.min(500, Number(req.query.limit || 100)));
+  const targetUser = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+  if (!targetUser) {
+    logSupportAction({
+      actor: req.supportActor,
+      action: 'view_user_history',
+      targetUserId: null,
+      status: 'error',
+      reason: 'user_not_found',
+      meta: { limit, requested_user_id: userId }
+    });
+    return res.status(404).json({ error: 'user_not_found' });
+  }
 
   const authEvents = db
     .prepare(

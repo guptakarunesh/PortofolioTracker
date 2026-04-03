@@ -1157,7 +1157,19 @@ consoleRouter.get('/', (_req, res) => {
         lines.push('Member Roles: ' + members.map((m) => '#' + (m?.user?.id ?? '-') + ' ' + (m?.user?.initials || '-') + ' (' + (m?.role || '-') + ')').join(', '));
       }
       if (invites.length) {
-        lines.push('Pending Invites: ' + invites.filter((i) => i?.status === 'pending').length);
+        const pendingInvites = invites.filter((i) => i?.status === 'pending');
+        lines.push('Pending Invites: ' + pendingInvites.length);
+        if (pendingInvites.length) {
+          pendingInvites.forEach((invite) => {
+            lines.push(
+              '- Invite #' + (invite?.id ?? '-') +
+              ' | Mobile: ' + (invite?.mobile || '-') +
+              ' | Role: ' + (invite?.role || '-') +
+              ' | Status: ' + (invite?.status || '-') +
+              ' | Expires: ' + fmtDate(invite?.expires_at)
+            );
+          });
+        }
       }
       lines.push('');
       lines.push('Security');

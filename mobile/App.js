@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
   Alert,
   Platform,
+  AppState,
   InteractionManager,
   KeyboardAvoidingView
 } from 'react-native';
@@ -65,8 +66,11 @@ const BRAND_ICON = require('./src/assets/networth-icon.png');
 const HEADER_BRAND_ICON = require('./src/assets/app-icon.png');
 const AUTH_HEADER_LOCKUP = require('./src/assets/worthio-logo-lockup-header.png');
 const AUTH_LOGON_BACKGROUND = require('./src/assets/worthio-logon-background.png');
+const AUTH_LOGON_BACKGROUND_SIZE = { width: 842, height: 1264 };
+const AUTH_LOGON_BRAND_SAFE_BOTTOM = 430;
 const REMINDER_NOTIFICATION_TYPE = 'reminder_due';
 const EXPO_PUSH_ENABLED = String(process.env.EXPO_PUBLIC_ENABLE_EXPO_PUSH || '').trim() === '1';
+const ACCESS_CONTEXT_SYNC_INTERVAL_MS = 20000;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -401,6 +405,8 @@ function ScreenRenderer({
           subscriptionStatus={subscriptionStatus}
           onOpenSubscription={onOpenSubscription}
           readOnly={readOnly}
+          accessRole={accessRole}
+          subscriptionActive={subscriptionActive}
           onRequestScrollTo={onRequestScrollTo}
         />
       );
@@ -413,6 +419,8 @@ function ScreenRenderer({
           subscriptionStatus={subscriptionStatus}
           onOpenSubscription={onOpenSubscription}
           readOnly={readOnly}
+          accessRole={accessRole}
+          subscriptionActive={subscriptionActive}
           onRequestScrollTo={onRequestScrollTo}
         />
       );
@@ -434,6 +442,9 @@ function ScreenRenderer({
           fxRates={fxRates}
           premiumActive={premiumActive}
           onOpenSubscription={onOpenSubscription}
+          readOnly={readOnly}
+          accessRole={accessRole}
+          subscriptionActive={subscriptionActive}
           onRemindersChanged={onRemindersChanged}
           onRequestScrollTo={onRequestScrollTo}
         />
@@ -444,6 +455,8 @@ function ScreenRenderer({
           premiumActive={premiumActive}
           onOpenSubscription={onOpenSubscription}
           readOnly={readOnly}
+          accessRole={accessRole}
+          subscriptionActive={subscriptionActive}
           preferredCurrency={preferredCurrency}
           onRequestScrollTo={onRequestScrollTo}
         />
@@ -561,6 +574,7 @@ export default function App() {
   const onboardingTargetRefs = React.useRef({});
   const onboardingZoom = React.useRef(new Animated.Value(0)).current;
   const handledNotificationResponses = React.useRef(new Set());
+  const lastAccessContextSyncAtRef = React.useRef(0);
   const premiumActive =
     subscriptionStatus?.status === 'active' &&
     ['trial_premium', 'premium_monthly', 'premium_yearly'].includes(subscriptionStatus?.plan);
@@ -574,35 +588,35 @@ export default function App() {
         targetKey: 'tab_dashboard',
         panel: 'top',
         title: t('Start on Dashboard'),
-        body: t('See net worth, assets, and liabilities together.\nUse this page first for a quick financial check.')
+        body: t('See net worth, assets, and liabilities together. Use this page first for a quick financial check.')
       },
       {
         tab: 'assets',
         targetKey: 'tab_assets',
         panel: 'top',
         title: t('Track your Assets'),
-        body: t('Add investments, deposits, property, and cash here.\nKeep values updated so your totals stay accurate.')
+        body: t('Add investments, deposits, property, and cash here. Keep values updated so your totals stay accurate.')
       },
       {
         tab: 'loans',
         targetKey: 'tab_loans',
         panel: 'top',
         title: t('Track your Liabilities'),
-        body: t('Record loans, cards, and dues in one place.\nThis keeps your net worth realistic and current.')
+        body: t('Record loans, cards, and dues in one place. This keeps your net worth realistic and current.')
       },
       {
         tab: 'settings',
         targetKey: 'tab_settings',
         panel: 'top',
         title: t('Set yearly Targets'),
-        body: t('Add yearly goals for the categories that matter.\nThe dashboard will show how close you are to target.')
+        body: t('Add yearly goals for the categories that matter. The dashboard will show how close you are to target.')
       },
       {
         tab: 'reminders',
         targetKey: 'tab_reminders',
         panel: 'top',
         title: t('Use smart Reminders'),
-        body: t('Track bills, renewals, and follow-ups here.\nStay ahead of due dates from one screen.')
+        body: t('Track bills, renewals, and follow-ups here. Stay ahead of due dates from one screen.')
       },
       {
         tab: 'dashboard',
@@ -610,7 +624,7 @@ export default function App() {
         panel: 'middle',
         blurBackground: true,
         title: t('Use AI Insights'),
-        body: t('Get a quick summary of your portfolio here.\nUse it when you want the main takeaways fast.')
+        body: t('Get a quick summary of your portfolio here. Use it when you want the main takeaways fast.')
       },
       {
         tab: 'dashboard',
@@ -618,7 +632,7 @@ export default function App() {
         panel: 'top',
         blurBackground: true,
         title: t('Manage Account'),
-        body: t('Open Account to manage biometrics, privacy, language, theme, and subscription.\nYou can review family access, support options, and security settings here.\nUse this area whenever you need control changes instead of portfolio updates.')
+        body: t('Open Account to manage biometrics, privacy, language, theme, and subscription. You can review family access, support options, and security settings here. Use this area whenever you need control changes instead of portfolio updates.')
       }
     ],
     [t]
@@ -1085,7 +1099,7 @@ export default function App() {
     }
   };
 
-  const refreshAccessContext = async () => {
+  const refreshAccessContext = React.useCallback(async () => {
     try {
       const info = await api.getFamilyAccess();
       setAccessRole(String(info?.role || 'admin'));
@@ -1102,9 +1116,9 @@ export default function App() {
       setSubscriptionAdminInitials([]);
       return null;
     }
-  };
+  }, []);
 
-  const refreshSubscription = async () => {
+  const refreshSubscription = React.useCallback(async () => {
     try {
       const status = await api.getSubscriptionStatus();
       setSubscriptionStatus(status);
@@ -1113,7 +1127,40 @@ export default function App() {
       setSubscriptionStatus(null);
       return null;
     }
-  };
+  }, []);
+
+  const syncAccessContext = React.useCallback(
+    async (force = false) => {
+      if (!user) return;
+      const now = Date.now();
+      if (!force && now - lastAccessContextSyncAtRef.current < 8000) return;
+      lastAccessContextSyncAtRef.current = now;
+      await Promise.allSettled([refreshSubscription(), refreshAccessContext()]);
+    },
+    [user, refreshAccessContext, refreshSubscription]
+  );
+
+  useEffect(() => {
+    if (!user) {
+      lastAccessContextSyncAtRef.current = 0;
+      return undefined;
+    }
+    syncAccessContext(true).catch(() => {});
+    const timer = setInterval(() => {
+      syncAccessContext(false).catch(() => {});
+    }, ACCESS_CONTEXT_SYNC_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [user, syncAccessContext]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        syncAccessContext(true).catch(() => {});
+      }
+    });
+    return () => appStateSub.remove();
+  }, [user, syncAccessContext]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1532,6 +1579,7 @@ export default function App() {
       return;
     }
     setActiveTab(key);
+    syncAccessContext(false).catch(() => {});
   };
 
   useEffect(() => {
@@ -1697,11 +1745,9 @@ export default function App() {
     ? t('Owner')
     : String(accessRole || 'read').toLowerCase() === 'admin'
       ? t('Family Admin')
-      : t('Family Viewer');
-  const accountShortName = String(user?.full_name || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)[0] || t('Account');
+      : String(accessRole || 'read').toLowerCase() === 'write'
+        ? t('Family Editor')
+        : t('Family Viewer');
   const isFamilyMember = !isAccountOwner;
   const normalizedAdminInitials = React.useMemo(
     () =>
@@ -1852,13 +1898,21 @@ export default function App() {
       ? 'returning'
       : 'light-new';
   const authPreviewVariant = __DEV__ && !user ? 'returning' : authLayoutVariant;
+  const authBackdropScale = Math.min(
+    screenWidth / AUTH_LOGON_BACKGROUND_SIZE.width,
+    screenHeight / AUTH_LOGON_BACKGROUND_SIZE.height
+  );
+  const authBackdropRenderedHeight = AUTH_LOGON_BACKGROUND_SIZE.height * authBackdropScale;
+  const authBackdropTopInset = Math.max(0, (screenHeight - authBackdropRenderedHeight) / 2);
+  const authBrandSafeBottom = authBackdropTopInset + (AUTH_LOGON_BRAND_SAFE_BOTTOM * authBackdropScale);
+  const authTabletTopPadding = Math.round(
+    authBrandSafeBottom + (authLayoutVariant === 'fresh' ? 60 : 72)
+  );
   const authHeroOffset = isTabletLayout
-    ? Math.max(140, Math.min(220, Math.round(screenHeight * 0.16)))
+    ? Math.max(260, Math.min(Math.round(screenHeight * 0.78), authTabletTopPadding))
     : Math.max(92, Math.min(136, Math.round(screenHeight * 0.11)));
   const authFormOffset = isTabletLayout
-    ? authLayoutVariant === 'fresh'
-      ? 92
-      : 104
+    ? 0
     : 150;
 
   const mainContent = sessionRestoring ? (
@@ -1937,39 +1991,58 @@ export default function App() {
             ]}
           >
             <View style={styles.headerMainRow}>
-              <AnimatedPressable
-                ref={(node) => setOnboardingTargetRef('account_chip', node)}
-                collapsable={false}
-                onLayout={() => measureOnboardingTarget('account_chip')}
+              <View
                 style={[
                   styles.accountCapsule,
-                  { backgroundColor: theme.inputBg, borderColor: theme.border },
-                  getOnboardingZoomStyle('account_chip')
+                  { backgroundColor: theme.inputBg, borderColor: theme.border }
                 ]}
-                onPress={() => handleTabSelect('account')}
-                hitSlop={8}
               >
-                <View style={[styles.accountAvatar, { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-                  <Text style={styles.accountAvatarText}>{toInitialsFromName(user.full_name)}</Text>
-                </View>
-                <View style={styles.accountMeta}>
-                  <Text style={[styles.accountCapsuleText, { color: theme.text }]} numberOfLines={1}>
-                    {accountShortName}
+                <AnimatedPressable
+                  ref={(node) => setOnboardingTargetRef('account_chip', node)}
+                  collapsable={false}
+                  onLayout={() => measureOnboardingTarget('account_chip')}
+                  style={[
+                    styles.accountChipButton,
+                    {
+                      backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.05)' : theme.card,
+                      borderColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : theme.border
+                    },
+                    getOnboardingZoomStyle('account_chip')
+                  ]}
+                  onPress={() => handleTabSelect('account')}
+                  hitSlop={6}
+                >
+                  <View style={[styles.accountAvatar, { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+                    <Text style={styles.accountAvatarText}>{toInitialsFromName(user.full_name)}</Text>
+                  </View>
+                  <View style={styles.accountMeta}>
+                    <Text style={[styles.accountRoleText, { color: theme.info }]} numberOfLines={1}>
+                      {roleLabel}
+                    </Text>
+                    {accountExpiryNotice ? (
+                      <Text style={[styles.accountExpiryNotice, { color: theme.warn }]} numberOfLines={1}>
+                        {accountExpiryNotice}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.accountChevron, { color: theme.info }]}>{'\u203A'}</Text>
+                </AnimatedPressable>
+                <Pressable
+                  style={[
+                    styles.activityChipButton,
+                    {
+                      backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.05)' : theme.card,
+                      borderColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : theme.border
+                    }
+                  ]}
+                  onPress={() => openRecentActivity().catch(() => {})}
+                  hitSlop={6}
+                >
+                  <Text style={[styles.activityChipText, { color: theme.accent }]} numberOfLines={1}>
+                    {t('Recent Activity')}
                   </Text>
-                  <Text style={[styles.accountRoleText, { color: theme.info }]}>{roleLabel}</Text>
-                  <Pressable onPress={() => openRecentActivity().catch(() => {})} hitSlop={8}>
-                    <Text style={[styles.accountActivityLink, { color: theme.accent }]} numberOfLines={1}>
-                      {t('Recent Activity')}
-                    </Text>
-                  </Pressable>
-                  {accountExpiryNotice ? (
-                    <Text style={[styles.accountExpiryNotice, { color: theme.warn }]} numberOfLines={1}>
-                      {accountExpiryNotice}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={[styles.accountChevron, { color: theme.info }]}>{'\u203A'}</Text>
-              </AnimatedPressable>
+                </Pressable>
+              </View>
               <View style={styles.headerBrandActions}>
                 <View
                   style={[
@@ -3046,15 +3119,14 @@ const styles = StyleSheet.create({
     lineHeight: 20
   },
   accountCapsule: {
-    minHeight: 50,
+    minHeight: 56,
     flex: 1,
     borderRadius: 18,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 6,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: 8,
     shadowColor: BRAND.colors.bgDeep,
     shadowOpacity: 0.06,
@@ -3062,27 +3134,44 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2
   },
-  accountCapsuleText: {
-    fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 0.3
+  accountChipButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  activityChipButton: {
+    minHeight: 44,
+    minWidth: 108,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   accountMeta: {
     flex: 1,
     minWidth: 0,
-    gap: 1
+    gap: 2,
+    justifyContent: 'center'
   },
   accountRoleText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.3,
     textTransform: 'uppercase'
   },
-  accountActivityLink: {
+  activityChipText: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.1,
-    textDecorationLine: 'underline'
+    textAlign: 'center'
   },
   accountExpiryNotice: {
     marginTop: 2,

@@ -188,7 +188,7 @@ app.use('/api/market-rates', requireAuth, attachAccountContext, marketRatesRoute
 app.use('/api/fx', requireAuth, attachAccountContext, fxRatesRoutes);
 app.use('/api/performance', requireAuth, attachAccountContext, performanceRoutes);
 app.use('/api/family', requireAuth, attachAccountContext, familyRoutes);
-app.use('/api/settings', requireAuth, settingRoutes);
+app.use('/api/settings', requireAuth, attachAccountContext, settingRoutes);
 app.use('/api/notifications', requireAuth, notificationRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/user', requireAuth, userRoutes);

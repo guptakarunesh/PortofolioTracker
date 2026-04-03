@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, Alert, ScrollView } from 'react-native';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
+import FeedbackBanner from '../components/FeedbackBanner';
 import { api } from '../api/client';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
@@ -60,6 +61,9 @@ export default function FamilyScreen({
   const [mobile, setMobile] = useState('');
   const [role, setRole] = useState('read');
   const [message, setMessage] = useState('');
+  const [messageKind, setMessageKind] = useState('info');
+  const [formMessage, setFormMessage] = useState('');
+  const [formMessageKind, setFormMessageKind] = useState('info');
   const [loading, setLoading] = useState(false);
   const [inviteFilter, setInviteFilter] = useState('pending');
   const fieldOffsetsRef = useRef({});
@@ -78,8 +82,10 @@ export default function FamilyScreen({
       setMembers(Array.isArray(data?.members) ? data.members : []);
       setInvites(Array.isArray(data?.invites) ? data.invites : []);
       setMessage('');
+      setMessageKind('info');
     } catch (e) {
       setMessage(e.message);
+      setMessageKind('error');
     } finally {
       setLoading(false);
     }
@@ -94,6 +100,7 @@ export default function FamilyScreen({
       setAudit(Array.isArray(data?.audit) ? data.audit : []);
     } catch (e) {
       setMessage(e.message);
+      setMessageKind('error');
     } finally {
       setLoading(false);
     }
@@ -120,11 +127,13 @@ export default function FamilyScreen({
 
   const handleAdd = async () => {
     if (slotsLeft === 0) {
-      setMessage(t('Family limit reached. You can add up to {count} members.', { count: MAX_FAMILY_MEMBERS }));
+      setFormMessage(t('Family limit reached. You can add up to {count} members.', { count: MAX_FAMILY_MEMBERS }));
+      setFormMessageKind('error');
       return;
     }
     if (!mobile.trim()) {
-      setMessage(t('Mobile number is required.'));
+      setFormMessage(t('Mobile number is required.'));
+      setFormMessageKind('error');
       return;
     }
     try {
@@ -136,9 +145,13 @@ export default function FamilyScreen({
         setInvites((prev) => [result.invite, ...prev]);
       }
       setMobile('');
-      setMessage(result?.invite ? t('Invite sent.') : t('Family member added.'));
+      setFormMessage(result?.invite ? t('Invite sent.') : t('Family member added.'));
+      setFormMessageKind('success');
+      setMessage('');
+      setMessageKind('info');
     } catch (e) {
-      setMessage(e.message);
+      setFormMessage(e.message);
+      setFormMessageKind('error');
     } finally {
       setLoading(false);
     }
@@ -150,8 +163,10 @@ export default function FamilyScreen({
       const updated = await api.updateFamilyMember(id, { role: nextRole });
       setMembers((prev) => prev.map((row) => (row.id === id ? updated : row)));
       setMessage(t('Role updated.'));
+      setMessageKind('success');
     } catch (e) {
       setMessage(e.message);
+      setMessageKind('error');
     } finally {
       setLoading(false);
     }
@@ -163,11 +178,33 @@ export default function FamilyScreen({
       await api.removeFamilyMember(id);
       setMembers((prev) => prev.filter((row) => row.id !== id));
       setMessage(t('Family member removed.'));
+      setMessageKind('success');
     } catch (e) {
       setMessage(e.message);
+      setMessageKind('error');
     } finally {
       setLoading(false);
     }
+  };
+
+  const confirmRemove = (id) => {
+    Alert.alert(
+      t('Family Access'),
+      t('Are you sure you want to remove this family member?'),
+      [
+        { text: t('Cancel'), style: 'cancel' },
+        {
+          text: t('Remove'),
+          style: 'destructive',
+          onPress: () => {
+            handleRemove(id).catch((e) => {
+              setMessage(e.message);
+              setMessageKind('error');
+            });
+          }
+        }
+      ]
+    );
   };
 
   const handleCancelInvite = async (id) => {
@@ -175,9 +212,13 @@ export default function FamilyScreen({
       setLoading(true);
       await api.cancelFamilyInvite(id);
       setInvites((prev) => prev.filter((row) => row.id !== id));
-      setMessage(t('Invite canceled.'));
+      const successMessage = t('Invite canceled.');
+      setMessage(successMessage);
+      setMessageKind('success');
+      Alert.alert(t('Family Access'), successMessage);
     } catch (e) {
       setMessage(e.message);
+      setMessageKind('error');
     } finally {
       setLoading(false);
     }
@@ -192,9 +233,16 @@ export default function FamilyScreen({
           row.id === id ? { ...row, expires_at: result?.expires_at || row.expires_at } : row
         )
       );
-      setMessage(t('Invite resent.'));
+      const updatedExpiry = String(result?.expires_at || '').slice(0, 10);
+      const successMessage = updatedExpiry
+        ? t('Invite resent. New expiry: {date}.', { date: updatedExpiry })
+        : t('Invite resent.');
+      setMessage(successMessage);
+      setMessageKind('success');
+      Alert.alert(t('Family Access'), successMessage);
     } catch (e) {
       setMessage(e.message);
+      setMessageKind('error');
     } finally {
       setLoading(false);
     }
@@ -221,6 +269,34 @@ export default function FamilyScreen({
     ],
     [theme.accent, theme.text]
   );
+  const compactSelectorButtonStyle = useCallback(
+    (selected) => [
+      ...selectorButtonStyle(selected),
+      styles.compactSelectorButton
+    ],
+    [selectorButtonStyle]
+  );
+  const compactSelectorTextStyle = useCallback(
+    (selected) => [
+      ...selectorTextStyle(selected),
+      styles.compactSelectorText
+    ],
+    [selectorTextStyle]
+  );
+  const filterSelectorButtonStyle = useCallback(
+    (selected) => [
+      ...selectorButtonStyle(selected),
+      styles.filterSelectorButton
+    ],
+    [selectorButtonStyle]
+  );
+  const filterSelectorTextStyle = useCallback(
+    (selected) => [
+      ...selectorTextStyle(selected),
+      styles.filterSelectorText
+    ],
+    [selectorTextStyle]
+  );
 
   return (
     <View style={styles.container}>
@@ -228,6 +304,7 @@ export default function FamilyScreen({
         <Text style={[styles.helper, { color: theme.muted }]}>
           {t('Add family members and set their access level. Admins can manage access.')}
         </Text>
+        <FeedbackBanner message={message} kind={messageKind} />
 
         {!premiumActive ? (
           <>
@@ -268,20 +345,26 @@ export default function FamilyScreen({
                 onFocus={() => scrollToField('mobile')}
                 style={[styles.phoneInput, { color: theme.inputText }]}
                 value={mobile}
-                onChangeText={(text) => setMobile(String(text || '').replace(/\D/g, '').slice(0, 10))}
+                onChangeText={(text) => {
+                  setMobile(String(text || '').replace(/\D/g, '').slice(0, 10));
+                  if (formMessage) {
+                    setFormMessage('');
+                    setFormMessageKind('info');
+                  }
+                }}
                 placeholder={t('10-digit mobile number')}
                 placeholderTextColor={theme.muted}
                 keyboardType="number-pad"
               />
             </View>
-            <View style={styles.roleRow}>
+            <View style={styles.compactRoleRow}>
               {ROLE_OPTIONS.map((opt) => (
                 <PillButton
                   key={opt.key}
                   label={t(opt.label)}
                   kind="ghost"
-                  style={selectorButtonStyle(role === opt.key)}
-                  textStyle={selectorTextStyle(role === opt.key)}
+                  style={compactSelectorButtonStyle(role === opt.key)}
+                  textStyle={compactSelectorTextStyle(role === opt.key)}
                   onPress={() => setRole(opt.key)}
                 />
               ))}
@@ -292,6 +375,7 @@ export default function FamilyScreen({
               onPress={handleAdd}
               disabled={addDisabled}
             />
+            <FeedbackBanner message={formMessage} kind={formMessageKind} />
 
             <Text style={[styles.label, { color: theme.muted }]}>{t('Members')}</Text>
             {members.length ? (
@@ -304,20 +388,20 @@ export default function FamilyScreen({
                     </View>
                     <Text style={[styles.memberRole, { color: theme.accent }]}>{row.role.toUpperCase()}</Text>
                   </View>
-                  <View style={styles.roleRow}>
+                  <View style={styles.compactRoleRow}>
                     {ROLE_OPTIONS.map((opt) => (
                       <PillButton
                         key={`${row.id}-${opt.key}`}
                         label={t(opt.label)}
                         kind="ghost"
-                        style={selectorButtonStyle(row.role === opt.key)}
-                        textStyle={selectorTextStyle(row.role === opt.key)}
+                        style={compactSelectorButtonStyle(row.role === opt.key)}
+                        textStyle={compactSelectorTextStyle(row.role === opt.key)}
                         onPress={() => handleRoleChange(row.id, opt.key)}
                       />
                     ))}
                   </View>
                   <View style={styles.actionsRow}>
-                    <Pressable onPress={() => handleRemove(row.id)}>
+                    <Pressable onPress={() => confirmRemove(row.id)}>
                       <Text style={[styles.removeText, { color: theme.danger }]}>{t('Remove')}</Text>
                     </Pressable>
                   </View>
@@ -328,18 +412,22 @@ export default function FamilyScreen({
             )}
 
             <Text style={[styles.label, { color: theme.muted }]}>{t('Pending Invites')}</Text>
-            <View style={styles.roleRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
+            >
               {INVITE_FILTERS.map((opt) => (
                 <PillButton
                   key={opt.key}
                   label={t(opt.label)}
                   kind="ghost"
-                  style={selectorButtonStyle(inviteFilter === opt.key)}
-                  textStyle={selectorTextStyle(inviteFilter === opt.key)}
+                  style={filterSelectorButtonStyle(inviteFilter === opt.key)}
+                  textStyle={filterSelectorTextStyle(inviteFilter === opt.key)}
                   onPress={() => setInviteFilter(opt.key)}
                 />
               ))}
-            </View>
+            </ScrollView>
             {filteredInvites.length ? (
               filteredInvites.map((row) => (
                 <View key={row.id} style={[styles.inviteCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
@@ -386,8 +474,6 @@ export default function FamilyScreen({
           </>
         )}
       </SectionCard>
-
-      {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
 
       <View style={styles.footerRow}>
         <PillButton label={t('Back')} kind="ghost" onPress={onClose} />
@@ -443,8 +529,47 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 10
   },
+  compactRoleRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+    marginBottom: 10
+  },
+  filterRow: {
+    gap: 6,
+    paddingRight: 8,
+    marginTop: 10,
+    marginBottom: 10
+  },
   selectorButton: {
     minWidth: 96
+  },
+  compactSelectorButton: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    minHeight: 38,
+    borderRadius: 14
+  },
+  compactSelectorText: {
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: 0,
+    textAlign: 'center'
+  },
+  filterSelectorButton: {
+    minWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 36,
+    borderRadius: 14
+  },
+  filterSelectorText: {
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0,
+    textAlign: 'center'
   },
   selectorButtonText: {
     fontWeight: '900'

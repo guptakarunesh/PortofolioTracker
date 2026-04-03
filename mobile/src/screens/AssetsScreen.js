@@ -50,6 +50,11 @@ function HelpLine({ text, theme }) {
   return <Text style={[styles.helpText, { color: theme.muted }]}>ⓘ {text}</Text>;
 }
 
+const formatUpdatedTimestamp = (value) => {
+  if (!value) return '';
+  return String(value).replace('T', ' ').slice(0, 19);
+};
+
 export default function AssetsScreen({
   hideSensitive = false,
   preferredCurrency = 'INR',
@@ -57,6 +62,8 @@ export default function AssetsScreen({
   subscriptionStatus,
   onOpenSubscription = () => {},
   readOnly = false,
+  accessRole = 'admin',
+  subscriptionActive = true,
   onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
@@ -85,6 +92,13 @@ export default function AssetsScreen({
   const currentValueInputRef = useRef(null);
   const investedAmountInputRef = useRef(null);
   const fieldOffsetsRef = useRef({});
+  const readOnlyDueToFamilyRole = readOnly && String(accessRole || '').toLowerCase() === 'read' && subscriptionActive;
+  const readOnlyBannerText = readOnlyDueToFamilyRole
+    ? t('Read-only family access. Ask an admin to change your role to Write or Admin to edit.')
+    : t('Subscription expired. View-only mode.');
+  const readOnlyActionText = readOnlyDueToFamilyRole
+    ? t('Read-only family access. Ask an admin to change your role to Write or Admin to edit assets.')
+    : t('Subscription expired. Renew to edit assets.');
 
   const load = useCallback(async () => {
     const rows = await api.getAssets();
@@ -148,7 +162,8 @@ export default function AssetsScreen({
 
   const startEdit = (item) => {
     if (readOnly) {
-      setMessage(t('Subscription expired. Renew to edit assets.'));
+      setMessage(readOnlyActionText);
+      setMessageKind('error');
       return;
     }
     setEditingId(item.id);
@@ -206,7 +221,7 @@ export default function AssetsScreen({
 
   const submit = async () => {
     if (readOnly) {
-      setMessage(t('Subscription expired. Renew to edit assets.'));
+      setMessage(readOnlyActionText);
       setMessageKind('error');
       return;
     }
@@ -304,7 +319,7 @@ export default function AssetsScreen({
 
   const remove = async (id) => {
     if (readOnly) {
-      setMessage(t('Subscription expired. Renew to edit assets.'));
+      setMessage(readOnlyActionText);
       setMessageKind('error');
       return;
     }
@@ -369,259 +384,266 @@ export default function AssetsScreen({
     });
   const maxAssets = subscriptionStatus?.limits?.maxAssets;
   const totalAssetValue = visibleItems.reduce((sum, item) => sum + Number(item.current_value || 0), 0);
+  const latestAssetUpdate = visibleItems.reduce((latest, item) => {
+    const current = Date.parse(String(item?.updated_at || ''));
+    if (!Number.isFinite(current)) return latest;
+    return !latest || current > latest.ts ? { ts: current, value: formatUpdatedTimestamp(item.updated_at) } : latest;
+  }, null);
 
   return (
     <View>
-      <SectionCard title={editingId ? t('Edit Asset') : t('Add Asset')}>
-        {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{t('Subscription expired. View-only mode.')}</Text> : null}
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Category')}</Text>
-        <Pressable
-          style={[
-            styles.dropdownTrigger,
-            { borderColor: theme.border, backgroundColor: theme.inputBg }
-          ]}
-          disabled={readOnly}
-          onPress={() => setShowCategoryOptions((v) => !v)}
-        >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>
-            {form.category ? getCategoryDisplayLabel(form.category, t) : t('Select category')}
-          </Text>
-          <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showCategoryOptions ? '▲' : '▼'}</Text>
-        </Pressable>
-        {showCategoryOptions ? (
-          <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            {CATEGORY_OPTIONS.map((category) => (
-              <Pressable
-                key={category}
-                style={[
-                  styles.dropdownItem,
-                  { borderBottomColor: theme.border },
-                  form.category === category && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
-                ]}
-                onPress={() => {
-                  setForm((f) => ({ ...f, category }));
-                  setShowCategoryOptions(false);
-                }}
-              >
-                <Text
+      {!readOnlyDueToFamilyRole ? (
+        <SectionCard title={editingId ? t('Edit Asset') : t('Add Asset')}>
+          {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{readOnlyBannerText}</Text> : null}
+          <Text style={[styles.label, { color: theme.muted }]}>{t('Category')}</Text>
+          <Pressable
+            style={[
+              styles.dropdownTrigger,
+              { borderColor: theme.border, backgroundColor: theme.inputBg }
+            ]}
+            disabled={readOnly}
+            onPress={() => setShowCategoryOptions((v) => !v)}
+          >
+            <Text style={[styles.dropdownText, { color: theme.inputText }]}>
+              {form.category ? getCategoryDisplayLabel(form.category, t) : t('Select category')}
+            </Text>
+            <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showCategoryOptions ? '▲' : '▼'}</Text>
+          </Pressable>
+          {showCategoryOptions ? (
+            <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              {CATEGORY_OPTIONS.map((category) => (
+                <Pressable
+                  key={category}
                   style={[
-                    styles.dropdownItemText,
-                    { color: theme.text },
-                    form.category === category && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
+                    styles.dropdownItem,
+                    { borderBottomColor: theme.border },
+                    form.category === category && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                   ]}
+                  onPress={() => {
+                    setForm((f) => ({ ...f, category }));
+                    setShowCategoryOptions(false);
+                  }}
                 >
-                  {getCategoryDisplayLabel(category, t)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      { color: theme.text },
+                      form.category === category && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
+                    ]}
+                  >
+                    {getCategoryDisplayLabel(category, t)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
 
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Institution Name')}</Text>
-        <TextInput
-          ref={nameInputRef}
-          onLayout={(event) => setFieldOffset('name', event.nativeEvent.layout.y)}
-          onFocus={() => scrollToField('name')}
-          style={[
-            styles.input,
-            { backgroundColor: theme.inputBg, borderColor: fieldErrors.name ? theme.danger : theme.border, color: theme.inputText },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
-          ]}
-          value={form.name}
-          onChangeText={(v) => {
-            clearFieldError('name');
-            setForm((f) => ({ ...f, name: v }));
-          }}
-          placeholder={t('HDFC Bank / SBI')}
-          placeholderTextColor={theme.muted}
-          editable={!readOnly}
-        />
-        {!!fieldErrors.name ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.name}</Text> : null}
+          <Text style={[styles.label, { color: theme.muted }]}>{t('Institution Name')}</Text>
+          <TextInput
+            ref={nameInputRef}
+            onLayout={(event) => setFieldOffset('name', event.nativeEvent.layout.y)}
+            onFocus={() => scrollToField('name')}
+            style={[
+              styles.input,
+              { backgroundColor: theme.inputBg, borderColor: fieldErrors.name ? theme.danger : theme.border, color: theme.inputText },
+              readOnly && { backgroundColor: theme.background, color: theme.muted }
+            ]}
+            value={form.name}
+            onChangeText={(v) => {
+              clearFieldError('name');
+              setForm((f) => ({ ...f, name: v }));
+            }}
+            placeholder={t('HDFC Bank / SBI')}
+            placeholderTextColor={theme.muted}
+            editable={!readOnly}
+          />
+          {!!fieldErrors.name ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.name}</Text> : null}
 
-        <Text style={[styles.label, { color: theme.muted }]}>{t('How to reach this institution')}</Text>
-        <HelpLine
-          theme={theme}
-          text={t('This tells your family the fastest next step to reach the institution.')}
-        />
-        <Pressable
-          style={[
-            styles.dropdownTrigger,
-            { borderColor: theme.border, backgroundColor: theme.inputBg }
-          ]}
-          disabled={readOnly}
-          onPress={() => setShowReachOptions((v) => !v)}
-        >
-          <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.reach_via || 'Branch')}</Text>
-          <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showReachOptions ? '▲' : '▼'}</Text>
-        </Pressable>
-        {showReachOptions ? (
-          <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            {REACH_OPTIONS.map((reachVia) => (
-              <Pressable
-                key={reachVia}
-                style={[
-                  styles.dropdownItem,
-                  { borderBottomColor: theme.border },
-                  form.reach_via === reachVia && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
-                ]}
-                onPress={() => {
-                  setForm((f) => ({ ...f, reach_via: reachVia }));
-                  setShowReachOptions(false);
-                }}
-              >
-                <Text
+          <Text style={[styles.label, { color: theme.muted }]}>{t('How to reach this institution')}</Text>
+          <HelpLine
+            theme={theme}
+            text={t('This tells your family the fastest next step to reach the institution.')}
+          />
+          <Pressable
+            style={[
+              styles.dropdownTrigger,
+              { borderColor: theme.border, backgroundColor: theme.inputBg }
+            ]}
+            disabled={readOnly}
+            onPress={() => setShowReachOptions((v) => !v)}
+          >
+            <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.reach_via || 'Branch')}</Text>
+            <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showReachOptions ? '▲' : '▼'}</Text>
+          </Pressable>
+          {showReachOptions ? (
+            <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              {REACH_OPTIONS.map((reachVia) => (
+                <Pressable
+                  key={reachVia}
                   style={[
-                    styles.dropdownItemText,
-                    { color: theme.text },
-                    form.reach_via === reachVia && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
+                    styles.dropdownItem,
+                    { borderBottomColor: theme.border },
+                    form.reach_via === reachVia && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                   ]}
+                  onPress={() => {
+                    setForm((f) => ({ ...f, reach_via: reachVia }));
+                    setShowReachOptions(false);
+                  }}
                 >
-                  {t(reachVia)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      { color: theme.text },
+                      form.reach_via === reachVia && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
+                    ]}
+                  >
+                    {t(reachVia)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
 
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Asset Account / Unique Number')}</Text>
-        <HelpLine
-          theme={theme}
-          text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
-        />
-        <TextInput
-          style={[
-            styles.input,
-            { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
-          ]}
-          value={form.account_ref}
-          onChangeText={(v) => setForm((f) => ({ ...f, account_ref: v }))}
-          placeholder={editingId ? t('Enter new identifier to replace existing') : t('Folio / Account No / Demat ID')}
-          autoCapitalize="none"
-          placeholderTextColor={theme.muted}
-          editable={!readOnly}
-        />
+          <Text style={[styles.label, { color: theme.muted }]}>{t('Asset Account / Unique Number')}</Text>
+          <HelpLine
+            theme={theme}
+            text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
+          />
+          <TextInput
+            style={[
+              styles.input,
+              { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText },
+              readOnly && { backgroundColor: theme.background, color: theme.muted }
+            ]}
+            value={form.account_ref}
+            onChangeText={(v) => setForm((f) => ({ ...f, account_ref: v }))}
+            placeholder={editingId ? t('Enter new identifier to replace existing') : t('Folio / Account No / Demat ID')}
+            autoCapitalize="none"
+            placeholderTextColor={theme.muted}
+            editable={!readOnly}
+          />
 
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Tracking Website URL')}</Text>
-        <HelpLine
-          theme={theme}
-          text={t('Only domain is stored (for example, bankname.com) to keep details minimal and discreet.')}
-        />
-        <TextInput
-          ref={trackingUrlInputRef}
-          onLayout={(event) => setFieldOffset('tracking_url', event.nativeEvent.layout.y)}
-          onFocus={() => scrollToField('tracking_url')}
-          style={[
-            styles.input,
-            { backgroundColor: theme.inputBg, borderColor: fieldErrors.tracking_url ? theme.danger : theme.border, color: theme.inputText },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
-          ]}
-          value={form.tracking_url}
-          onChangeText={(v) => {
-            clearFieldError('tracking_url');
-            setForm((f) => ({ ...f, tracking_url: v }));
-          }}
-          placeholder={t('https://...')}
-          autoCapitalize="none"
-          placeholderTextColor={theme.muted}
-          editable={!readOnly}
-        />
-        {!!fieldErrors.tracking_url ? (
-          <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.tracking_url}</Text>
-        ) : null}
+          <Text style={[styles.label, { color: theme.muted }]}>{t('Tracking Website URL')}</Text>
+          <HelpLine
+            theme={theme}
+            text={t('Only domain is stored (for example, bankname.com) to keep details minimal and discreet.')}
+          />
+          <TextInput
+            ref={trackingUrlInputRef}
+            onLayout={(event) => setFieldOffset('tracking_url', event.nativeEvent.layout.y)}
+            onFocus={() => scrollToField('tracking_url')}
+            style={[
+              styles.input,
+              { backgroundColor: theme.inputBg, borderColor: fieldErrors.tracking_url ? theme.danger : theme.border, color: theme.inputText },
+              readOnly && { backgroundColor: theme.background, color: theme.muted }
+            ]}
+            value={form.tracking_url}
+            onChangeText={(v) => {
+              clearFieldError('tracking_url');
+              setForm((f) => ({ ...f, tracking_url: v }));
+            }}
+            placeholder={t('https://...')}
+            autoCapitalize="none"
+            placeholderTextColor={theme.muted}
+            editable={!readOnly}
+          />
+          {!!fieldErrors.tracking_url ? (
+            <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.tracking_url}</Text>
+          ) : null}
 
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Current Value')}</Text>
-        <TextInput
-          ref={currentValueInputRef}
-          onLayout={(event) => setFieldOffset('current_value', event.nativeEvent.layout.y)}
-          onFocus={() => scrollToField('current_value')}
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.inputBg,
-              borderColor: fieldErrors.current_value ? theme.danger : theme.border,
-              color: theme.inputText
-            },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
-          ]}
-          keyboardType="numeric"
-          value={form.current_value}
-          onChangeText={(v) => {
-            clearFieldError('current_value');
-            setForm((f) => ({ ...f, current_value: v }));
-          }}
-          placeholderTextColor={theme.muted}
-          editable={!readOnly}
-        />
-        {!!fieldErrors.current_value ? (
-          <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.current_value}</Text>
-        ) : null}
+          <Text style={[styles.label, { color: theme.muted }]}>{t('Current Value')}</Text>
+          <TextInput
+            ref={currentValueInputRef}
+            onLayout={(event) => setFieldOffset('current_value', event.nativeEvent.layout.y)}
+            onFocus={() => scrollToField('current_value')}
+            style={[
+              styles.input,
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: fieldErrors.current_value ? theme.danger : theme.border,
+                color: theme.inputText
+              },
+              readOnly && { backgroundColor: theme.background, color: theme.muted }
+            ]}
+            keyboardType="numeric"
+            value={form.current_value}
+            onChangeText={(v) => {
+              clearFieldError('current_value');
+              setForm((f) => ({ ...f, current_value: v }));
+            }}
+            placeholderTextColor={theme.muted}
+            editable={!readOnly}
+          />
+          {!!fieldErrors.current_value ? (
+            <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.current_value}</Text>
+          ) : null}
 
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Invested Amount')}</Text>
-        <TextInput
-          ref={investedAmountInputRef}
-          onLayout={(event) => setFieldOffset('invested_amount', event.nativeEvent.layout.y)}
-          onFocus={() => scrollToField('invested_amount')}
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.inputBg,
-              borderColor: fieldErrors.invested_amount ? theme.danger : theme.border,
-              color: theme.inputText
-            },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
-          ]}
-          keyboardType="numeric"
-          value={form.invested_amount}
-          onChangeText={(v) => {
-            clearFieldError('invested_amount');
-            setForm((f) => ({ ...f, invested_amount: v }));
-          }}
-          placeholderTextColor={theme.muted}
-          editable={!readOnly}
-        />
-        {!!fieldErrors.invested_amount ? (
-          <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.invested_amount}</Text>
-        ) : null}
+          <Text style={[styles.label, { color: theme.muted }]}>{t('Invested Amount')}</Text>
+          <TextInput
+            ref={investedAmountInputRef}
+            onLayout={(event) => setFieldOffset('invested_amount', event.nativeEvent.layout.y)}
+            onFocus={() => scrollToField('invested_amount')}
+            style={[
+              styles.input,
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: fieldErrors.invested_amount ? theme.danger : theme.border,
+                color: theme.inputText
+              },
+              readOnly && { backgroundColor: theme.background, color: theme.muted }
+            ]}
+            keyboardType="numeric"
+            value={form.invested_amount}
+            onChangeText={(v) => {
+              clearFieldError('invested_amount');
+              setForm((f) => ({ ...f, invested_amount: v }));
+            }}
+            placeholderTextColor={theme.muted}
+            editable={!readOnly}
+          />
+          {!!fieldErrors.invested_amount ? (
+            <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.invested_amount}</Text>
+          ) : null}
 
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Notes for Family')}</Text>
-        <HelpLine
-          theme={theme}
-          text={t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')}
-        />
-        <TextInput
-          onFocus={() => scrollToField('notes_for_family')}
-          onLayout={(event) => setFieldOffset('notes_for_family', event.nativeEvent.layout.y)}
-          style={[
-            styles.input,
-            styles.notesInput,
-            { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText },
-            readOnly && { backgroundColor: theme.background, color: theme.muted }
-          ]}
-          value={form.notes_for_family}
-          onChangeText={(v) => setForm((f) => ({ ...f, notes_for_family: v }))}
-          placeholder={editingId ? t('Enter new notes to replace existing') : t('How family can trace this quickly')}
-          placeholderTextColor={theme.muted}
-          multiline
-          editable={!readOnly}
-        />
+          <Text style={[styles.label, { color: theme.muted }]}>{t('Notes for Family')}</Text>
+          <HelpLine
+            theme={theme}
+            text={t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')}
+          />
+          <TextInput
+            onFocus={() => scrollToField('notes_for_family')}
+            onLayout={(event) => setFieldOffset('notes_for_family', event.nativeEvent.layout.y)}
+            style={[
+              styles.input,
+              styles.notesInput,
+              { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText },
+              readOnly && { backgroundColor: theme.background, color: theme.muted }
+            ]}
+            value={form.notes_for_family}
+            onChangeText={(v) => setForm((f) => ({ ...f, notes_for_family: v }))}
+            placeholder={editingId ? t('Enter new notes to replace existing') : t('How family can trace this quickly')}
+            placeholderTextColor={theme.muted}
+            multiline
+            editable={!readOnly}
+          />
 
-        <PillButton
-          label={editingId ? t('Update Asset') : t('Save Asset')}
-          onPress={() =>
-            submit().catch((e) => {
-              setMessage(String(e?.message || e));
-              setMessageKind('error');
-            })
-          }
-          disabled={readOnly}
-        />
-        {editingId ? (
-          <View style={{ marginTop: 8 }}>
-            <PillButton label={t('Cancel Edit')} kind="ghost" onPress={cancelEdit} disabled={readOnly} />
-          </View>
-        ) : null}
-      </SectionCard>
+          <PillButton
+            label={editingId ? t('Update Asset') : t('Save Asset')}
+            onPress={() =>
+              submit().catch((e) => {
+                setMessage(String(e?.message || e));
+                setMessageKind('error');
+              })
+            }
+            disabled={readOnly}
+          />
+          {editingId ? (
+            <View style={{ marginTop: 8 }}>
+              <PillButton label={t('Cancel Edit')} kind="ghost" onPress={cancelEdit} disabled={readOnly} />
+            </View>
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       <FeedbackBanner message={message} kind={messageKind} />
 
@@ -674,6 +696,16 @@ export default function AssetsScreen({
             <PillButton label={t('Upgrade')} kind="primary" onPress={onOpenSubscription} />
           </View>
         ) : null}
+        {readOnlyDueToFamilyRole ? (
+          <>
+            <Text style={[styles.readOnlyText, { color: theme.warn }]}>{readOnlyBannerText}</Text>
+            {latestAssetUpdate?.value ? (
+              <Text style={[styles.sub, { color: theme.muted, marginBottom: 8 }]}>
+                {t('Last updated: {value}', { value: latestAssetUpdate.value })}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
         {visibleItems.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <Pressable style={styles.rowHeader} onPress={() => toggleExpanded(item.id)}>
@@ -717,14 +749,18 @@ export default function AssetsScreen({
                   </Text>
                 </View>
                 <View style={styles.actionsRow}>
-                  <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
-                  <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
-                  <PillButton
-                    label={t('Delete')}
-                    kind="danger"
-                    onPress={() => confirmRemove(item)}
-                    disabled={readOnly}
-                  />
+                  {readOnlyDueToFamilyRole ? null : (
+                    <>
+                      <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
+                      <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
+                      <PillButton
+                        label={t('Delete')}
+                        kind="danger"
+                        onPress={() => confirmRemove(item)}
+                        disabled={readOnly}
+                      />
+                    </>
+                  )}
                 </View>
               </>
             ) : null}

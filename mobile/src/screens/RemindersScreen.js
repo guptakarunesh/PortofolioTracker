@@ -54,6 +54,9 @@ export default function RemindersScreen({
   fxRates = { INR: 1 },
   premiumActive = false,
   onOpenSubscription,
+  readOnly = false,
+  accessRole = 'admin',
+  subscriptionActive = true,
   onRemindersChanged = () => {},
   onRequestScrollTo = () => {}
 }) {
@@ -72,6 +75,13 @@ export default function RemindersScreen({
   const amountInputRef = useRef(null);
   const repeatEveryDaysInputRef = useRef(null);
   const fieldOffsetsRef = useRef({});
+  const readOnlyDueToFamilyRole = readOnly && String(accessRole || '').toLowerCase() === 'read' && subscriptionActive;
+  const readOnlyBannerText = readOnlyDueToFamilyRole
+    ? t('Read-only family access. Ask an admin to change your role to Write or Admin to edit.')
+    : t('Subscription expired. View-only mode.');
+  const readOnlyActionText = readOnlyDueToFamilyRole
+    ? t('Read-only family access. Ask an admin to change your role to Write or Admin to edit reminders.')
+    : t('Subscription expired. Renew to edit reminders.');
 
   const load = useCallback(async () => {
     const rows = await api.getReminders();
@@ -110,6 +120,11 @@ export default function RemindersScreen({
   );
 
   const submit = async () => {
+    if (readOnly) {
+      setMessage(readOnlyActionText);
+      setMessageKind('error');
+      return;
+    }
     if (!form.due_date || !form.category || !form.description) {
       setMessage(t('Due date, category and description are required.'));
       setMessageKind('error');
@@ -147,6 +162,11 @@ export default function RemindersScreen({
   };
 
   const startEdit = (item) => {
+    if (readOnly) {
+      setMessage(readOnlyActionText);
+      setMessageKind('error');
+      return;
+    }
     setEditingReminderId(item.id);
     setForm({
       due_date: String(item.due_date || ''),
@@ -172,6 +192,11 @@ export default function RemindersScreen({
   };
 
   const markComplete = async (id) => {
+    if (readOnly) {
+      setMessage(readOnlyActionText);
+      setMessageKind('error');
+      return;
+    }
     const current = items.find((item) => item.id === id);
     await api.updateReminderStatus(id, 'Completed');
     setMessage(
@@ -185,6 +210,11 @@ export default function RemindersScreen({
   };
 
   const snoozeReminder = async (id) => {
+    if (readOnly) {
+      setMessage(readOnlyActionText);
+      setMessageKind('error');
+      return;
+    }
     await api.snoozeReminder(id, 1);
     setMessage(t('Reminder snoozed by 1 day.'));
     setMessageKind('success');
@@ -205,8 +235,16 @@ export default function RemindersScreen({
     );
   }
 
+  const latestReminderUpdate = items.reduce((latest, item) => {
+    const current = Date.parse(String(item?.updated_at || ''));
+    if (!Number.isFinite(current)) return latest;
+    const value = String(item.updated_at).replace('T', ' ').slice(0, 19);
+    return !latest || current > latest.ts ? { ts: current, value } : latest;
+  }, null);
+
   return (
     <View>
+      {!readOnlyDueToFamilyRole ? (
       <SectionCard title={t(editingReminderId ? 'Edit Reminder' : 'Add Reminder')}>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Due Date (YYYY-MM-DD)')}</Text>
         <DateField
@@ -377,10 +415,21 @@ export default function RemindersScreen({
           {editingReminderId ? <PillButton label={t('Cancel Edit')} kind="ghost" onPress={cancelEdit} /> : null}
         </View>
       </SectionCard>
+      ) : null}
 
       <FeedbackBanner message={message} kind={messageKind} />
 
       <SectionCard title={t('Upcoming Reminders')}>
+        {readOnlyDueToFamilyRole ? (
+          <>
+            <Text style={[styles.sub, styles.readOnlyText, { color: theme.warn }]}>{readOnlyBannerText}</Text>
+            {latestReminderUpdate?.value ? (
+              <Text style={[styles.sub, { color: theme.muted, marginBottom: 8 }]}>
+                {t('Last updated: {value}', { value: latestReminderUpdate.value })}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
         {items.length ? items.map((item) => (
           <View key={item.id} style={[styles.row, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <View style={styles.rowHeader}>
@@ -428,7 +477,7 @@ export default function RemindersScreen({
                 {displayAmount(item.amount, hideSensitive, preferredCurrency, fxRates)}
               </Text>
             </View>
-            {item.status !== 'Completed' ? (
+            {item.status !== 'Completed' && !readOnlyDueToFamilyRole ? (
               <View style={styles.rowActions}>
                 <PillButton
                   label={t('Edit')}
@@ -478,6 +527,10 @@ const styles = StyleSheet.create({
   },
   premiumLockedText: {
     marginBottom: 2
+  },
+  readOnlyText: {
+    marginBottom: 10,
+    fontWeight: '700'
   },
   label: { fontWeight: '700', marginBottom: 5 },
   dropdownTrigger: {

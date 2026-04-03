@@ -276,6 +276,17 @@ const translations = {
     'Subscription expired. View-only mode.': 'सब्सक्रिप्शन समाप्त। केवल देखने का मोड।',
     'Subscription expired. Renew to edit assets.': 'सब्सक्रिप्शन समाप्त हो गया है। एसेट एडिट करने के लिए रिन्यू करें।',
     'Subscription expired. Renew to edit liabilities.': 'सब्सक्रिप्शन समाप्त हो गया है। देयताएँ एडिट करने के लिए रिन्यू करें।',
+    'Subscription expired. Renew to edit targets.': 'सब्सक्रिप्शन समाप्त हो गया है। टार्गेट्स एडिट करने के लिए रिन्यू करें।',
+    'Read-only family access. Ask an admin to change your role to Write or Admin to edit.':
+      'रीड-ओनली फैमिली एक्सेस। एडिट करने के लिए किसी एडमिन से अपनी भूमिका Write या Admin में बदलने को कहें।',
+    'Read-only family access. Ask an admin to change your role to Write or Admin to edit assets.':
+      'रीड-ओनली फैमिली एक्सेस। एसेट एडिट करने के लिए किसी एडमिन से अपनी भूमिका Write या Admin में बदलने को कहें।',
+    'Read-only family access. Ask an admin to change your role to Write or Admin to edit liabilities.':
+      'रीड-ओनली फैमिली एक्सेस। देयताएँ एडिट करने के लिए किसी एडमिन से अपनी भूमिका Write या Admin में बदलने को कहें।',
+    'Read-only family access. Ask an admin to change your role to Write or Admin to edit targets.':
+      'रीड-ओनली फैमिली एक्सेस। टार्गेट्स एडिट करने के लिए किसी एडमिन से अपनी भूमिका Write या Admin में बदलने को कहें।',
+    'Read-only family access. Ask an admin to change your role to Write or Admin to edit reminders.':
+      'रीड-ओनली फैमिली एक्सेस। रिमाइंडर्स एडिट करने के लिए किसी एडमिन से अपनी भूमिका Write या Admin में बदलने को कहें।',
     'Subscription expired. Renew to edit transactions.': 'सब्सक्रिप्शन समाप्त हो गया है। लेनदेन एडिट करने के लिए रिन्यू करें।',
     'Subscription expired. Renew to edit targets.': 'सब्सक्रिप्शन समाप्त हो गया है। लक्ष्य एडिट करने के लिए रिन्यू करें।',
     'Editing {name}': '{name} संपादित हो रहा है',
@@ -470,8 +481,10 @@ const translations = {
     'Family member added.': 'परिवार सदस्य जोड़ दिया गया।',
     'Role updated.': 'भूमिका अपडेट हो गई।',
     'Family member removed.': 'परिवार सदस्य हटाया गया।',
+    'Are you sure you want to remove this family member?': 'क्या आप इस परिवार सदस्य को हटाना चाहते हैं?',
     'Invite canceled.': 'आमंत्रण रद्द किया गया।',
     'Invite resent.': 'आमंत्रण दोबारा भेजा गया।',
+    'Invite resent. New expiry: {date}.': 'आमंत्रण दोबारा भेजा गया। नई समाप्ति: {date}।',
     'Add family members and set their access level. Admins can manage access.':
       'परिवार सदस्य जोड़ें और उनकी पहुँच सेट करें। एडमिन एक्सेस मैनेज कर सकते हैं।',
     'Premium required to enable family access.': 'परिवार एक्सेस सक्षम करने के लिए प्रीमियम आवश्यक है।',
@@ -850,6 +863,7 @@ const translations = {
     'Premium Yearly': 'प्रीमियम वार्षिक',
     'Owner Account': 'ओनर अकाउंट',
     'Family Admin': 'फैमिली एडमिन',
+    'Family Editor': 'फैमिली एडिटर',
     'Family Viewer': 'फैमिली व्यूअर',
     'Recent Activity': 'हाल की गतिविधि',
     'Loading recent activity...': 'हाल की गतिविधि लोड हो रही है...',

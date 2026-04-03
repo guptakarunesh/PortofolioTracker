@@ -31,11 +31,14 @@ function buildSettingsResponse(rows, premiumActive) {
 }
 
 router.get('/', (req, res) => {
-  const subscription = ensureSubscriptionForUser(req.userId);
-  const premiumActive = isPremiumActive(subscription);
+  const effectiveUserId = Number(req.accountUserId || req.userId);
+  const premiumActive =
+    typeof req.accountPremiumActive === 'boolean'
+      ? req.accountPremiumActive
+      : isPremiumActive(ensureSubscriptionForUser(effectiveUserId));
   const rows = db
     .prepare('SELECT key, value, updated_at FROM user_settings WHERE user_id = ? ORDER BY key ASC')
-    .all(req.userId);
+    .all(effectiveUserId);
   const hasCountry = rows.some((row) => row.key === 'country' && String(row.value || '').trim());
   const hasCurrency = rows.some(
     (row) => row.key === 'preferred_currency' && String(row.value || '').trim()
@@ -50,24 +53,31 @@ router.get('/', (req, res) => {
     `);
     const now = nowIso();
     if (!hasCountry) {
-      upsert.run(req.userId, 'country', DEFAULT_COUNTRY, now);
+      upsert.run(effectiveUserId, 'country', DEFAULT_COUNTRY, now);
     }
     if (!hasCurrency) {
-      upsert.run(req.userId, 'preferred_currency', DEFAULT_CURRENCY, now);
+      upsert.run(effectiveUserId, 'preferred_currency', DEFAULT_CURRENCY, now);
     }
   }
   const refreshedRows = !hasCountry || !hasCurrency
     ? db
         .prepare('SELECT key, value, updated_at FROM user_settings WHERE user_id = ? ORDER BY key ASC')
-        .all(req.userId)
+        .all(effectiveUserId)
     : rows;
   res.json(buildSettingsResponse(refreshedRows, premiumActive));
 });
 
 router.put('/', (req, res) => {
   const payload = req.body || {};
-  const subscription = ensureSubscriptionForUser(req.userId);
-  const premiumActive = isPremiumActive(subscription);
+  const effectiveUserId = Number(req.accountUserId || req.userId);
+  const premiumActive =
+    typeof req.accountPremiumActive === 'boolean'
+      ? req.accountPremiumActive
+      : isPremiumActive(ensureSubscriptionForUser(effectiveUserId));
+
+  if (String(req.accessRole || '').toLowerCase() === 'read') {
+    return res.status(403).json({ error: 'forbidden', message: 'Read-only access' });
+  }
 
   if (!premiumActive) {
     const hasTargetKey = Object.keys(payload).some(
@@ -91,14 +101,14 @@ router.put('/', (req, res) => {
     Object.entries(obj).forEach(([key, value]) => {
       const plain = String(value ?? '');
       const stored = ENCRYPTED_SETTING_KEYS.has(key) ? encryptString(plain) : plain;
-      stmt.run(req.userId, key, stored, nowIso());
+      stmt.run(effectiveUserId, key, stored, nowIso());
     });
   });
 
   tx(payload);
   const rows = db
     .prepare('SELECT key, value, updated_at FROM user_settings WHERE user_id = ? ORDER BY key ASC')
-    .all(req.userId);
+    .all(effectiveUserId);
   res.json(buildSettingsResponse(rows, premiumActive));
 });
 

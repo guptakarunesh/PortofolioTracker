@@ -1145,4 +1145,6 @@ if (usePostgres) {
   initializeDatabase();
 }
 
-export const nowIso = () => new Date().toISOString();
+export function nowIso() {
+  return new Date().toISOString();
+}

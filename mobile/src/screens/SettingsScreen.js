@@ -67,10 +67,18 @@ export default function SettingsScreen({
   onOpenSubscription,
   preferredCurrency = 'INR',
   readOnly = false,
+  accessRole = 'admin',
+  subscriptionActive = true,
   onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const readOnlyDueToFamilyRole = readOnly && String(accessRole || '').toLowerCase() === 'read' && subscriptionActive;
+  const lockedText = readOnlyDueToFamilyRole
+    ? t('Read-only family access. Ask an admin to change your role to Write or Admin to edit targets.')
+    : readOnly
+      ? t('Subscription expired. Renew to edit targets.')
+      : t('Targets are available with Premium.');
   const [form, setForm] = useState({});
   const [message, setMessage] = useState('');
   const [focusedTargetKey, setFocusedTargetKey] = useState('');
@@ -107,14 +115,14 @@ export default function SettingsScreen({
     setMessage(t('Settings saved.'));
   };
 
-  if (!premiumActive || readOnly) {
+  if (!premiumActive || (readOnly && !readOnlyDueToFamilyRole)) {
     return (
       <View>
       <SectionCard title={t('Targets (Premium)')}>
         <Text style={[styles.lockedText, { color: theme.warn }]}>
-          {readOnly ? t('Subscription expired. Renew to edit targets.') : t('Targets are available with Premium.')}
+          {lockedText}
         </Text>
-        <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
+        {!readOnlyDueToFamilyRole ? <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} /> : null}
       </SectionCard>
       </View>
     );
@@ -128,48 +136,72 @@ export default function SettingsScreen({
             {t('Last updated: {value}', { value: formatLastUpdated(targetsLastUpdatedAt) })}
           </Text>
         )}
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Target Date (YYYY-MM-DD)')}</Text>
-        <DateField
-          value={String(form.target_date ?? '')}
-          onChange={(v) => setForm((prev) => ({ ...prev, target_date: v }))}
-          theme={theme}
-          placeholder="2030-12-31"
-        />
+        {readOnlyDueToFamilyRole ? (
+          <>
+            <Text style={[styles.lockedText, styles.readOnlyText, { color: theme.warn }]}>{lockedText}</Text>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Target Date (YYYY-MM-DD)')}</Text>
+            <Text style={[styles.readOnlyValue, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}>
+              {String(form.target_date || '—')}
+            </Text>
 
-        {ASSET_TARGET_CATEGORIES.map((category) => {
-          const key = targetSettingKey(category);
-          return (
-            <View key={key}>
-              <Text style={[styles.label, { color: theme.muted }]}>{getCategoryDisplayLabel(category, t)}</Text>
-              <TextInput
-                onLayout={(event) => setFieldOffset(key, event.nativeEvent.layout.y)}
-                onFocus={() => {
-                  setFocusedTargetKey(key);
-                  scrollToField(key);
-                }}
-                onBlur={() => {
-                  setFocusedTargetKey((current) => (current === key ? '' : current));
-                }}
-                style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
-                keyboardType="number-pad"
-                placeholder={t('0')}
-                value={
-                  focusedTargetKey === key
-                    ? sanitizeTargetDigits(form[key])
-                    : formatTargetDigits(form[key], preferredCurrency)
-                }
-                onChangeText={(v) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    [key]: sanitizeTargetDigits(v)
-                  }))
-                }
-                placeholderTextColor={theme.muted}
-              />
-            </View>
-          );
-        })}
-        <PillButton label={t('Set My Targets')} onPress={() => save().catch((e) => setMessage(e.message))} />
+            {ASSET_TARGET_CATEGORIES.map((category) => {
+              const key = targetSettingKey(category);
+              return (
+                <View key={key}>
+                  <Text style={[styles.label, { color: theme.muted }]}>{getCategoryDisplayLabel(category, t)}</Text>
+                  <Text style={[styles.readOnlyValue, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}>
+                    {formatTargetDigits(form[key], preferredCurrency) || t('0')}
+                  </Text>
+                </View>
+              );
+            })}
+          </>
+        ) : (
+          <>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Target Date (YYYY-MM-DD)')}</Text>
+            <DateField
+              value={String(form.target_date ?? '')}
+              onChange={(v) => setForm((prev) => ({ ...prev, target_date: v }))}
+              theme={theme}
+              placeholder="2030-12-31"
+            />
+
+            {ASSET_TARGET_CATEGORIES.map((category) => {
+              const key = targetSettingKey(category);
+              return (
+                <View key={key}>
+                  <Text style={[styles.label, { color: theme.muted }]}>{getCategoryDisplayLabel(category, t)}</Text>
+                  <TextInput
+                    onLayout={(event) => setFieldOffset(key, event.nativeEvent.layout.y)}
+                    onFocus={() => {
+                      setFocusedTargetKey(key);
+                      scrollToField(key);
+                    }}
+                    onBlur={() => {
+                      setFocusedTargetKey((current) => (current === key ? '' : current));
+                    }}
+                    style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.inputText }]}
+                    keyboardType="number-pad"
+                    placeholder={t('0')}
+                    value={
+                      focusedTargetKey === key
+                        ? sanitizeTargetDigits(form[key])
+                        : formatTargetDigits(form[key], preferredCurrency)
+                    }
+                    onChangeText={(v) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        [key]: sanitizeTargetDigits(v)
+                      }))
+                    }
+                    placeholderTextColor={theme.muted}
+                  />
+                </View>
+              );
+            })}
+            <PillButton label={t('Set My Targets')} onPress={() => save().catch((e) => setMessage(e.message))} />
+          </>
+        )}
       </SectionCard>
 
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
@@ -187,6 +219,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    marginBottom: 12
+  },
+  readOnlyText: {
+    fontWeight: '700'
+  },
+  readOnlyValue: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     marginBottom: 12
   },
   message: { color: '#0f3557', marginBottom: 20, fontWeight: '600' },

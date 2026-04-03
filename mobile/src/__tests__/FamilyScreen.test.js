@@ -1,6 +1,8 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import FamilyScreen from '../screens/FamilyScreen';
+import { api } from '../api/client';
 
 jest.mock('../api/client', () => ({
   api: {
@@ -35,6 +37,10 @@ jest.mock('../api/client', () => ({
 }));
 
 describe('FamilyScreen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('shows members, invites, and audit log with filters', async () => {
     const { getByText } = render(
       <FamilyScreen premiumActive accessRole="admin" isAccountOwner onOpenSubscription={() => {}} onClose={() => {}} />
@@ -48,5 +54,29 @@ describe('FamilyScreen', () => {
 
     expect(getByText('Audit Log')).toBeTruthy();
     expect(getByText('invite created')).toBeTruthy();
+  });
+
+  it('asks for confirmation before removing a family member', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { getByText } = render(
+      <FamilyScreen premiumActive accessRole="admin" isAccountOwner onOpenSubscription={() => {}} onClose={() => {}} />
+    );
+
+    await waitFor(() => getByText('Members'));
+    fireEvent.press(getByText('Remove'));
+
+    expect(alertSpy).toHaveBeenCalled();
+    expect(api.removeFamilyMember).not.toHaveBeenCalled();
+
+    const alertButtons = alertSpy.mock.calls[0]?.[2] || [];
+    const removeButton = alertButtons.find((button) => button?.text === 'Remove');
+    expect(removeButton).toBeTruthy();
+
+    await act(async () => {
+      removeButton?.onPress?.();
+    });
+    await waitFor(() => expect(api.removeFamilyMember).toHaveBeenCalledWith(10));
+
+    alertSpy.mockRestore();
   });
 });

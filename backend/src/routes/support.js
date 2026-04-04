@@ -780,6 +780,11 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
       };
       if (out?.warning) result.ingest_warning = String(out.warning);
       if (out?.error) result.ingest_error = String(out.error);
+      if (out?.model_items_raw != null) result.model_items_raw = Number(out.model_items_raw || 0);
+      if (out?.model_items_normalized != null) result.model_items_normalized = Number(out.model_items_normalized || 0);
+      if (out?.normalization_rejections && typeof out.normalization_rejections === 'object') {
+        result.normalization_rejections = out.normalization_rejections;
+      }
     } else {
       return res.status(400).json({ error: 'unsupported_action' });
     }

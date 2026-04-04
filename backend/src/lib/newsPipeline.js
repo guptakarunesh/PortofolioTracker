@@ -289,21 +289,31 @@ async function callOpenAIResponses({ apiKey, model, useWebSearch, promptText, co
   return parseStrictOrRecoveredJson(outputText);
 }
 
-function normalizeIngestedItem(rawItem = {}) {
+function normalizeIngestedItem(rawItem = {}, options = {}) {
+  const reject = (reason) => {
+    if (options && options.rejections && reason) {
+      options.rejections[reason] = Number(options.rejections[reason] || 0) + 1;
+    }
+    return null;
+  };
+
   const url = normalizeUrl(rawItem.url || rawItem.canonical_url || '');
+  if (!url) return reject('missing_url');
+
   const source =
     sourceByKey(rawItem.source_key || '') ||
     sourceByName(rawItem.source_name || '') ||
     sourceByUrl(url);
-  if (!source) return null;
+  if (!source) return reject('unknown_source');
 
   const category = normalizeCategory(rawItem.category);
-  if (category === 'gold_metals' && !GOLD_SILVER_SOURCE_KEYS.includes(source.key)) return null;
+  if (category === 'gold_metals' && !GOLD_SILVER_SOURCE_KEYS.includes(source.key)) return reject('gold_source_not_allowed');
   const publishedAt = parseIsoDate(rawItem.published_at);
-  if (!publishedAt || !withinFreshWindow(publishedAt.toISOString())) return null;
+  if (!publishedAt) return reject('invalid_published_at');
+  if (!withinFreshWindow(publishedAt.toISOString())) return reject('outside_fresh_window');
 
   const title = normalizeWhitespace(rawItem.title || '');
-  if (!title || !url) return null;
+  if (!title) return reject('missing_title');
 
   const categoryConfig = categoryByKey(category);
   const summary = normalizeWhitespace(rawItem.summary || rawItem.snippet || rawItem.why_it_matters || '');
@@ -410,7 +420,12 @@ export async function ingestCuratedNews({
     });
 
     const rawItems = Array.isArray(out?.items) ? out.items : [];
-    const normalized = dedupeItems(rawItems.map(normalizeIngestedItem).filter(Boolean));
+    const normalizationRejections = {};
+    const normalized = dedupeItems(
+      rawItems
+        .map((item) => normalizeIngestedItem(item, { rejections: normalizationRejections }))
+        .filter(Boolean)
+    );
     const fallbackItems = dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
     let effectiveItems = [];
     let message = 'ingest_completed';
@@ -447,7 +462,10 @@ export async function ingestCuratedNews({
       metadata: {
         total_fresh_items: totalFreshItems,
         meaningful_count: countMeaningfulItems(refreshed),
+        model_items_raw: rawItems.length,
         model_items: normalized.length,
+        rejected_items: Math.max(0, rawItems.length - normalized.length),
+        rejection_reasons: Object.keys(normalizationRejections).length ? normalizationRejections : undefined,
         warning: warning || undefined
       },
       startedAt,
@@ -456,9 +474,12 @@ export async function ingestCuratedNews({
     const payload = {
       ok: true,
       inserted: effectiveItems.length,
-      total_fresh_items: totalFreshItems
+      total_fresh_items: totalFreshItems,
+      model_items_raw: rawItems.length,
+      model_items_normalized: normalized.length
     };
     if (warning) payload.warning = warning;
+    if (Object.keys(normalizationRejections).length) payload.normalization_rejections = normalizationRejections;
     return payload;
   } catch (error) {
     const errorText = String(error?.message || error);
@@ -511,7 +532,10 @@ export async function ingestCuratedNews({
       ok: true,
       inserted: effectiveItems.length,
       total_fresh_items: totalFreshItems,
-      warning: 'catalog_fallback_used'
+      warning: 'catalog_fallback_used',
+      error: errorText,
+      model_items_raw: 0,
+      model_items_normalized: 0
     };
   }
 }

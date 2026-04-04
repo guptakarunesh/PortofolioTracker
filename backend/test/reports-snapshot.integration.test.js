@@ -99,4 +99,9 @@ test('snapshot report download uses worthio filename and returns a PDF payload',
     'attachment; filename="worthio-portfolio-snapshot-2026-03-29.pdf"'
   );
   assert.match(fileResponse._getData().toString('utf8', 0, 8), /^%PDF-1\.4/);
+  const pdfText = fileResponse._getData().toString('utf8');
+  assert.match(pdfText, /Account Initials: RS/);
+  assert.doesNotMatch(pdfText, /Account ID:/);
+  assert.doesNotMatch(pdfText, /•/);
+  assert.match(pdfText, /100\.0%/);
 });

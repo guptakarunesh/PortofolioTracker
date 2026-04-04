@@ -110,6 +110,56 @@ function formatExportMoney(value, currency = 'INR', fxRates = { INR: 1 }) {
   return `${normalizedCurrency} ${numericOnly || '0'}`;
 }
 
+const YEARLY_TARGET_KEY_LABELS = {
+  yearly_target_cash_bank_accounts: 'Cash & Bank Accounts',
+  yearly_target_market_stocks_rsus: 'Market Stocks & RSUs',
+  yearly_target_retirement_funds: 'Retirement Funds',
+  yearly_target_real_estate: 'Real Estate',
+  yearly_target_vehicles: 'Vehicles',
+  yearly_target_business_equity: 'Business Equity',
+  yearly_target_precious_metals: 'Precious Metals',
+  yearly_target_jewelry_watches: 'Jewelry & Watches',
+  yearly_target_collectibles: 'Collectibles',
+  yearly_target_insurance_other: 'Insurance & Other'
+};
+
+function formatSettingLabel(key = '', t) {
+  const normalized = String(key || '').trim().toLowerCase();
+  if (!normalized) return '-';
+  if (normalized === 'language') return t('Language');
+  if (normalized === 'preferred_currency') return t('Display Currency');
+  if (normalized === 'country') return t('Country');
+  if (normalized === 'privacy_pin') return t('Security PIN (4 digits)');
+  if (normalized === 'privacy_pin_enabled') return t('PIN Enabled');
+  if (normalized === 'target_date') return t('Target Date (YYYY-MM-DD)');
+  if (normalized === 'target_net_worth') return t('Net Worth');
+  if (normalized === 'ui_theme') return t('Theme');
+  if (normalized === 'targets_last_updated_at') return t('Last updated: {value}', { value: '' }).replace(': ', '').trim();
+  if (normalized.startsWith('yearly_target_')) {
+    const category = YEARLY_TARGET_KEY_LABELS[normalized];
+    if (category) {
+      return `${t('Target')} - ${t(category)}`;
+    }
+    return `${t('Target')} - ${toCamelCaseWords(normalized.replace(/^yearly_target_/, '').replace(/_/g, ' '))}`;
+  }
+  return toCamelCaseWords(normalized.replace(/_/g, ' '));
+}
+
+function formatSettingValue(key = '', value = '', t) {
+  const normalizedKey = String(key || '').trim().toLowerCase();
+  const normalizedValue = String(value ?? '').trim();
+  if (normalizedKey === 'privacy_pin_enabled') {
+    return normalizedValue === '1' ? t('ON') : t('OFF');
+  }
+  if (normalizedKey === 'language') {
+    return normalizedValue.toLowerCase() === 'hi' ? t('हिंदी') : t('English');
+  }
+  if (normalizedKey === 'preferred_currency') {
+    return normalizedValue.toUpperCase() || '-';
+  }
+  return normalizedValue || '-';
+}
+
 function renderKeyValueRows(rows = []) {
   return rows
     .map(
@@ -177,20 +227,10 @@ function buildExportPdfHtml(payload, { t, preferredCurrency = 'INR', fxRates = {
       }))
     : [];
 
-  const trackers = Array.isArray(payload?.trackers)
-    ? payload.trackers.map((row) => ({
-        category: row?.category || '-',
-        asset_name: row?.asset_name || '-',
-        login_id: row?.login_id || '-',
-        tracking_url: row?.tracking_url || '-',
-        notes: row?.notes || '-'
-      }))
-    : [];
-
   const settings = Array.isArray(payload?.settings)
     ? payload.settings.map((row) => ({
-        key: row?.key || '-',
-        value: row?.value || '-',
+        label: formatSettingLabel(row?.key, t),
+        value: formatSettingValue(row?.key, row?.value, t),
         updated_at: formatExportDateTime(row?.updated_at)
       }))
     : [];
@@ -201,15 +241,6 @@ function buildExportPdfHtml(payload, { t, preferredCurrency = 'INR', fxRates = {
         terms_version: row?.terms_version || '-',
         consented_at: formatExportDateTime(row?.consented_at),
         consent_source: row?.consent_source || '-'
-      }))
-    : [];
-
-  const performance = Array.isArray(payload?.performanceSnapshots)
-    ? payload.performanceSnapshots.map((row) => ({
-        period: row?.quarter_start || '-',
-        assets: formatExportMoney(row?.total_assets, preferredCurrency, fxRates),
-        liabilities: formatExportMoney(row?.total_liabilities, preferredCurrency, fxRates),
-        net_worth: formatExportMoney(row?.net_worth, preferredCurrency, fxRates)
       }))
     : [];
 
@@ -267,23 +298,8 @@ function buildExportPdfHtml(payload, { t, preferredCurrency = 'INR', fxRates = {
       { key: 'status', label: t('Status') }
     ], reminders)}
 
-    ${renderDataTable(t('Trackers'), [
-      { key: 'category', label: t('Category') },
-      { key: 'asset_name', label: t('Asset Name') },
-      { key: 'login_id', label: t('Login ID') },
-      { key: 'tracking_url', label: t('Tracking Website URL') },
-      { key: 'notes', label: t('Notes') }
-    ], trackers)}
-
-    ${renderDataTable(t('Performance Snapshots'), [
-      { key: 'period', label: t('Period') },
-      { key: 'assets', label: t('Assets') },
-      { key: 'liabilities', label: t('Liabilities') },
-      { key: 'net_worth', label: t('Net Worth') }
-    ], performance)}
-
     ${renderDataTable(t('Settings'), [
-      { key: 'key', label: t('Key') },
+      { key: 'label', label: t('Field') },
       { key: 'value', label: t('Value') },
       { key: 'updated_at', label: t('Last updated: {value}', { value: '' }).replace(': ', '').trim() || 'Updated At' }
     ], settings)}
@@ -639,6 +655,12 @@ export default function AccountScreen({
         <Text style={[styles.value, { color: theme.text }]}>{toInitials(user?.full_name || '-')}</Text>
         <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile')}</Text>
         <Text style={[styles.value, { color: theme.text }]}>{maskMobile(user?.mobile || '')}</Text>
+        <PillButton
+          label={t('Accounts Recent Activity')}
+          kind="ghost"
+          style={[styles.fullWidthButton, isDark ? styles.accountGhostButtonDark : styles.accountGhostButtonLight]}
+          onPress={() => Promise.resolve(onOpenRecentActivity?.()).catch(() => {})}
+        />
       </SectionCard>
 
       <SectionCard title={t('Privacy & Security')}>
@@ -728,31 +750,27 @@ export default function AccountScreen({
             : t('Enroll Biometric Login to use fingerprint or face unlock on this device.')}
         </Text>
         {biometricEnrolled ? (
-          <View style={styles.biometricEnabledRow}>
-            <PillButton
-              label={t('Disable Biometric Login')}
-              kind="ghost"
-              style={isDark ? styles.accountGhostButtonDark : null}
-              onPress={() =>
-                Promise.resolve(onDisableBiometric?.())
-                  .then(() => setMessage(t('Biometric login disabled for this device.')))
-                  .catch((e) => setMessage(e.message))
-              }
-            />
-          </View>
+          <PillButton
+            label={t('Disable Biometric Login')}
+            kind="ghost"
+            style={[styles.fullWidthButton, isDark ? styles.accountGhostButtonDark : styles.accountGhostButtonLight]}
+            onPress={() =>
+              Promise.resolve(onDisableBiometric?.())
+                .then(() => setMessage(t('Biometric login disabled for this device.')))
+                .catch((e) => setMessage(e.message))
+            }
+          />
         ) : (
-          <View style={styles.row}>
-            <PillButton
-              label={t('Enroll Biometric Login')}
-              kind="ghost"
-              style={isDark ? styles.accountGhostButtonDark : null}
-              onPress={() =>
-                Promise.resolve(onEnrollBiometric?.())
-                  .then(() => setMessage(t('Biometric login enrolled for this device.')))
-                  .catch((e) => setMessage(e.message))
-              }
-            />
-          </View>
+          <PillButton
+            label={t('Enroll Biometric Login')}
+            kind="ghost"
+            style={[styles.fullWidthButton, isDark ? styles.accountGhostButtonDark : styles.accountGhostButtonLight]}
+            onPress={() =>
+              Promise.resolve(onEnrollBiometric?.())
+                .then(() => setMessage(t('Biometric login enrolled for this device.')))
+                .catch((e) => setMessage(e.message))
+            }
+          />
         )}
       </SectionCard>
 
@@ -814,7 +832,11 @@ export default function AccountScreen({
             <PillButton
               label={t('Manage Family')}
               kind={premiumActive ? 'primary' : 'ghost'}
-              style={isDark ? (premiumActive ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null}
+              style={[
+                styles.fullWidthButton,
+                !premiumActive && !isDark ? styles.accountGhostButtonLight : null,
+                isDark ? (premiumActive ? styles.accountPrimaryButtonDark : styles.accountGhostButtonDark) : null
+              ]}
               onPress={premiumActive ? onOpenFamily : onOpenSubscription}
             />
           </Animated.View>
@@ -875,12 +897,6 @@ export default function AccountScreen({
           {t('Open support for FAQs and AI-assisted help with login, subscription, family access, and setup.')}
         </Text>
         <PillButton label={t('Worthio Support')} kind="primary" style={isDark ? styles.accountPrimaryButtonDark : null} onPress={onOpenSupport} />
-        <PillButton
-          label={t('Recent Activity')}
-          kind="ghost"
-          style={isDark ? styles.accountGhostButtonDark : null}
-          onPress={() => Promise.resolve(onOpenRecentActivity?.()).catch(() => {})}
-        />
       </SectionCard>
 
       <SectionCard title={t('FAQs')}>
@@ -935,11 +951,17 @@ export default function AccountScreen({
       </SectionCard>
 
       <SectionCard title={t('Data Rights')}>
-        <View style={styles.row}>
-          <PillButton label={t('Export My Data')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={() => exportData().catch((e) => setMessage(e.message))} />
+        <View style={styles.inlineActionRow}>
+          <PillButton
+            label={t('Export My Data')}
+            kind="ghost"
+            style={[styles.halfWidthButton, isDark ? styles.accountGhostButtonDark : styles.accountGhostButtonLight]}
+            onPress={() => exportData().catch((e) => setMessage(e.message))}
+          />
           <PillButton
             label={confirmDelete ? t('Confirm Delete Account') : t('Delete Account')}
             kind="danger"
+            style={styles.halfWidthButton}
             onPress={() => deleteAccount().catch((e) => setMessage(e.message))}
           />
         </View>
@@ -1000,8 +1022,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderColor: 'rgba(255,255,255,0.14)'
   },
+  accountGhostButtonLight: {
+    backgroundColor: '#f3f8ff',
+    borderColor: '#b8cee7'
+  },
   accountPrimaryButtonDark: {
     borderColor: 'rgba(255,255,255,0.08)'
+  },
+  fullWidthButton: {
+    width: '100%'
+  },
+  inlineActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'nowrap',
+    marginBottom: 8
+  },
+  halfWidthButton: {
+    flex: 1,
+    minWidth: 130
   },
   historyMetaRow: {
     marginTop: 4,

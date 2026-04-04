@@ -40,19 +40,6 @@ router.get('/export', (req, res) => {
       ...row,
       description: decryptString(row.description)
     }));
-  const trackers = db
-    .prepare('SELECT * FROM asset_trackers WHERE user_id = ? ORDER BY id ASC')
-    .all(req.userId)
-    .map((row) => ({
-      ...row,
-      asset_name: decryptString(row.asset_name),
-      login_id: decryptString(row.login_id),
-      login_password: '***masked***',
-      notes: decryptString(row.notes)
-    }));
-  const performanceSnapshots = db
-    .prepare('SELECT * FROM performance_snapshots WHERE user_id = ? ORDER BY quarter_start ASC')
-    .all(req.userId);
   const settings = db
     .prepare('SELECT key, value, updated_at FROM user_settings WHERE user_id = ? ORDER BY key ASC')
     .all(req.userId)
@@ -77,8 +64,6 @@ router.get('/export', (req, res) => {
     assets,
     liabilities,
     reminders,
-    trackers,
-    performanceSnapshots,
     settings,
     consents
   });

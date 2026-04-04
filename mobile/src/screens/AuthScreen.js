@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, Modal, ScrollView, useWindowDimensions } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import PillButton from '../components/PillButton';
 import { api } from '../api/client';
@@ -221,6 +221,9 @@ export default function AuthScreen({
 }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const minScreenDimension = Math.min(screenWidth, screenHeight);
+  const isTabletLayout = minScreenDimension >= 700;
   const [mode, setMode] = useState(variant === 'fresh' ? 'register' : 'login');
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -475,11 +478,12 @@ export default function AuthScreen({
         : null;
 
   return (
-    <View style={styles.authShell}>
-      <View style={styles.panelWrap}>
+    <View style={[styles.authShell, isTabletLayout ? styles.authShellTablet : null]}>
+      <View style={[styles.panelWrap, isTabletLayout ? styles.panelWrapTablet : null]}>
         <View
           style={[
             styles.authPanelFrame,
+            isTabletLayout ? styles.authPanelFrameTablet : null,
             {
               backgroundColor: authTheme.panelFrame,
               borderColor: authTheme.border,
@@ -490,6 +494,7 @@ export default function AuthScreen({
           <View
             style={[
             styles.authPanelCard,
+            isTabletLayout ? styles.authPanelCardTablet : null,
             {
                 backgroundColor: authTheme.panelCard,
                 borderColor: authTheme.border,
@@ -704,7 +709,7 @@ export default function AuthScreen({
           </View>
         </View>
       </View>
-      <View style={styles.legalRow}>
+      <View style={[styles.legalRow, isTabletLayout ? styles.legalRowTablet : null]}>
         <Pressable onPress={() => setLegalDocVisible('terms')}>
           <Text style={[styles.legalLink, { color: authTheme.subtle }]}>{t('Terms')}</Text>
         </Pressable>
@@ -810,9 +815,15 @@ const styles = StyleSheet.create({
   authShell: {
     alignItems: 'center'
   },
+  authShellTablet: {
+    width: '100%'
+  },
   panelWrap: {
     width: '100%',
     maxWidth: 360
+  },
+  panelWrapTablet: {
+    maxWidth: 540
   },
   authPanelFrame: {
     borderWidth: 1,
@@ -823,6 +834,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 3
   },
+  authPanelFrameTablet: {
+    borderRadius: 26,
+    padding: 14
+  },
   authPanelCard: {
     borderWidth: 1,
     borderRadius: 20,
@@ -832,6 +847,11 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
     elevation: 2
+  },
+  authPanelCardTablet: {
+    borderRadius: 22,
+    paddingHorizontal: 24,
+    paddingVertical: 24
   },
   formInner: {
     width: '100%'
@@ -1007,6 +1027,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 18
+  },
+  legalRowTablet: {
+    marginTop: 20
   },
   legalLink: {
     fontSize: 12,

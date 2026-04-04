@@ -76,6 +76,10 @@ function currencyFromCountry(value = '') {
   return 'INR';
 }
 
+function currentCalendarYearEndDate() {
+  return `${new Date().getFullYear()}-12-31`;
+}
+
 function logFamilyAudit(ownerUserId, actorUserId, action, meta = {}) {
   db.prepare(`
     INSERT INTO family_audit (owner_user_id, actor_user_id, action, meta, created_at)
@@ -668,6 +672,7 @@ router.post('/register', async (req, res) => {
       registerStage = 'user_settings';
       settingsUpsert.run(user.id, 'country', cleanedCountry, nowIso());
       settingsUpsert.run(user.id, 'preferred_currency', currencyFromCountry(cleanedCountry), nowIso());
+      settingsUpsert.run(user.id, 'target_date', currentCalendarYearEndDate(), nowIso());
 
       registerStage = 'pending_invite_lookup';
       const pendingInvite = db

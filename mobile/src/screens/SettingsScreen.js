@@ -28,6 +28,8 @@ const targetSettingKey = (category) =>
 const sanitizeTargetDigits = (value = '') => String(value || '').replace(/\D/g, '');
 const TARGETS_LAST_UPDATED_KEY = 'targets_last_updated_at';
 
+const currentCalendarYearEndDate = () => `${new Date().getFullYear()}-12-31`;
+
 const formatTargetDigits = (value = '', currency = 'INR') => {
   const digits = sanitizeTargetDigits(value);
   if (!digits) return '';
@@ -55,6 +57,9 @@ const stripSettingsMetadata = (data = {}) => {
 
 const normalizeSettingsForm = (data = {}) => {
   const normalized = stripSettingsMetadata(data);
+  if (!String(normalized.target_date || '').trim()) {
+    normalized.target_date = currentCalendarYearEndDate();
+  }
   ASSET_TARGET_CATEGORIES.forEach((category) => {
     const key = targetSettingKey(category);
     normalized[key] = sanitizeTargetDigits(normalized[key]);
@@ -79,11 +84,13 @@ export default function SettingsScreen({
     : readOnly
       ? t('Subscription expired. Renew to edit targets.')
       : t('Targets are available with Premium.');
-  const [form, setForm] = useState({});
+  const [form, setForm] = useState(() => normalizeSettingsForm({}));
   const [message, setMessage] = useState('');
+  const [messageKind, setMessageKind] = useState('info');
   const [focusedTargetKey, setFocusedTargetKey] = useState('');
   const [targetsLastUpdatedAt, setTargetsLastUpdatedAt] = useState('');
   const fieldOffsetsRef = useRef({});
+  const defaultTargetDate = currentCalendarYearEndDate();
 
   useEffect(() => {
     api.getSettings()
@@ -91,7 +98,10 @@ export default function SettingsScreen({
         setTargetsLastUpdatedAt(String(data?.[TARGETS_LAST_UPDATED_KEY] || ''));
         setForm(normalizeSettingsForm(data));
       })
-      .catch((e) => setMessage(e.message));
+      .catch((e) => {
+        setMessageKind('error');
+        setMessage(e.message);
+      });
   }, []);
 
   const setFieldOffset = useCallback((key, layoutY) => {
@@ -112,7 +122,8 @@ export default function SettingsScreen({
     const saved = await api.upsertSettings(stripSettingsMetadata(form));
     setTargetsLastUpdatedAt(String(saved?.[TARGETS_LAST_UPDATED_KEY] || ''));
     setForm(normalizeSettingsForm(saved));
-    setMessage(t('Settings saved.'));
+    setMessageKind('success');
+    setMessage(t('Targets Updated'));
   };
 
   if (!premiumActive || (readOnly && !readOnlyDueToFamilyRole)) {
@@ -163,7 +174,7 @@ export default function SettingsScreen({
               value={String(form.target_date ?? '')}
               onChange={(v) => setForm((prev) => ({ ...prev, target_date: v }))}
               theme={theme}
-              placeholder="2030-12-31"
+              placeholder={defaultTargetDate}
             />
 
             {ASSET_TARGET_CATEGORIES.map((category) => {
@@ -199,12 +210,29 @@ export default function SettingsScreen({
                 </View>
               );
             })}
-            <PillButton label={t('Set My Targets')} onPress={() => save().catch((e) => setMessage(e.message))} />
+            <PillButton
+              label={t('Set My Targets')}
+              onPress={() =>
+                save().catch((e) => {
+                  setMessageKind('error');
+                  setMessage(e.message);
+                })
+              }
+            />
           </>
         )}
       </SectionCard>
 
-      {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
+      {!!message && (
+        <Text
+          style={[
+            styles.message,
+            { color: messageKind === 'success' ? theme.success : theme.danger }
+          ]}
+        >
+          {message}
+        </Text>
+      )}
     </View>
   );
 }

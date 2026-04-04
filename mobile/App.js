@@ -1912,10 +1912,10 @@ export default function App() {
     authBrandSafeBottom + (authLayoutVariant === 'fresh' ? 60 : 72)
   );
   const authHeroOffset = isTabletLayout
-    ? Math.max(260, Math.min(Math.round(screenHeight * 0.78), authTabletTopPadding))
+    ? Math.max(232, Math.min(Math.round(screenHeight * 0.72), authTabletTopPadding - 12))
     : Math.max(92, Math.min(136, Math.round(screenHeight * 0.11)));
   const authFormOffset = isTabletLayout
-    ? 0
+    ? -10
     : 150;
 
   const mainContent = sessionRestoring ? (
@@ -2925,7 +2925,9 @@ const styles = StyleSheet.create({
   },
   authFormSectionTablet: {
     alignItems: 'center',
-    width: '100%'
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 620
   },
   authFormSectionRaised: {
     marginTop: 150

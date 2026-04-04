@@ -15,8 +15,17 @@ const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN_X * 2;
 const FONT_REGULAR = 'F1';
 const FONT_BOLD = 'F2';
 
+function sanitizePdfText(value = '') {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function escPdf(text) {
-  return String(text || '')
+  return sanitizePdfText(text)
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
@@ -24,8 +33,21 @@ function escPdf(text) {
 }
 
 function normalizeText(value, fallback = '-') {
-  const text = String(value ?? '').trim();
+  const text = sanitizePdfText(value);
   return text || fallback;
+}
+
+function initialsFromName(name = '') {
+  const compact = sanitizePdfText(name).replace(/[^A-Za-z]/g, '').toUpperCase();
+  if (/^[A-Z]{1,2}$/.test(compact)) return compact;
+  const parts = sanitizePdfText(name)
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return 'NA';
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
 }
 
 function formatInr(value) {
@@ -57,6 +79,12 @@ function formatMoney(value, currency = 'INR', fxRate = 1) {
     maximumFractionDigits: 0
   }).format(amount);
   return `${normalizedCurrency} ${formatted}`;
+}
+
+function formatPercentage(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return '0.0%';
+  return `${numeric.toFixed(1)}%`;
 }
 
 function formatDateTime(value) {
@@ -219,7 +247,7 @@ function buildSnapshotPdf(report) {
   pushText(pages, `Report date: ${report.reportDate}`, { color: '#334155', leading: 16 });
   pushText(pages, `Generated: ${formatDateTime(report.generatedAt)}`, { color: '#334155', leading: 16 });
   pushText(pages, `Display currency: ${report.displayCurrency}`, { color: '#334155', leading: 16 });
-  pushText(pages, `Account ID: ${report.userId}`, { color: '#64748B', leading: 16 });
+  pushText(pages, `Account Initials: ${report.userInitials}`, { color: '#64748B', leading: 16 });
   pushSpacer(pages, 4);
   pushDivider(pages, '#CBD5E1');
 
@@ -236,7 +264,14 @@ function buildSnapshotPdf(report) {
   pushText(pages, 'Asset Allocation Summary', { font: FONT_BOLD, fontSize: 14, color: '#155EAF', leading: 18 });
   if (groupedAssets.length) {
     groupedAssets.forEach((row) => {
-      pushText(pages, `${row.category}: ${row.count} item(s) • ${formatMoney(row.currentValue, report.displayCurrency, report.displayFxRate)}`, { color: '#0F172A' });
+      const allocationPct = report.totalAssets > 0
+        ? (Number(row.currentValue || 0) / Number(report.totalAssets || 0)) * 100
+        : 0;
+      pushText(
+        pages,
+        `${row.category}: ${row.count} item(s) - ${formatMoney(row.currentValue, report.displayCurrency, report.displayFxRate)} - ${formatPercentage(allocationPct)}`,
+        { color: '#0F172A' }
+      );
     });
   } else {
     pushText(pages, 'No assets recorded yet.', { color: '#64748B' });
@@ -255,7 +290,7 @@ function buildSnapshotPdf(report) {
         leading: 16
       });
       pushText(pages, `Category: ${normalizeText(row.category)}`, { color: '#334155', indent: 14 });
-      pushText(pages, `Current value: ${formatMoney(row.current_value, report.displayCurrency, report.displayFxRate)} • Invested value: ${formatMoney(row.invested_amount, report.displayCurrency, report.displayFxRate)}`, {
+      pushText(pages, `Current value: ${formatMoney(row.current_value, report.displayCurrency, report.displayFxRate)} - Invested value: ${formatMoney(row.invested_amount, report.displayCurrency, report.displayFxRate)}`, {
         color: '#334155',
         indent: 14
       });
@@ -336,6 +371,8 @@ function resolveSnapshotDisplayOptions(req, userId) {
 }
 
 function buildSnapshotReport(userId, reportDate, options = {}) {
+  const userRow = db.prepare('SELECT full_name FROM users WHERE id = ?').get(userId);
+  const userInitials = initialsFromName(decryptString(userRow?.full_name || ''));
   const assets = db
     .prepare(`
       SELECT category, name, account_ref, tracking_url, current_value, invested_amount
@@ -369,6 +406,7 @@ function buildSnapshotReport(userId, reportDate, options = {}) {
 
   return {
     userId,
+    userInitials,
     reportDate,
     generatedAt: new Date().toISOString(),
     displayCurrency: normalizeCurrency(options.displayCurrency || 'INR'),

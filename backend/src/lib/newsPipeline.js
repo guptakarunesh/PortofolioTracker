@@ -374,14 +374,28 @@ async function callOpenAIResponses({
     : [{ name: 'none', tools: [] }];
 
   const variantAttempts = [];
+  const totalTimeoutMs = timeoutMs || (useWebSearch ? 60_000 : 25_000);
+  const startedAtMs = Date.now();
   let lastError = null;
   let emptyItemsParsed = null;
 
-  for (const variant of toolVariants) {
+  for (let idx = 0; idx < toolVariants.length; idx += 1) {
+    const variant = toolVariants[idx];
     const tools = Array.isArray(variant?.tools) ? variant.tools : [];
     const variantName = String(variant?.name || 'unknown');
+    const elapsedMs = Date.now() - startedAtMs;
+    const remainingMs = totalTimeoutMs - elapsedMs;
+    if (remainingMs <= 1_000) {
+      variantAttempts.push({
+        tool_variant: variantName,
+        error: 'timeout_budget_exhausted'
+      });
+      break;
+    }
+    const remainingVariants = Math.max(1, toolVariants.length - idx);
+    const variantTimeoutMs = Math.max(8_000, Math.floor(remainingMs / remainingVariants));
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs || (useWebSearch ? 60_000 : 25_000));
+    const timeout = setTimeout(() => controller.abort(), variantTimeoutMs);
     try {
       const body = {
         model,
@@ -419,6 +433,7 @@ async function callOpenAIResponses({
       const items = Array.isArray(structured?.items) ? structured.items : [];
       variantAttempts.push({
         tool_variant: variantName,
+        timeout_ms: variantTimeoutMs,
         output_text_chars: outputText.length,
         items: items.length
       });
@@ -437,6 +452,7 @@ async function callOpenAIResponses({
       lastError = error;
       variantAttempts.push({
         tool_variant: variantName,
+        timeout_ms: variantTimeoutMs,
         error: String(error?.message || error)
       });
     } finally {

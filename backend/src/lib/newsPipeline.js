@@ -346,28 +346,40 @@ async function callOpenAIResponses({
 }) {
   const toolVariants = useWebSearch
     ? [
-        [
-          {
-            type: 'web_search',
-            search_context_size: searchContextSize,
-            user_location: { type: 'approximate', country }
-          }
-        ],
-        [
-          {
-            type: 'web_search_preview',
-            search_context_size: searchContextSize,
-            user_location: { type: 'approximate', country }
-          }
-        ],
-        [{ type: 'web_search_preview' }]
+        {
+          name: 'web_search',
+          tools: [
+            {
+              type: 'web_search',
+              search_context_size: searchContextSize,
+              user_location: { type: 'approximate', country }
+            }
+          ]
+        },
+        {
+          name: 'web_search_preview_located',
+          tools: [
+            {
+              type: 'web_search_preview',
+              search_context_size: searchContextSize,
+              user_location: { type: 'approximate', country }
+            }
+          ]
+        },
+        {
+          name: 'web_search_preview_basic',
+          tools: [{ type: 'web_search_preview' }]
+        }
       ]
-    : [[]];
+    : [{ name: 'none', tools: [] }];
 
+  const variantAttempts = [];
   let lastError = null;
   let emptyItemsParsed = null;
 
-  for (const tools of toolVariants) {
+  for (const variant of toolVariants) {
+    const tools = Array.isArray(variant?.tools) ? variant.tools : [];
+    const variantName = String(variant?.name || 'unknown');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs || (useWebSearch ? 60_000 : 25_000));
     try {
@@ -404,19 +416,39 @@ async function callOpenAIResponses({
         throw new Error('OpenAI response missing output text');
       }
       const structured = parseStrictOrRecoveredJson(outputText);
-      if (!useWebSearch) return structured;
       const items = Array.isArray(structured?.items) ? structured.items : [];
-      if (items.length > 0) return structured;
-      if (!emptyItemsParsed) emptyItemsParsed = structured;
+      variantAttempts.push({
+        tool_variant: variantName,
+        output_text_chars: outputText.length,
+        items: items.length
+      });
+
+      const withMeta = {
+        ...structured,
+        _debug: {
+          tool_variant: variantName,
+          tool_attempts: variantAttempts
+        }
+      };
+      if (!useWebSearch) return withMeta;
+      if (items.length > 0) return withMeta;
+      if (!emptyItemsParsed) emptyItemsParsed = withMeta;
     } catch (error) {
       lastError = error;
+      variantAttempts.push({
+        tool_variant: variantName,
+        error: String(error?.message || error)
+      });
     } finally {
       clearTimeout(timeout);
     }
   }
 
   if (emptyItemsParsed) return emptyItemsParsed;
-  if (lastError) throw lastError;
+  if (lastError) {
+    const errorText = String(lastError?.message || lastError);
+    throw new Error(`${errorText} | tool_attempts=${JSON.stringify(variantAttempts.slice(0, 5))}`);
+  }
   throw new Error('OpenAI request failed without response');
 }
 
@@ -569,6 +601,8 @@ export async function ingestCuratedNews({
           max_age_hours: attempt.maxAgeHours,
           model_items_raw: currentRawItems.length,
           model_items_normalized: currentNormalized.length,
+          tool_variant: out?._debug?.tool_variant || undefined,
+          tool_attempts: Array.isArray(out?._debug?.tool_attempts) ? out._debug.tool_attempts : undefined,
           rejection_reasons: Object.keys(currentRejections).length ? currentRejections : undefined
         });
 

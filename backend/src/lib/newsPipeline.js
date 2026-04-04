@@ -55,6 +55,26 @@ function normalizeWhitespace(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function isCatalogFallbackTitle(title = '') {
+  return /latest update feed$/i.test(normalizeWhitespace(title));
+}
+
+function isCatalogFallbackItem(item = {}) {
+  return isCatalogFallbackTitle(item?.title || '');
+}
+
+function countMeaningfulItems(items = []) {
+  return Array.isArray(items) ? items.filter((item) => !isCatalogFallbackItem(item)).length : 0;
+}
+
+export function isMeaningfulCuratedNewsItem(item = {}) {
+  return !isCatalogFallbackItem(item);
+}
+
+export function filterMeaningfulCuratedNewsItems(items = []) {
+  return Array.isArray(items) ? items.filter((item) => isMeaningfulCuratedNewsItem(item)) : [];
+}
+
 function normalizeCategory(value = '') {
   const raw = String(value || '').trim().toLowerCase();
   return CURATED_NEWS_CATEGORIES.find((item) => item.key === raw)?.key || 'other_savings';
@@ -120,6 +140,10 @@ function dedupeItems(items = []) {
 function pruneOldNews() {
   const cutoff = new Date(Date.now() - NEWS_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
   db.prepare('DELETE FROM news_items WHERE published_at < ?').run(cutoff);
+}
+
+function purgeCatalogFallbackItems() {
+  db.prepare("DELETE FROM news_items WHERE LOWER(TRIM(title)) LIKE '%latest update feed'").run();
 }
 
 function logIngestRun({ status = 'ok', source = 'pipeline', itemCount = 0, message = '', metadata = {}, startedAt, finishedAt }) {
@@ -316,13 +340,14 @@ export async function ingestCuratedNews({
   const startedAt = nowIso();
   pruneOldNews();
   const existing = getCuratedNews({ limit: 60 });
-  if (!forceRefresh && existing.length >= 10) {
+  const existingMeaningfulCount = countMeaningfulItems(existing);
+  if (!forceRefresh && existingMeaningfulCount >= 10) {
     logIngestRun({
       status: 'skipped',
       source: 'pipeline',
       itemCount: 0,
       message: 'fresh_news_already_present',
-      metadata: { fresh_count: existing.length },
+      metadata: { fresh_count: existing.length, meaningful_count: existingMeaningfulCount },
       startedAt,
       finishedAt: nowIso()
     });
@@ -386,43 +411,98 @@ export async function ingestCuratedNews({
 
     const rawItems = Array.isArray(out?.items) ? out.items : [];
     const normalized = dedupeItems(rawItems.map(normalizeIngestedItem).filter(Boolean));
-    const effectiveItems = normalized.length ? normalized : dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
-    const tx = db.transaction(() => {
-      effectiveItems.forEach(upsertNewsItem);
-    });
-    tx();
+    const fallbackItems = dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
+    let effectiveItems = [];
+    let message = 'ingest_completed';
+    let warning = '';
+
+    if (normalized.length) {
+      effectiveItems = normalized;
+    } else if (existingMeaningfulCount > 0) {
+      message = 'ingest_completed_using_existing_after_empty_model_output';
+      warning = 'model_output_empty_using_existing';
+    } else {
+      effectiveItems = fallbackItems;
+      message = 'ingest_completed_with_catalog_fallback';
+      warning = 'catalog_fallback_used';
+    }
+
+    if (normalized.length) {
+      purgeCatalogFallbackItems();
+    }
+    if (effectiveItems.length) {
+      const tx = db.transaction(() => {
+        effectiveItems.forEach(upsertNewsItem);
+      });
+      tx();
+    }
     pruneOldNews();
-    const totalFreshItems = getCuratedNews({ limit: 60 }).length;
+    const refreshed = getCuratedNews({ limit: 60 });
+    const totalFreshItems = refreshed.length;
     logIngestRun({
-      status: 'ok',
+      status: warning ? 'warning' : 'ok',
       source: 'pipeline',
       itemCount: effectiveItems.length,
-      message: normalized.length ? 'ingest_completed' : 'ingest_completed_with_catalog_fallback',
-      metadata: { total_fresh_items: totalFreshItems, model_items: normalized.length },
+      message,
+      metadata: {
+        total_fresh_items: totalFreshItems,
+        meaningful_count: countMeaningfulItems(refreshed),
+        model_items: normalized.length,
+        warning: warning || undefined
+      },
       startedAt,
       finishedAt: nowIso()
     });
-    return {
+    const payload = {
       ok: true,
       inserted: effectiveItems.length,
       total_fresh_items: totalFreshItems
     };
+    if (warning) payload.warning = warning;
+    return payload;
   } catch (error) {
+    const errorText = String(error?.message || error);
+    if (existingMeaningfulCount > 0) {
+      logIngestRun({
+        status: 'error',
+        source: 'pipeline',
+        itemCount: 0,
+        message: 'ingest_error_using_existing',
+        metadata: {
+          total_fresh_items: existing.length,
+          meaningful_count: existingMeaningfulCount,
+          error: errorText
+        },
+        startedAt,
+        finishedAt: nowIso()
+      });
+      return {
+        ok: false,
+        inserted: 0,
+        total_fresh_items: existing.length,
+        warning: 'ingest_failed_using_existing',
+        error: errorText
+      };
+    }
+
     const effectiveItems = dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
-    const tx = db.transaction(() => {
-      effectiveItems.forEach(upsertNewsItem);
-    });
-    tx();
+    if (effectiveItems.length) {
+      const tx = db.transaction(() => {
+        effectiveItems.forEach(upsertNewsItem);
+      });
+      tx();
+    }
     pruneOldNews();
     const totalFreshItems = getCuratedNews({ limit: 60 }).length;
     logIngestRun({
-      status: 'ok',
+      status: 'warning',
       source: 'pipeline',
       itemCount: effectiveItems.length,
       message: 'ingest_completed_with_error_catalog_fallback',
       metadata: {
         total_fresh_items: totalFreshItems,
-        error: String(error?.message || error)
+        meaningful_count: countMeaningfulItems(getCuratedNews({ limit: 60 })),
+        error: errorText
       },
       startedAt,
       finishedAt: nowIso()
@@ -473,6 +553,15 @@ function buildRepresentativeItems(items = []) {
       byCategory.set(item.category, item);
       continue;
     }
+    const currentIsFallback = isCatalogFallbackItem(current);
+    const nextIsFallback = isCatalogFallbackItem(item);
+    if (currentIsFallback && !nextIsFallback) {
+      byCategory.set(item.category, item);
+      continue;
+    }
+    if (!currentIsFallback && nextIsFallback) {
+      continue;
+    }
     const currentPriority = Number(current.is_official ? 1000 : 0) + Number(current.source_priority || 0);
     const nextPriority = Number(item.is_official ? 1000 : 0) + Number(item.source_priority || 0);
     if (nextPriority > currentPriority) {
@@ -485,8 +574,8 @@ function buildRepresentativeItems(items = []) {
   }
 
   const representatives = [...byCategory.values()].sort((a, b) => {
-    const ap = Number(a.is_official ? 1000 : 0) + Number(a.source_priority || 0);
-    const bp = Number(b.is_official ? 1000 : 0) + Number(b.source_priority || 0);
+    const ap = Number(a.is_official ? 1000 : 0) + Number(a.source_priority || 0) + (isCatalogFallbackItem(a) ? -500 : 0);
+    const bp = Number(b.is_official ? 1000 : 0) + Number(b.source_priority || 0) + (isCatalogFallbackItem(b) ? -500 : 0);
     if (bp !== ap) return bp - ap;
     return String(b.published_at || '').localeCompare(String(a.published_at || ''));
   });
@@ -514,12 +603,14 @@ export async function buildInsightNewsBullets({
   if (!curated.length) {
     return { bullets: [], source: 'empty' };
   }
-  const representativeItems = buildRepresentativeItems(curated);
+  const meaningfulCurated = filterMeaningfulCuratedNewsItems(curated);
+  const representativeItems = buildRepresentativeItems(meaningfulCurated.length ? meaningfulCurated : curated);
+  const catalogOnly = !meaningfulCurated.length;
   const goldMetalsItem = representativeItems.find((item) => item.category === 'gold_metals') || null;
 
   if (!apiKey) {
     const fallbackBullets = representativeItems.map(fallbackBulletForItem);
-    return { bullets: fallbackBullets, source: 'rule_based' };
+    return { bullets: fallbackBullets, source: catalogOnly ? 'rule_based_catalog_only' : 'rule_based' };
   }
 
   const prompt = [
@@ -552,7 +643,7 @@ export async function buildInsightNewsBullets({
   const bullets = Array.isArray(out?.bullets) ? out.bullets.map((item) => normalizeWhitespace(item)).filter(Boolean).slice(0, 5) : [];
   if (bullets.length !== 5) {
     const fallbackBullets = representativeItems.map(fallbackBulletForItem);
-    return { bullets: fallbackBullets, source: 'rule_based_invalid_ai' };
+    return { bullets: fallbackBullets, source: catalogOnly ? 'rule_based_invalid_ai_catalog_only' : 'rule_based_invalid_ai' };
   }
   const seenCategories = new Set();
   let hasDuplicateCategory = false;
@@ -565,10 +656,16 @@ export async function buildInsightNewsBullets({
     seenCategories.add(category);
   }
   if (hasDuplicateCategory) {
-    return { bullets: representativeItems.map(fallbackBulletForItem), source: 'rule_based_duplicate_category_rejected' };
+    return {
+      bullets: representativeItems.map(fallbackBulletForItem),
+      source: catalogOnly ? 'rule_based_duplicate_category_rejected_catalog_only' : 'rule_based_duplicate_category_rejected'
+    };
   }
   if (goldMetalsItem && !bullets.some(bulletMentionsGoldMetals)) {
-    return { bullets: representativeItems.map(fallbackBulletForItem), source: 'rule_based_missing_gold_metals_rejected' };
+    return {
+      bullets: representativeItems.map(fallbackBulletForItem),
+      source: catalogOnly ? 'rule_based_missing_gold_metals_rejected_catalog_only' : 'rule_based_missing_gold_metals_rejected'
+    };
   }
   return { bullets, source: 'ai_from_curated_news' };
 }
@@ -580,11 +677,20 @@ export async function ensureCuratedNews({
   minFreshItems = 8
 } = {}) {
   const current = getCuratedNews({ limit: 60 });
-  if (!forceRefresh && current.length >= minFreshItems) {
-    return { items: current, refreshed: false, count: current.length };
+  const meaningfulCurrentCount = countMeaningfulItems(current);
+  if (!forceRefresh && meaningfulCurrentCount >= minFreshItems) {
+    return { items: current, refreshed: false, count: current.length, meaningful_count: meaningfulCurrentCount };
   }
 
-  await ingestCuratedNews({ apiKey, country, forceRefresh });
+  const ingestResult = await ingestCuratedNews({ apiKey, country, forceRefresh });
   const refreshed = getCuratedNews({ limit: 60 });
-  return { items: refreshed, refreshed: true, count: refreshed.length };
+  return {
+    items: refreshed,
+    refreshed: true,
+    count: refreshed.length,
+    meaningful_count: countMeaningfulItems(refreshed),
+    ingest_ok: ingestResult?.ok !== false,
+    ingest_warning: ingestResult?.warning || '',
+    ingest_error: ingestResult?.error || ''
+  };
 }

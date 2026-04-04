@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
-import { buildInsightNewsBullets, ensureCuratedNews } from '../lib/newsPipeline.js';
+import { buildInsightNewsBullets, ensureCuratedNews, filterMeaningfulCuratedNewsItems } from '../lib/newsPipeline.js';
 
 const router = Router();
 const AI_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -52,6 +52,10 @@ function setUserSetting(userId, key, value) {
 
 function deleteUserSetting(userId, key) {
   db.prepare('DELETE FROM user_settings WHERE user_id = ? AND key = ?').run(userId, key);
+}
+
+function isAiGeneratedNewsSource(value = '') {
+  return String(value || '').toLowerCase().startsWith('ai_');
 }
 
 function normalizeCountry(value = '') {
@@ -317,6 +321,7 @@ router.get('/insights', async (req, res) => {
   const cachedAt = cache?.cached_at ? new Date(cache.cached_at).getTime() : 0;
   const within24h = cachedAt && Date.now() - cachedAt < AI_CACHE_TTL_MS;
   const cacheDisplayAsOf = cache?.cached_at || nowIso();
+  const cacheHasAiSource = isAiGeneratedNewsSource(cache?.news_source || '');
 
   const personalBullets = [
     gapBullets[0],
@@ -328,6 +333,7 @@ router.get('/insights', async (req, res) => {
   if (
     !forceRefresh &&
     within24h &&
+    cacheHasAiSource &&
     Array.isArray(cache?.personal_bullets) &&
     Array.isArray(cache?.news_bullets) &&
     cache.news_bullets.length === 5
@@ -341,6 +347,7 @@ router.get('/insights', async (req, res) => {
       disclaimer: defaultDisclaimer,
       as_of: cacheDisplayAsOf,
       cached: true,
+      news_source: cache.news_source,
       portfolio
     });
   }
@@ -354,6 +361,7 @@ router.get('/insights', async (req, res) => {
       }),
       disclaimer: defaultDisclaimer,
       as_of: nowIso(),
+      news_source: 'unavailable_no_api_key',
       portfolio
     });
   }
@@ -364,7 +372,7 @@ router.get('/insights', async (req, res) => {
       country: countryCode,
       forceRefresh
     });
-    const curatedItems = Array.isArray(curatedNewsState?.items) ? curatedNewsState.items : [];
+    const curatedItems = filterMeaningfulCuratedNewsItems(curatedNewsState?.items || []);
     if (!curatedItems.length) {
       throw new Error('no_curated_news_available');
     }
@@ -383,19 +391,26 @@ router.get('/insights', async (req, res) => {
       }),
       disclaimer: defaultDisclaimer,
       as_of: nowIso(),
-      source_as_of: nowIso()
+      source_as_of: nowIso(),
+      news_source: String(result?.source || 'unknown')
     };
-    setUserSetting(accountUserId, 'ai_insights_cache', JSON.stringify({
-      ...payload,
-      cached_at: nowIso()
-    }));
+    if (curatedNewsState?.ingest_warning) payload.ingest_warning = String(curatedNewsState.ingest_warning);
+    if (curatedNewsState?.ingest_error) payload.ingest_error = String(curatedNewsState.ingest_error);
+    if (isAiGeneratedNewsSource(payload.news_source)) {
+      setUserSetting(accountUserId, 'ai_insights_cache', JSON.stringify({
+        ...payload,
+        cached_at: nowIso()
+      }));
+    } else {
+      deleteUserSetting(accountUserId, 'ai_insights_cache');
+    }
     return res.json({
       ...payload,
       portfolio
     });
   } catch (e) {
     const errText = String(e?.message || e);
-    if (within24h && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
+    if (within24h && cacheHasAiSource && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
       return res.status(200).json({
         personal_bullets: personalBullets,
         news_bullets: ensureMetalsCoverage(cache.news_bullets, {
@@ -405,24 +420,34 @@ router.get('/insights', async (req, res) => {
         disclaimer: defaultDisclaimer,
         as_of: cacheDisplayAsOf,
         cached: true,
+        news_source: cache.news_source,
         warning: forceRefresh ? 'news_error_using_cached_after_refresh' : 'news_error_using_cached',
         error: errText,
         portfolio
       });
     }
+    const isCuratedUnavailable = errText.includes('no_curated_news_available');
     return res.status(200).json({
       personal_bullets: personalBullets,
       news_bullets: unavailableNewsBullets(
-        errText.toLowerCase().includes('timeout') ? 'Live 48h news timed out.' : 'Live 48h news is currently unavailable.',
+        isCuratedUnavailable
+          ? 'Live curated news is currently unavailable.'
+          : errText.toLowerCase().includes('timeout')
+            ? 'Live 48h news timed out.'
+            : 'Live 48h news is currently unavailable.',
         {
           includeMetals: hasPreciousMetalsExposure,
-          reason: errText.toLowerCase().includes('timeout')
-            ? 'Recent metals-specific coverage timed out.'
-            : 'Recent metals-specific coverage is limited right now.'
+          reason: isCuratedUnavailable
+            ? 'Recent metals-specific coverage is currently unavailable.'
+            : errText.toLowerCase().includes('timeout')
+              ? 'Recent metals-specific coverage timed out.'
+              : 'Recent metals-specific coverage is limited right now.'
         }
       ),
       disclaimer: defaultDisclaimer,
       as_of: nowIso(),
+      news_source: 'unavailable',
+      warning: isCuratedUnavailable ? 'curated_news_empty' : undefined,
       error: errText,
       portfolio
     });

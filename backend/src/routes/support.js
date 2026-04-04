@@ -773,10 +773,13 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
       db.prepare("DELETE FROM user_settings WHERE key = 'ai_insights_cache'").run();
       result = {
         ok: true,
+        ingest_ok: out?.ok !== false,
         inserted: Number(out.inserted || 0),
         total_fresh_items: Number(out.total_fresh_items || 0),
         cleared_ai_caches: true
       };
+      if (out?.warning) result.ingest_warning = String(out.warning);
+      if (out?.error) result.ingest_error = String(out.error);
     } else {
       return res.status(400).json({ error: 'unsupported_action' });
     }

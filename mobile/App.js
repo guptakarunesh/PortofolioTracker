@@ -380,6 +380,7 @@ function ScreenRenderer({
   accessRole,
   isAccountOwner,
   premiumActive,
+  subscriptionActive,
   readOnly,
   onCloseSubscription,
   onCloseFamily,
@@ -391,7 +392,8 @@ function ScreenRenderer({
   themeKey,
   onRemindersChanged,
   onRequestScrollTo,
-  onOpenSupport
+  onOpenSupport,
+  onOpenRecentActivity
 }) {
   switch (tab) {
     case 'dashboard':
@@ -475,6 +477,7 @@ function ScreenRenderer({
           onOpenSubscription={onOpenSubscription}
           onOpenFamily={onOpenFamily}
           onOpenSupport={onOpenSupport}
+          onOpenRecentActivity={onOpenRecentActivity}
           onOpenOnboarding={onOpenOnboarding}
           onRegisterOnboardingTarget={onRegisterOnboardingTarget}
           onMeasureOnboardingTarget={onMeasureOnboardingTarget}
@@ -2016,8 +2019,8 @@ export default function App() {
                     <Text style={styles.accountAvatarText}>{toInitialsFromName(user.full_name)}</Text>
                   </View>
                   <View style={styles.accountMeta}>
-                    <Text style={[styles.accountRoleText, { color: theme.info }]} numberOfLines={1}>
-                      {roleLabel}
+                    <Text style={[styles.accountNameText, { color: theme.text }]} numberOfLines={1}>
+                      {t('Account')}
                     </Text>
                     {accountExpiryNotice ? (
                       <Text style={[styles.accountExpiryNotice, { color: theme.warn }]} numberOfLines={1}>
@@ -2025,23 +2028,21 @@ export default function App() {
                       </Text>
                     ) : null}
                   </View>
+                  <View
+                    style={[
+                      styles.accountRoleBadge,
+                      {
+                        backgroundColor: isDarkTheme ? 'rgba(36,178,214,0.16)' : (theme.accentSoft || 'rgba(36,178,214,0.12)'),
+                        borderColor: isDarkTheme ? 'rgba(36,178,214,0.44)' : theme.accent
+                      }
+                    ]}
+                  >
+                    <Text style={[styles.accountRoleBadgeText, { color: isDarkTheme ? '#EAF9FF' : theme.accent }]} numberOfLines={1}>
+                      {roleLabel}
+                    </Text>
+                  </View>
                   <Text style={[styles.accountChevron, { color: theme.info }]}>{'\u203A'}</Text>
                 </AnimatedPressable>
-                <Pressable
-                  style={[
-                    styles.activityChipButton,
-                    {
-                      backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.05)' : theme.card,
-                      borderColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : theme.border
-                    }
-                  ]}
-                  onPress={() => openRecentActivity().catch(() => {})}
-                  hitSlop={6}
-                >
-                  <Text style={[styles.activityChipText, { color: theme.accent }]} numberOfLines={1}>
-                    {t('Recent Activity')}
-                  </Text>
-                </Pressable>
               </View>
               <View style={styles.headerBrandActions}>
                 <View
@@ -2151,6 +2152,7 @@ export default function App() {
             accessRole={accessRole}
             isAccountOwner={isAccountOwner}
             premiumActive={premiumActive}
+            subscriptionActive={subscriptionActive}
             readOnly={readOnly}
             onCloseSubscription={closeSubscription}
             onCloseFamily={closeFamily}
@@ -2163,6 +2165,7 @@ export default function App() {
             onRemindersChanged={triggerReminderSync}
             onRequestScrollTo={requestMainScroll}
             onOpenSupport={openSupport}
+            onOpenRecentActivity={openRecentActivity}
           />
         </View>
       ) : (
@@ -2235,6 +2238,7 @@ export default function App() {
                 accessRole={accessRole}
                 isAccountOwner={isAccountOwner}
                 premiumActive={premiumActive}
+                subscriptionActive={subscriptionActive}
                 readOnly={readOnly}
                 onCloseSubscription={closeSubscription}
                 onCloseFamily={closeFamily}
@@ -2247,6 +2251,7 @@ export default function App() {
                 onRemindersChanged={triggerReminderSync}
                 onRequestScrollTo={requestMainScroll}
                 onOpenSupport={openSupport}
+                onOpenRecentActivity={openRecentActivity}
               />
             </View>
           </ScrollView>
@@ -3139,21 +3144,11 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: 14,
     borderWidth: 1,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8
-  },
-  activityChipButton: {
-    minHeight: 44,
-    minWidth: 108,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    justifyContent: 'center',
-    alignItems: 'center'
+    gap: 10
   },
   accountMeta: {
     flex: 1,
@@ -3161,17 +3156,25 @@ const styles = StyleSheet.create({
     gap: 2,
     justifyContent: 'center'
   },
-  accountRoleText: {
+  accountNameText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.1
+  },
+  accountRoleBadge: {
+    minHeight: 26,
+    maxWidth: 128,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  accountRoleBadgeText: {
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
     textTransform: 'uppercase'
-  },
-  activityChipText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.1,
-    textAlign: 'center'
   },
   accountExpiryNotice: {
     marginTop: 2,
@@ -3183,7 +3186,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     lineHeight: 20,
-    marginLeft: 2
+    marginLeft: 4
   },
   accountAvatar: {
     width: 36,

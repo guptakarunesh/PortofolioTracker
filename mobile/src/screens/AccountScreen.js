@@ -347,6 +347,7 @@ export default function AccountScreen({
   onOpenSubscription,
   onOpenFamily,
   onOpenSupport,
+  onOpenRecentActivity = () => {},
   onOpenOnboarding,
   premiumActive = false,
   preferredCurrency = 'INR',
@@ -874,6 +875,12 @@ export default function AccountScreen({
           {t('Open support for FAQs and AI-assisted help with login, subscription, family access, and setup.')}
         </Text>
         <PillButton label={t('Worthio Support')} kind="primary" style={isDark ? styles.accountPrimaryButtonDark : null} onPress={onOpenSupport} />
+        <PillButton
+          label={t('Recent Activity')}
+          kind="ghost"
+          style={isDark ? styles.accountGhostButtonDark : null}
+          onPress={() => Promise.resolve(onOpenRecentActivity?.()).catch(() => {})}
+        />
       </SectionCard>
 
       <SectionCard title={t('FAQs')}>

@@ -51,6 +51,34 @@ function parseStrictOrRecoveredJson(text = '') {
   throw new Error(`Model output was not valid JSON: ${String(text || '').slice(0, 160)}`);
 }
 
+function extractResponseOutputText(parsed = {}) {
+  const direct = typeof parsed?.output_text === 'string' ? parsed.output_text.trim() : '';
+  if (direct) return direct;
+
+  if (!Array.isArray(parsed?.output)) return '';
+  const chunks = parsed.output
+    .filter((item) => item?.type === 'message')
+    .flatMap((item) => item?.content || []);
+
+  const parts = [];
+  for (const chunk of chunks) {
+    if (!chunk || typeof chunk !== 'object') continue;
+    if (chunk.type === 'output_text' || chunk.type === 'text') {
+      const textValue =
+        (typeof chunk.text === 'string' && chunk.text) ||
+        (typeof chunk?.text?.value === 'string' && chunk.text.value) ||
+        (typeof chunk.value === 'string' && chunk.value) ||
+        '';
+      if (textValue) parts.push(textValue);
+      continue;
+    }
+    if (chunk.type === 'json' && chunk.json && typeof chunk.json === 'object') {
+      parts.push(JSON.stringify(chunk.json));
+    }
+  }
+  return parts.join('\n').trim();
+}
+
 function normalizeWhitespace(value = '') {
   return String(value || '')
     .replace(/\u0000/g, ' ')
@@ -316,59 +344,80 @@ async function callOpenAIResponses({
   searchContextSize = 'low',
   timeoutMs = null
 }) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs || (useWebSearch ? 60_000 : 25_000));
-  const body = {
-    model,
-    reasoning: { effort: 'low' },
-    tools: useWebSearch
-      ? [
+  const toolVariants = useWebSearch
+    ? [
+        [
           {
             type: 'web_search',
             search_context_size: searchContextSize,
             user_location: { type: 'approximate', country }
           }
+        ],
+        [
+          {
+            type: 'web_search_preview',
+            search_context_size: searchContextSize,
+            user_location: { type: 'approximate', country }
+          }
+        ],
+        [{ type: 'web_search_preview' }]
+      ]
+    : [[]];
+
+  let lastError = null;
+  let emptyItemsParsed = null;
+
+  for (const tools of toolVariants) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs || (useWebSearch ? 60_000 : 25_000));
+    try {
+      const body = {
+        model,
+        reasoning: { effort: 'low' },
+        tools,
+        input: [
+          {
+            role: 'user',
+            content: [{ type: 'input_text', text: promptText }]
+          }
         ]
-      : [],
-    input: [
-      {
-        role: 'user',
-        content: [{ type: 'input_text', text: promptText }]
+      };
+
+      const response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+
+      const raw = await response.text();
+      if (!response.ok) {
+        throw new Error(raw || `OpenAI request failed (${response.status})`);
       }
-    ]
-  };
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal
-  }).finally(() => clearTimeout(timeout));
-
-  const raw = await response.text();
-  if (!response.ok) {
-    throw new Error(raw || `OpenAI request failed (${response.status})`);
+      const parsed = JSON.parse(raw);
+      const outputText = extractResponseOutputText(parsed);
+      if (!outputText) {
+        throw new Error('OpenAI response missing output text');
+      }
+      const structured = parseStrictOrRecoveredJson(outputText);
+      if (!useWebSearch) return structured;
+      const items = Array.isArray(structured?.items) ? structured.items : [];
+      if (items.length > 0) return structured;
+      if (!emptyItemsParsed) emptyItemsParsed = structured;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  const parsed = JSON.parse(raw);
-  const outputText =
-    (typeof parsed?.output_text === 'string' && parsed.output_text) ||
-    (Array.isArray(parsed?.output)
-      ? parsed.output
-          .filter((item) => item?.type === 'message')
-          .flatMap((item) => item?.content || [])
-          .filter((chunk) => chunk?.type === 'output_text')
-          .map((chunk) => chunk?.text)
-          .join('\n')
-      : '');
-
-  if (!outputText) {
-    throw new Error('OpenAI response missing output text');
-  }
-  return parseStrictOrRecoveredJson(outputText);
+  if (emptyItemsParsed) return emptyItemsParsed;
+  if (lastError) throw lastError;
+  throw new Error('OpenAI request failed without response');
 }
 
 function normalizeIngestedItem(rawItem = {}, options = {}) {

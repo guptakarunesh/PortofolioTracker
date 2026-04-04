@@ -229,13 +229,21 @@ function createPostgresCompatDb(connectionString) {
           connectTimeoutMs + 5000,
           'database transaction connect'
         );
+        let destroyClient = false;
         transactionClients.push(client);
         try {
+          try {
+            // Reset pooled client state in case a previous failed transaction leaked.
+            querySync('ROLLBACK');
+          } catch (_resetErr) {
+            destroyClient = true;
+          }
           querySync('BEGIN');
           const out = fn(...args);
           querySync('COMMIT');
           return out;
         } catch (err) {
+          destroyClient = true;
           try {
             querySync('ROLLBACK');
           } catch (_rollbackErr) {
@@ -245,7 +253,7 @@ function createPostgresCompatDb(connectionString) {
         } finally {
           transactionClients.pop();
           if (typeof client.__release === 'function') {
-            client.__release();
+            client.__release(destroyClient ? new Error('discard_transaction_client') : undefined);
           }
         }
       };

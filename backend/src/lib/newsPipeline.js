@@ -52,7 +52,10 @@ function parseStrictOrRecoveredJson(text = '') {
 }
 
 function normalizeWhitespace(value = '') {
-  return String(value || '').replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .replace(/\u0000/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function isCatalogFallbackTitle(title = '') {
@@ -81,7 +84,9 @@ function normalizeCategory(value = '') {
 }
 
 function normalizeUrl(value = '') {
-  const raw = String(value || '').trim();
+  const raw = String(value || '')
+    .replace(/\u0000/g, '')
+    .trim();
   if (!raw) return '';
   try {
     const url = new URL(raw);
@@ -203,6 +208,30 @@ function upsertNewsItem(item) {
     nowIso(),
     nowIso()
   );
+}
+
+function truncateForLog(value = '', max = 180) {
+  const text = String(value || '');
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 3)}...`;
+}
+
+function persistCuratedNewsItems(items = []) {
+  let inserted = 0;
+  const failures = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    try {
+      upsertNewsItem(item);
+      inserted += 1;
+    } catch (error) {
+      failures.push({
+        canonical_url: truncateForLog(item?.canonical_url || '', 240),
+        title: truncateForLog(item?.title || '', 120),
+        error: String(error?.message || error)
+      });
+    }
+  }
+  return { inserted, failures };
 }
 
 export function getCuratedNews({ maxAgeHours = NEWS_MAX_AGE_HOURS, limit = 24 } = {}) {
@@ -533,11 +562,15 @@ export async function ingestCuratedNews({
     if (normalized.length) {
       purgeCatalogFallbackItems();
     }
+    let writeFailures = [];
+    let insertedCount = 0;
     if (effectiveItems.length) {
-      const tx = db.transaction(() => {
-        effectiveItems.forEach(upsertNewsItem);
-      });
-      tx();
+      const writeResult = persistCuratedNewsItems(effectiveItems);
+      insertedCount = writeResult.inserted;
+      writeFailures = writeResult.failures;
+      if (!warning && writeFailures.length) {
+        warning = insertedCount > 0 ? 'partial_write_failures' : 'persist_failed';
+      }
     }
     pruneOldNews();
     const refreshed = getCuratedNews({ limit: 60 });
@@ -545,15 +578,19 @@ export async function ingestCuratedNews({
     logIngestRun({
       status: warning ? 'warning' : 'ok',
       source: 'pipeline',
-      itemCount: effectiveItems.length,
+      itemCount: insertedCount,
       message,
       metadata: {
+        attempted_items: effectiveItems.length,
+        persisted_items: insertedCount,
         total_fresh_items: totalFreshItems,
         meaningful_count: countMeaningfulItems(refreshed),
         model_items_raw: rawItems.length,
         model_items: normalized.length,
         rejected_items: Math.max(0, rawItems.length - normalized.length),
         rejection_reasons: Object.keys(normalizationRejections).length ? normalizationRejections : undefined,
+        write_failures_count: writeFailures.length,
+        write_failures: writeFailures.length ? writeFailures.slice(0, 3) : undefined,
         attempts: attemptSummary,
         openai_error: openAiError || undefined,
         warning: warning || undefined
@@ -563,7 +600,7 @@ export async function ingestCuratedNews({
     });
     const payload = {
       ok: true,
-      inserted: effectiveItems.length,
+      inserted: insertedCount,
       total_fresh_items: totalFreshItems,
       model_items_raw: rawItems.length,
       model_items_normalized: normalized.length
@@ -571,6 +608,8 @@ export async function ingestCuratedNews({
     if (attemptSummary.length) payload.ingest_attempts = attemptSummary;
     if (warning) payload.warning = warning;
     if (Object.keys(normalizationRejections).length) payload.normalization_rejections = normalizationRejections;
+    if (writeFailures.length) payload.write_failures = writeFailures.slice(0, 3);
+    if (!openAiError && writeFailures.length) payload.error = writeFailures[0].error;
     if (openAiError) payload.error = openAiError;
     return payload;
   } catch (error) {
@@ -599,36 +638,37 @@ export async function ingestCuratedNews({
     }
 
     const effectiveItems = dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
-    if (effectiveItems.length) {
-      const tx = db.transaction(() => {
-        effectiveItems.forEach(upsertNewsItem);
-      });
-      tx();
-    }
+    const fallbackWrite = persistCuratedNewsItems(effectiveItems);
     pruneOldNews();
     const totalFreshItems = getCuratedNews({ limit: 60 }).length;
     logIngestRun({
       status: 'warning',
       source: 'pipeline',
-      itemCount: effectiveItems.length,
+      itemCount: fallbackWrite.inserted,
       message: 'ingest_completed_with_error_catalog_fallback',
       metadata: {
+        attempted_items: effectiveItems.length,
+        persisted_items: fallbackWrite.inserted,
         total_fresh_items: totalFreshItems,
         meaningful_count: countMeaningfulItems(getCuratedNews({ limit: 60 })),
-        error: errorText
+        error: errorText,
+        write_failures_count: fallbackWrite.failures.length,
+        write_failures: fallbackWrite.failures.length ? fallbackWrite.failures.slice(0, 3) : undefined
       },
       startedAt,
       finishedAt: nowIso()
     });
-    return {
+    const payload = {
       ok: true,
-      inserted: effectiveItems.length,
+      inserted: fallbackWrite.inserted,
       total_fresh_items: totalFreshItems,
       warning: 'catalog_fallback_used',
       error: errorText,
       model_items_raw: 0,
       model_items_normalized: 0
     };
+    if (fallbackWrite.failures.length) payload.write_failures = fallbackWrite.failures.slice(0, 3);
+    return payload;
   }
 }
 

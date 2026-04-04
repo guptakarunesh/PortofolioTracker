@@ -785,6 +785,9 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
       if (out?.normalization_rejections && typeof out.normalization_rejections === 'object') {
         result.normalization_rejections = out.normalization_rejections;
       }
+      if (Array.isArray(out?.ingest_attempts)) {
+        result.ingest_attempts = out.ingest_attempts;
+      }
     } else {
       return res.status(400).json({ error: 'unsupported_action' });
     }

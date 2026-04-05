@@ -3,6 +3,7 @@ import { db, nowIso } from '../lib/db.js';
 import { decryptString, hashLookup } from '../lib/crypto.js';
 import { createSessionToken, hashPin, hashToken, verifyPin } from '../lib/auth.js';
 import { ingestCuratedNews } from '../lib/newsPipeline.js';
+import { resolveOpenAiApiKey } from '../lib/openai.js';
 import { deleteAccountCompletely, disableAccount, enableAccount, getAccountAccessState } from '../lib/accountLifecycle.js';
 import requireSupportAuth from '../middleware/requireSupportAuth.js';
 
@@ -764,7 +765,7 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
       const cleared = db.prepare("DELETE FROM user_settings WHERE user_id = ? AND key = 'ai_insights_cache'").run(targetUserId);
       result = { ok: true, cleared_entries: Number(cleared.changes || 0) };
     } else if (action === 'refresh_curated_news') {
-      const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+      const apiKey = resolveOpenAiApiKey();
       const out = await ingestCuratedNews({
         apiKey,
         country: String(payload.country || 'IN').trim() || 'IN',

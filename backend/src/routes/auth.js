@@ -31,6 +31,7 @@ import {
   upsertUserDevice
 } from '../lib/deviceSecurity.js';
 import { getAccountAccessState } from '../lib/accountLifecycle.js';
+import { resolveOpenAiApiKey } from '../lib/openai.js';
 import requireAuth from '../middleware/requireAuth.js';
 
 const router = Router();
@@ -534,7 +535,7 @@ router.post('/support-chat', async (req, res) => {
     ? storedHistory.map((item) => ({ role: item.role, text: item.text }))
     : explicitHistory;
 
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+  const apiKey = resolveOpenAiApiKey();
   const model = String(process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_MODEL || 'gpt-5-nano').trim();
   if (!apiKey) {
     const fallback = buildSupportFallbackReply(message);

@@ -1,9 +1,18 @@
 import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
 import { buildInsightNewsBullets, ensureCuratedNews, filterMeaningfulCuratedNewsItems } from '../lib/newsPipeline.js';
+import { resolveOpenAiApiKey } from '../lib/openai.js';
 
 const router = Router();
 const AI_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const AI_CURATED_REFRESH_TIMEOUT_MS = Math.max(
+  12_000,
+  Number.parseInt(process.env.AI_CURATED_REFRESH_TIMEOUT_MS || '45000', 10)
+);
+const AI_BULLET_BUILD_TIMEOUT_MS = Math.max(
+  8_000,
+  Number.parseInt(process.env.AI_BULLET_BUILD_TIMEOUT_MS || '20000', 10)
+);
 
 const CATEGORY_BUCKETS = [
   'Cash & Bank Accounts',
@@ -211,8 +220,26 @@ function unavailableNewsBullets(reason = 'Live news fetch unavailable right now.
   return ensureMetalsCoverage(bullets, options);
 }
 
+async function withTimeout(promise, timeoutMs, message) {
+  let timeoutId;
+  const safePromise = Promise.resolve(promise);
+  safePromise.catch(() => {
+    // Prevent late rejections from surfacing as unhandled when timeout wins.
+  });
+  const timeoutPromise = new Promise((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(message || 'timeout'));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([safePromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 router.get('/insights', async (req, res) => {
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+  const apiKey = resolveOpenAiApiKey();
   const accountUserId = req.accountUserId;
   const storedCountry = getUserSetting(accountUserId, 'country') || '';
   const country = storedCountry || 'India';
@@ -367,22 +394,30 @@ router.get('/insights', async (req, res) => {
   }
 
   try {
-    const curatedNewsState = await ensureCuratedNews({
-      apiKey,
-      country: countryCode,
-      forceRefresh
-    });
+    const curatedNewsState = await withTimeout(
+      ensureCuratedNews({
+        apiKey,
+        country: countryCode,
+        forceRefresh
+      }),
+      AI_CURATED_REFRESH_TIMEOUT_MS,
+      'curated_news_timeout'
+    );
     const curatedItems = filterMeaningfulCuratedNewsItems(curatedNewsState?.items || []);
     if (!curatedItems.length) {
       throw new Error('no_curated_news_available');
     }
-    const result = await buildInsightNewsBullets({
-      apiKey,
-      items: curatedItems,
-      country: countryCode,
-      currency: preferredCurrency || 'INR',
-      portfolio: newsPromptContext
-    });
+    const result = await withTimeout(
+      buildInsightNewsBullets({
+        apiKey,
+        items: curatedItems,
+        country: countryCode,
+        currency: preferredCurrency || 'INR',
+        portfolio: newsPromptContext
+      }),
+      AI_BULLET_BUILD_TIMEOUT_MS,
+      'insight_generation_timeout'
+    );
     const payload = {
       personal_bullets: personalBullets,
       news_bullets: ensureMetalsCoverage(result.bullets, {

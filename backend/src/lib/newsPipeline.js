@@ -9,10 +9,15 @@ import {
   sourceByName,
   sourceByUrl
 } from './newsSources.js';
+import { resolveOpenAiApiKey } from './openai.js';
 
 const INGEST_MODEL_FALLBACK = 'gpt-5-nano';
 const INSIGHT_MODEL_FALLBACK = 'gpt-5-nano';
 const NEWS_RETENTION_DAYS = 7;
+const INGEST_RETRY_COOLDOWN_MS = Math.max(
+  5 * 60 * 1000,
+  Number.parseInt(process.env.NEWS_INGEST_RETRY_COOLDOWN_MS || '900000', 10)
+);
 
 function safeJsonParse(raw, fallback = null) {
   try {
@@ -54,6 +59,14 @@ function parseStrictOrRecoveredJson(text = '') {
 function extractResponseOutputText(parsed = {}) {
   const direct = typeof parsed?.output_text === 'string' ? parsed.output_text.trim() : '';
   if (direct) return direct;
+  if (Array.isArray(parsed?.output_text)) {
+    const joinedDirect = parsed.output_text
+      .map((part) => (typeof part === 'string' ? part : part?.text || ''))
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (joinedDirect) return joinedDirect;
+  }
 
   if (!Array.isArray(parsed?.output)) return '';
   const chunks = parsed.output
@@ -67,13 +80,24 @@ function extractResponseOutputText(parsed = {}) {
       const textValue =
         (typeof chunk.text === 'string' && chunk.text) ||
         (typeof chunk?.text?.value === 'string' && chunk.text.value) ||
+        (Array.isArray(chunk?.text) &&
+          chunk.text
+            .map((entry) => (typeof entry === 'string' ? entry : entry?.value || entry?.text || ''))
+            .filter(Boolean)
+            .join('\n')) ||
         (typeof chunk.value === 'string' && chunk.value) ||
+        (typeof chunk.output_text === 'string' && chunk.output_text) ||
         '';
       if (textValue) parts.push(textValue);
       continue;
     }
     if (chunk.type === 'json' && chunk.json && typeof chunk.json === 'object') {
       parts.push(JSON.stringify(chunk.json));
+      continue;
+    }
+    if (typeof chunk.arguments === 'string' && chunk.arguments.trim()) {
+      parts.push(chunk.arguments.trim());
+      continue;
     }
   }
   return parts.join('\n').trim();
@@ -325,6 +349,56 @@ function buildIngestPrompt({ country = 'IN', maxAgeHours = NEWS_MAX_AGE_HOURS, r
   ].join('\n');
 }
 
+function ingestJsonFormat() {
+  return {
+    type: 'json_schema',
+    name: 'curated_news_items',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              source_name: { type: 'string' },
+              url: { type: 'string' },
+              title: { type: 'string' },
+              published_at: { type: 'string' },
+              category: { type: 'string' },
+              summary: { type: 'string' }
+            },
+            required: ['source_name', 'url', 'title', 'published_at', 'category', 'summary']
+          }
+        }
+      },
+      required: ['items']
+    }
+  };
+}
+
+function insightBulletsJsonFormat() {
+  return {
+    type: 'json_schema',
+    name: 'insight_news_bullets',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        bullets: {
+          type: 'array',
+          items: { type: 'string' }
+        }
+      },
+      required: ['bullets']
+    }
+  };
+}
+
 function normalizeIngestedBatch(rawItems = [], { maxAgeHours = NEWS_MAX_AGE_HOURS } = {}) {
   const rejections = {};
   const normalized = dedupeItems(
@@ -342,7 +416,8 @@ async function callOpenAIResponses({
   promptText,
   country = 'IN',
   searchContextSize = 'low',
-  timeoutMs = null
+  timeoutMs = null,
+  responseFormat = null
 }) {
   const toolVariants = useWebSearch
     ? [
@@ -408,6 +483,9 @@ async function callOpenAIResponses({
           }
         ]
       };
+      if (responseFormat && typeof responseFormat === 'object') {
+        body.text = { format: responseFormat };
+      }
 
       const response = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
@@ -440,6 +518,7 @@ async function callOpenAIResponses({
 
       const withMeta = {
         ...structured,
+        _output_text: outputText,
         _debug: {
           tool_variant: variantName,
           tool_attempts: variantAttempts
@@ -527,6 +606,7 @@ export async function ingestCuratedNews({
   country = 'IN',
   forceRefresh = false
 } = {}) {
+  const effectiveApiKey = String(apiKey || resolveOpenAiApiKey()).trim();
   const startedAt = nowIso();
   pruneOldNews();
   const existing = getCuratedNews({ limit: 60 });
@@ -543,7 +623,7 @@ export async function ingestCuratedNews({
     });
     return { ok: true, skipped: true, inserted: 0, total_fresh_items: existing.length };
   }
-  if (!apiKey) {
+  if (!effectiveApiKey) {
     logIngestRun({
       status: 'error',
       source: 'pipeline',
@@ -575,14 +655,14 @@ export async function ingestCuratedNews({
         maxAgeHours: NEWS_MAX_AGE_HOURS,
         retryMode: false,
         searchContextSize: 'medium',
-        timeoutMs: 75_000
+        timeoutMs: 28_000
       },
       {
         name: 'retry_72h_relaxed',
         maxAgeHours: Math.max(72, NEWS_MAX_AGE_HOURS),
         retryMode: true,
         searchContextSize: 'medium',
-        timeoutMs: 90_000
+        timeoutMs: 36_000
       }
     ];
     const attemptSummary = [];
@@ -599,13 +679,14 @@ export async function ingestCuratedNews({
       });
       try {
         const out = await callOpenAIResponses({
-          apiKey,
+          apiKey: effectiveApiKey,
           model: ingestModel,
           useWebSearch: true,
           promptText: prompt,
           country,
           searchContextSize: attempt.searchContextSize,
-          timeoutMs: attempt.timeoutMs
+          timeoutMs: attempt.timeoutMs,
+          responseFormat: ingestJsonFormat()
         });
 
         const currentRawItems = Array.isArray(out?.items) ? out.items : [];
@@ -846,6 +927,47 @@ function buildRepresentativeItems(items = []) {
   return selected.slice(0, 5);
 }
 
+function parseBulletsFromText(raw = '') {
+  const cleaned = String(raw || '').replace(/\r/g, '\n').trim();
+  if (!cleaned) return [];
+  const byLines = cleaned
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s*/, '').trim())
+    .filter(Boolean);
+  if (byLines.length > 1) return byLines.slice(0, 5);
+
+  const bySegments = cleaned
+    .split(/\s(?=\[[^\]]+\]\s*What happened:)/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return bySegments.slice(0, 5);
+}
+
+function mergeBulletsWithFallback(aiBullets = [], representativeItems = []) {
+  const normalizedAi = (Array.isArray(aiBullets) ? aiBullets : [])
+    .map((item) => normalizeWhitespace(item))
+    .filter(Boolean);
+  const fallbackBullets = representativeItems.map(fallbackBulletForItem);
+  const merged = [];
+  const seenCategories = new Set();
+  const tryPushUnique = (bullet) => {
+    if (!bullet) return;
+    const category = inferCategoryFromBullet(bullet);
+    if (seenCategories.has(category)) return;
+    seenCategories.add(category);
+    merged.push(bullet);
+  };
+  normalizedAi.forEach(tryPushUnique);
+  fallbackBullets.forEach(tryPushUnique);
+  if (merged.length < 5) {
+    [...normalizedAi, ...fallbackBullets].forEach((bullet) => {
+      if (merged.length >= 5) return;
+      if (bullet) merged.push(bullet);
+    });
+  }
+  return merged.slice(0, 5);
+}
+
 export async function buildInsightNewsBullets({
   apiKey,
   items = [],
@@ -862,8 +984,9 @@ export async function buildInsightNewsBullets({
   const representativeItems = buildRepresentativeItems(meaningfulCurated.length ? meaningfulCurated : curated);
   const catalogOnly = !meaningfulCurated.length;
   const goldMetalsItem = representativeItems.find((item) => item.category === 'gold_metals') || null;
+  const effectiveApiKey = String(apiKey || resolveOpenAiApiKey()).trim();
 
-  if (!apiKey) {
+  if (!effectiveApiKey) {
     const fallbackBullets = representativeItems.map(fallbackBulletForItem);
     return { bullets: fallbackBullets, source: catalogOnly ? 'rule_based_catalog_only' : 'rule_based' };
   }
@@ -888,15 +1011,24 @@ export async function buildInsightNewsBullets({
   ].join('\n');
 
   const out = await callOpenAIResponses({
-    apiKey,
+    apiKey: effectiveApiKey,
     model,
     useWebSearch: false,
     promptText: prompt,
-    country
+    country,
+    responseFormat: insightBulletsJsonFormat()
   });
 
-  const bullets = Array.isArray(out?.bullets) ? out.bullets.map((item) => normalizeWhitespace(item)).filter(Boolean).slice(0, 5) : [];
-  if (bullets.length !== 5) {
+  let bullets = Array.isArray(out?.bullets)
+    ? out.bullets.map((item) => normalizeWhitespace(item)).filter(Boolean).slice(0, 5)
+    : [];
+  if (!bullets.length) {
+    bullets = parseBulletsFromText(out?._output_text || '');
+  }
+  const mergedBullets = mergeBulletsWithFallback(bullets, representativeItems);
+  const usedFallbackAssist = mergedBullets.length !== bullets.length || mergedBullets.some((line) => !bullets.includes(line));
+  bullets = mergedBullets;
+  if (!bullets.length) {
     const fallbackBullets = representativeItems.map(fallbackBulletForItem);
     return { bullets: fallbackBullets, source: catalogOnly ? 'rule_based_invalid_ai_catalog_only' : 'rule_based_invalid_ai' };
   }
@@ -911,18 +1043,18 @@ export async function buildInsightNewsBullets({
     seenCategories.add(category);
   }
   if (hasDuplicateCategory) {
-    return {
-      bullets: representativeItems.map(fallbackBulletForItem),
-      source: catalogOnly ? 'rule_based_duplicate_category_rejected_catalog_only' : 'rule_based_duplicate_category_rejected'
-    };
+    bullets = mergeBulletsWithFallback([], representativeItems);
   }
   if (goldMetalsItem && !bullets.some(bulletMentionsGoldMetals)) {
-    return {
-      bullets: representativeItems.map(fallbackBulletForItem),
-      source: catalogOnly ? 'rule_based_missing_gold_metals_rejected_catalog_only' : 'rule_based_missing_gold_metals_rejected'
-    };
+    const goldFallback = fallbackBulletForItem(goldMetalsItem);
+    bullets = [goldFallback, ...bullets.filter((line) => !bulletMentionsGoldMetals(line))].slice(0, 5);
   }
-  return { bullets, source: 'ai_from_curated_news' };
+  const source = usedFallbackAssist
+    ? catalogOnly
+      ? 'ai_from_curated_news_with_fallback_catalog_only'
+      : 'ai_from_curated_news_with_fallback'
+    : 'ai_from_curated_news';
+  return { bullets, source };
 }
 
 export async function ensureCuratedNews({
@@ -931,13 +1063,58 @@ export async function ensureCuratedNews({
   forceRefresh = false,
   minFreshItems = 8
 } = {}) {
+  const effectiveApiKey = String(apiKey || resolveOpenAiApiKey()).trim();
   const current = getCuratedNews({ limit: 60 });
   const meaningfulCurrentCount = countMeaningfulItems(current);
   if (!forceRefresh && meaningfulCurrentCount >= minFreshItems) {
     return { items: current, refreshed: false, count: current.length, meaningful_count: meaningfulCurrentCount };
   }
 
-  const ingestResult = await ingestCuratedNews({ apiKey, country, forceRefresh });
+  if (!forceRefresh && !effectiveApiKey) {
+    return {
+      items: current,
+      refreshed: false,
+      count: current.length,
+      meaningful_count: meaningfulCurrentCount,
+      ingest_ok: false,
+      ingest_warning: 'openai_api_key_missing'
+    };
+  }
+
+  if (!forceRefresh && current.length) {
+    const lastRun = db
+      .prepare(
+        `
+        SELECT status, message, finished_at
+        FROM news_ingest_runs
+        ORDER BY id DESC
+        LIMIT 1
+      `
+      )
+      .get();
+    const finishedAtMs = new Date(String(lastRun?.finished_at || '')).getTime();
+    const recentRun = Number.isFinite(finishedAtMs) && Date.now() - finishedAtMs < INGEST_RETRY_COOLDOWN_MS;
+    const status = String(lastRun?.status || '').toLowerCase();
+    const message = String(lastRun?.message || '').toLowerCase();
+    const likelyFailed =
+      status === 'error' ||
+      status === 'warning' ||
+      message.includes('fallback') ||
+      message.includes('error') ||
+      message.includes('empty');
+    if (recentRun && likelyFailed) {
+      return {
+        items: current,
+        refreshed: false,
+        count: current.length,
+        meaningful_count: meaningfulCurrentCount,
+        ingest_ok: false,
+        ingest_warning: 'ingest_retry_cooldown_active'
+      };
+    }
+  }
+
+  const ingestResult = await ingestCuratedNews({ apiKey: effectiveApiKey, country, forceRefresh });
   const refreshed = getCuratedNews({ limit: 60 });
   return {
     items: refreshed,

@@ -14,6 +14,11 @@ import { resolveOpenAiApiKey } from './openai.js';
 const INGEST_MODEL_FALLBACK = 'gpt-5-nano';
 const INSIGHT_MODEL_FALLBACK = 'gpt-5-nano';
 const NEWS_RETENTION_DAYS = 7;
+const SHARED_CURATED_NEWS_REFRESH_HOURS = Math.max(
+  1,
+  Number.parseInt(process.env.SHARED_CURATED_NEWS_REFRESH_HOURS || '12', 10)
+);
+const SHARED_CURATED_NEWS_COUNTRY = String(process.env.SHARED_CURATED_NEWS_COUNTRY || 'IN').trim().toUpperCase() || 'IN';
 const INGEST_RETRY_COOLDOWN_MS = Math.max(
   5 * 60 * 1000,
   Number.parseInt(process.env.NEWS_INGEST_RETRY_COOLDOWN_MS || '900000', 10)
@@ -301,6 +306,56 @@ export function getCuratedNews({ maxAgeHours = NEWS_MAX_AGE_HOURS, limit = 24 } 
     )
     .all(cutoff, limit)
     .map((row) => ({ ...row, metadata: safeJsonParse(row.metadata, {}) }));
+}
+
+function latestFreshTimestamp(items = []) {
+  let bestMs = 0;
+  for (const item of Array.isArray(items) ? items : []) {
+    const candidate = parseIsoDate(item?.fetched_at || item?.published_at || '');
+    const candidateMs = candidate?.getTime() || 0;
+    if (candidateMs > bestMs) bestMs = candidateMs;
+  }
+  return bestMs;
+}
+
+function latestNewsIngestRun() {
+  return db
+    .prepare(
+      `
+      SELECT status, source, item_count, message, metadata, started_at, finished_at
+      FROM news_ingest_runs
+      ORDER BY id DESC
+      LIMIT 1
+    `
+    )
+    .get();
+}
+
+export function getSharedCuratedNewsState({
+  staleAfterHours = SHARED_CURATED_NEWS_REFRESH_HOURS,
+  limit = 60
+} = {}) {
+  pruneOldNews();
+  const items = getCuratedNews({ limit });
+  const meaningfulItems = filterMeaningfulCuratedNewsItems(items);
+  const latestMeaningfulMs = latestFreshTimestamp(meaningfulItems);
+  const lastSuccessAt = latestMeaningfulMs ? new Date(latestMeaningfulMs).toISOString() : '';
+  const staleAfterMs = Math.max(1, Number(staleAfterHours || SHARED_CURATED_NEWS_REFRESH_HOURS)) * 60 * 60 * 1000;
+  const ageMs = latestMeaningfulMs ? Math.max(0, Date.now() - latestMeaningfulMs) : Number.POSITIVE_INFINITY;
+  const lastRun = latestNewsIngestRun();
+  return {
+    items,
+    meaningful_items: meaningfulItems,
+    count: items.length,
+    meaningful_count: meaningfulItems.length,
+    stale: !latestMeaningfulMs || ageMs > staleAfterMs,
+    age_hours: Number.isFinite(ageMs) ? Math.round((ageMs / (60 * 60 * 1000)) * 10) / 10 : null,
+    last_success_at: lastSuccessAt,
+    last_run_status: String(lastRun?.status || ''),
+    last_run_message: String(lastRun?.message || ''),
+    last_run_finished_at: String(lastRun?.finished_at || ''),
+    last_run_metadata: safeJsonParse(lastRun?.metadata || '', {})
+  };
 }
 
 function buildSourceInstructions() {
@@ -927,6 +982,40 @@ function buildRepresentativeItems(items = []) {
   return selected.slice(0, 5);
 }
 
+function buildCategoryFallbackItem(categoryKey = '') {
+  const category = categoryByKey(categoryKey);
+  const sourceCandidates = CURATED_NEWS_SOURCES.filter((source) => source.categories.includes(category.key)).sort((a, b) => {
+    const ap = Number(a.official ? 1000 : 0) + Number(a.priority || 0);
+    const bp = Number(b.official ? 1000 : 0) + Number(b.priority || 0);
+    return bp - ap;
+  });
+  const source = sourceCandidates[0];
+  if (!source) return null;
+  return normalizeIngestedItem({
+    source_key: source.key,
+    source_name: source.name,
+    url: `https://${source.domains[0]}`,
+    title: `${source.name} latest update feed`,
+    published_at: nowIso(),
+    category: category.key,
+    summary: `Use ${source.name} for recent ${category.label.toLowerCase()} developments when live category coverage is limited.`
+  });
+}
+
+function buildFallbackCoverageItems(items = [], maxItems = 5) {
+  const selected = buildRepresentativeItems(items);
+  const seenCategories = new Set(selected.map((item) => item.category).filter(Boolean));
+  for (const category of CURATED_NEWS_CATEGORIES) {
+    if (selected.length >= maxItems) break;
+    if (seenCategories.has(category.key)) continue;
+    const fallbackItem = buildCategoryFallbackItem(category.key);
+    if (!fallbackItem) continue;
+    selected.push(fallbackItem);
+    seenCategories.add(category.key);
+  }
+  return selected.slice(0, maxItems);
+}
+
 function parseBulletsFromText(raw = '') {
   const cleaned = String(raw || '').replace(/\r/g, '\n').trim();
   if (!cleaned) return [];
@@ -943,11 +1032,11 @@ function parseBulletsFromText(raw = '') {
   return bySegments.slice(0, 5);
 }
 
-function mergeBulletsWithFallback(aiBullets = [], representativeItems = []) {
+function mergeBulletsWithFallback(aiBullets = [], fallbackItems = []) {
   const normalizedAi = (Array.isArray(aiBullets) ? aiBullets : [])
     .map((item) => normalizeWhitespace(item))
     .filter(Boolean);
-  const fallbackBullets = representativeItems.map(fallbackBulletForItem);
+  const fallbackBullets = fallbackItems.map(fallbackBulletForItem);
   const merged = [];
   const seenCategories = new Set();
   const tryPushUnique = (bullet) => {
@@ -981,13 +1070,14 @@ export async function buildInsightNewsBullets({
     return { bullets: [], source: 'empty' };
   }
   const meaningfulCurated = filterMeaningfulCuratedNewsItems(curated);
+  const coverageItems = buildFallbackCoverageItems(meaningfulCurated.length ? meaningfulCurated : curated);
   const representativeItems = buildRepresentativeItems(meaningfulCurated.length ? meaningfulCurated : curated);
   const catalogOnly = !meaningfulCurated.length;
   const goldMetalsItem = representativeItems.find((item) => item.category === 'gold_metals') || null;
   const effectiveApiKey = String(apiKey || resolveOpenAiApiKey()).trim();
 
   if (!effectiveApiKey) {
-    const fallbackBullets = representativeItems.map(fallbackBulletForItem);
+    const fallbackBullets = coverageItems.map(fallbackBulletForItem);
     return { bullets: fallbackBullets, source: catalogOnly ? 'rule_based_catalog_only' : 'rule_based' };
   }
 
@@ -1025,11 +1115,11 @@ export async function buildInsightNewsBullets({
   if (!bullets.length) {
     bullets = parseBulletsFromText(out?._output_text || '');
   }
-  const mergedBullets = mergeBulletsWithFallback(bullets, representativeItems);
+  const mergedBullets = mergeBulletsWithFallback(bullets, coverageItems);
   const usedFallbackAssist = mergedBullets.length !== bullets.length || mergedBullets.some((line) => !bullets.includes(line));
   bullets = mergedBullets;
   if (!bullets.length) {
-    const fallbackBullets = representativeItems.map(fallbackBulletForItem);
+    const fallbackBullets = coverageItems.map(fallbackBulletForItem);
     return { bullets: fallbackBullets, source: catalogOnly ? 'rule_based_invalid_ai_catalog_only' : 'rule_based_invalid_ai' };
   }
   const seenCategories = new Set();
@@ -1043,7 +1133,7 @@ export async function buildInsightNewsBullets({
     seenCategories.add(category);
   }
   if (hasDuplicateCategory) {
-    bullets = mergeBulletsWithFallback([], representativeItems);
+    bullets = mergeBulletsWithFallback([], coverageItems);
   }
   if (goldMetalsItem && !bullets.some(bulletMentionsGoldMetals)) {
     const goldFallback = fallbackBulletForItem(goldMetalsItem);
@@ -1125,4 +1215,82 @@ export async function ensureCuratedNews({
     ingest_warning: ingestResult?.warning || '',
     ingest_error: ingestResult?.error || ''
   };
+}
+
+export async function ensureSharedCuratedNewsFresh({
+  apiKey,
+  country = 'IN',
+  staleAfterHours = SHARED_CURATED_NEWS_REFRESH_HOURS,
+  forceRefresh = false,
+  minFreshItems = 8
+} = {}) {
+  const effectiveApiKey = String(apiKey || resolveOpenAiApiKey()).trim();
+  const before = getSharedCuratedNewsState({ staleAfterHours });
+  if (!forceRefresh && !before.stale && before.meaningful_count >= minFreshItems) {
+    return {
+      ...before,
+      refreshed: false,
+      ingest_ok: true
+    };
+  }
+
+  if (!effectiveApiKey) {
+    return {
+      ...before,
+      refreshed: false,
+      ingest_ok: false,
+      ingest_warning: 'openai_api_key_missing'
+    };
+  }
+
+  const ingestResult = await ingestCuratedNews({
+    apiKey: effectiveApiKey,
+    country,
+    forceRefresh: true
+  });
+  const after = getSharedCuratedNewsState({ staleAfterHours });
+  return {
+    ...after,
+    refreshed: true,
+    ingest_ok: ingestResult?.ok !== false,
+    ingest_warning: ingestResult?.warning || '',
+    ingest_error: ingestResult?.error || ''
+  };
+}
+
+let sharedCuratedNewsBootstrapStarted = false;
+
+export function startSharedCuratedNewsBootstrap() {
+  if (sharedCuratedNewsBootstrapStarted) return;
+  sharedCuratedNewsBootstrapStarted = true;
+
+  const runBootstrapRefresh = async () => {
+    try {
+      const state = getSharedCuratedNewsState({ staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS });
+      if (!state.stale && state.meaningful_count >= 8) return;
+      const apiKey = resolveOpenAiApiKey();
+      if (!apiKey) return;
+      const out = await ensureSharedCuratedNewsFresh({
+        apiKey,
+        country: SHARED_CURATED_NEWS_COUNTRY,
+        staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS,
+        forceRefresh: true
+      });
+      const summary = {
+        refreshed: Boolean(out?.refreshed),
+        count: Number(out?.count || 0),
+        meaningful_count: Number(out?.meaningful_count || 0),
+        ingest_warning: String(out?.ingest_warning || ''),
+        ingest_error: String(out?.ingest_error || '')
+      };
+      console.log('[news] shared curated news bootstrap finished', summary);
+    } catch (error) {
+      console.error('[news] shared curated news bootstrap failed', String(error?.message || error));
+    }
+  };
+
+  // Defer until after the web process is up so startup stays responsive.
+  setTimeout(() => {
+    runBootstrapRefresh().catch(() => {});
+  }, 5_000);
 }

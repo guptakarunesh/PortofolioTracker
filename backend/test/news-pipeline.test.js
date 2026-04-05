@@ -86,3 +86,63 @@ test('buildInsightNewsBullets reports catalog-only fallback source when no meani
   assert.ok(result.bullets.length >= 1);
   assert.match(result.bullets[0], /latest update feed/i);
 });
+
+test('buildInsightNewsBullets pads sparse non-AI coverage to five bullets', async () => {
+  const onlySavings = makeItem({
+    category: 'bank_savings',
+    investment_label: 'FDs / Savings / RDs',
+    title: 'Banks adjust deposit rates',
+    summary: 'Deposit rates moved this week.',
+    canonical_url: 'https://www.moneycontrol.com/news/business/personal-finance/deposit-rates-move-1.html'
+  });
+
+  const result = await buildInsightNewsBullets({
+    apiKey: '',
+    items: [onlySavings]
+  });
+
+  assert.equal(result.source, 'rule_based');
+  assert.equal(result.bullets.length, 5);
+  assert.ok(result.bullets.some((bullet) => /FDs \/ Savings \/ RDs/.test(bullet)));
+  assert.ok(result.bullets.some((bullet) => /Gold \/ Silver \/ Metals/.test(bullet)));
+  assert.ok(result.bullets.some((bullet) => /Stocks \/ ETFs \/ Mutual Funds/.test(bullet)));
+});
+
+test('buildInsightNewsBullets pads duplicate AI bullets to five bullets with fallback coverage', async () => {
+  const originalFetch = global.fetch;
+  const onlySavings = makeItem({
+    category: 'bank_savings',
+    investment_label: 'FDs / Savings / RDs',
+    title: 'Banks adjust deposit rates',
+    summary: 'Deposit rates moved this week.',
+    canonical_url: 'https://www.moneycontrol.com/news/business/personal-finance/deposit-rates-move-2.html'
+  });
+
+  global.fetch = async () => ({
+    ok: true,
+    text: async () =>
+      JSON.stringify({
+        output_text: JSON.stringify({
+          bullets: [
+            '[FDs / Savings / RDs] What happened: Banks adjusted deposit rates. Why it matters: cash yields may change. What to consider: compare latest bank rates. Source: Moneycontrol - https://example.com/fd-1.',
+            '[FDs / Savings / RDs] What happened: Banks adjusted deposit rates again. Why it matters: savings yields may change. What to consider: compare latest bank rates. Source: Moneycontrol - https://example.com/fd-2.'
+          ]
+        })
+      })
+  });
+
+  try {
+    const result = await buildInsightNewsBullets({
+      apiKey: 'test-key',
+      items: [onlySavings]
+    });
+
+    assert.equal(result.source, 'ai_from_curated_news_with_fallback');
+    assert.equal(result.bullets.length, 5);
+    assert.ok(result.bullets.some((bullet) => /FDs \/ Savings \/ RDs/.test(bullet)));
+    assert.ok(result.bullets.some((bullet) => /Gold \/ Silver \/ Metals/.test(bullet)));
+    assert.ok(result.bullets.some((bullet) => /EPF \/ NPS \/ Retirement/.test(bullet)));
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

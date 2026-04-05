@@ -1,17 +1,17 @@
 import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
-import { buildInsightNewsBullets, ensureCuratedNews, filterMeaningfulCuratedNewsItems } from '../lib/newsPipeline.js';
+import { buildInsightNewsBullets, filterMeaningfulCuratedNewsItems, getSharedCuratedNewsState } from '../lib/newsPipeline.js';
 import { resolveOpenAiApiKey } from '../lib/openai.js';
 
 const router = Router();
 const AI_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const AI_CURATED_REFRESH_TIMEOUT_MS = Math.max(
-  12_000,
-  Number.parseInt(process.env.AI_CURATED_REFRESH_TIMEOUT_MS || '45000', 10)
-);
 const AI_BULLET_BUILD_TIMEOUT_MS = Math.max(
   8_000,
   Number.parseInt(process.env.AI_BULLET_BUILD_TIMEOUT_MS || '20000', 10)
+);
+const SHARED_CURATED_NEWS_REFRESH_HOURS = Math.max(
+  1,
+  Number.parseInt(process.env.SHARED_CURATED_NEWS_REFRESH_HOURS || '12', 10)
 );
 
 const CATEGORY_BUCKETS = [
@@ -339,6 +339,8 @@ router.get('/insights', async (req, res) => {
 
   const cacheRaw = getUserSetting(accountUserId, 'ai_insights_cache');
   const forceRefresh = String(req.query.force_refresh || '') === '1';
+  const sharedCuratedNewsState = getSharedCuratedNewsState({ staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS });
+  const currentNewsSnapshotAt = String(sharedCuratedNewsState.last_success_at || '');
   let cache = null;
   try {
     cache = cacheRaw ? JSON.parse(cacheRaw) : null;
@@ -349,6 +351,7 @@ router.get('/insights', async (req, res) => {
   const within24h = cachedAt && Date.now() - cachedAt < AI_CACHE_TTL_MS;
   const cacheDisplayAsOf = cache?.cached_at || nowIso();
   const cacheHasAiSource = isAiGeneratedNewsSource(cache?.news_source || '');
+  const cacheMatchesSharedNews = !currentNewsSnapshotAt || cache?.news_snapshot_at === currentNewsSnapshotAt;
 
   const personalBullets = [
     gapBullets[0],
@@ -361,6 +364,7 @@ router.get('/insights', async (req, res) => {
     !forceRefresh &&
     within24h &&
     cacheHasAiSource &&
+    cacheMatchesSharedNews &&
     Array.isArray(cache?.personal_bullets) &&
     Array.isArray(cache?.news_bullets) &&
     cache.news_bullets.length === 5
@@ -379,31 +383,8 @@ router.get('/insights', async (req, res) => {
     });
   }
 
-  if (!apiKey) {
-    return res.status(200).json({
-      personal_bullets: personalBullets,
-      news_bullets: unavailableNewsBullets('Live news fetch unavailable right now.', {
-        includeMetals: hasPreciousMetalsExposure,
-        reason: 'Recent metals-specific coverage is limited right now.'
-      }),
-      disclaimer: defaultDisclaimer,
-      as_of: nowIso(),
-      news_source: 'unavailable_no_api_key',
-      portfolio
-    });
-  }
-
   try {
-    const curatedNewsState = await withTimeout(
-      ensureCuratedNews({
-        apiKey,
-        country: countryCode,
-        forceRefresh
-      }),
-      AI_CURATED_REFRESH_TIMEOUT_MS,
-      'curated_news_timeout'
-    );
-    const curatedItems = filterMeaningfulCuratedNewsItems(curatedNewsState?.items || []);
+    const curatedItems = filterMeaningfulCuratedNewsItems(sharedCuratedNewsState?.items || []);
     if (!curatedItems.length) {
       throw new Error('no_curated_news_available');
     }
@@ -426,11 +407,11 @@ router.get('/insights', async (req, res) => {
       }),
       disclaimer: defaultDisclaimer,
       as_of: nowIso(),
-      source_as_of: nowIso(),
+      source_as_of: currentNewsSnapshotAt || nowIso(),
+      news_snapshot_at: currentNewsSnapshotAt || '',
       news_source: String(result?.source || 'unknown')
     };
-    if (curatedNewsState?.ingest_warning) payload.ingest_warning = String(curatedNewsState.ingest_warning);
-    if (curatedNewsState?.ingest_error) payload.ingest_error = String(curatedNewsState.ingest_error);
+    if (sharedCuratedNewsState?.stale) payload.ingest_warning = 'shared_curated_news_stale';
     if (isAiGeneratedNewsSource(payload.news_source)) {
       setUserSetting(accountUserId, 'ai_insights_cache', JSON.stringify({
         ...payload,
@@ -445,7 +426,13 @@ router.get('/insights', async (req, res) => {
     });
   } catch (e) {
     const errText = String(e?.message || e);
-    if (within24h && cacheHasAiSource && Array.isArray(cache?.news_bullets) && cache.news_bullets.length === 5) {
+    if (
+      within24h &&
+      cacheHasAiSource &&
+      cacheMatchesSharedNews &&
+      Array.isArray(cache?.news_bullets) &&
+      cache.news_bullets.length === 5
+    ) {
       return res.status(200).json({
         personal_bullets: personalBullets,
         news_bullets: ensureMetalsCoverage(cache.news_bullets, {

@@ -16,6 +16,12 @@ services:
         value: 10000
       - key: DB_PATH
         value: /tmp/portfolio.db
+      - key: SHARED_CURATED_NEWS_COUNTRY
+        value: IN
+      - key: SHARED_CURATED_NEWS_REFRESH_HOURS
+        value: 12
+      - key: INTERNAL_CRON_SECRET
+        generateValue: true
       - key: OTP_PROVIDER
         value: firebase
       - key: FIREBASE_AUTH_BASE_URL
@@ -26,3 +32,45 @@ services:
         value: sandbox
       - key: CASHFREE_API_VERSION
         value: 2023-08-01
+  - type: cron
+    name: networth-manager-news-maintenance-preprod
+    runtime: node
+    plan: starter
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm run cron:maintenance
+    schedule: "0 */4 * * *"
+    envVars:
+      - key: CRON_TARGET_HOSTPORT
+        fromService:
+          type: web
+          name: networth-manager-backend-preprod
+          property: hostport
+      - key: INTERNAL_CRON_SECRET
+        fromService:
+          type: web
+          name: networth-manager-backend-preprod
+          envVarKey: INTERNAL_CRON_SECRET
+      - key: CRON_TIMEOUT_MS
+        value: 180000
+  - type: cron
+    name: networth-manager-news-refresh-preprod
+    runtime: node
+    plan: starter
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm run cron:refresh
+    schedule: "0 */12 * * *"
+    envVars:
+      - key: CRON_TARGET_HOSTPORT
+        fromService:
+          type: web
+          name: networth-manager-backend-preprod
+          property: hostport
+      - key: INTERNAL_CRON_SECRET
+        fromService:
+          type: web
+          name: networth-manager-backend-preprod
+          envVarKey: INTERNAL_CRON_SECRET
+      - key: CRON_TIMEOUT_MS
+        value: 180000

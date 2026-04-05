@@ -37,6 +37,8 @@ AGENTS.md
 MultiProject.code-workspace
 PARALLEL_DEVELOPMENT.md
 scripts/
+!backend/scripts/
+!backend/scripts/*.js
 worthio_codex_master_prompt.md
 worthio_dark_light_theme_kit/
 worthio_final_approved_kit/

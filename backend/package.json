@@ -8,7 +8,11 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "seed": "node src/seed.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:ai:live": "node scripts/ai-insights-live-smoke.js",
+    "cron:ping": "node scripts/run-render-cron.js ping",
+    "cron:maintenance": "node scripts/run-render-cron.js maintenance",
+    "cron:refresh": "node scripts/run-render-cron.js refresh"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

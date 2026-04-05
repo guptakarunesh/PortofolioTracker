@@ -18,6 +18,7 @@ import userRoutes from './routes/user.js';
 import authRoutes from './routes/auth.js';
 import subscriptionRoutes from './routes/subscription.js';
 import aiRoutes from './routes/ai.js';
+import internalRoutes from './routes/internal.js';
 import notificationRoutes from './routes/notifications.js';
 import { supportApiRouter, supportConsoleRouter } from './routes/support.js';
 import requireAuth from './middleware/requireAuth.js';
@@ -172,6 +173,7 @@ app.get('/cashfree/return', (req, res) => {
 </html>`);
 });
 
+app.use('/internal', internalRoutes);
 app.use('/legal', legalRoutes);
 app.use('/support', supportConsoleRouter);
 app.use('/api/support', supportApiRouter);

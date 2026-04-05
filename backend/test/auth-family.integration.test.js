@@ -310,6 +310,113 @@ test('logout invalidates a recently cached auth session', async () => {
   assert.equal(meAfterLogout.status, 401);
 });
 
+test('otp verify returns 503 instead of crashing on transient database timeout', async (t) => {
+  process.env.DB_PATH = buildTestDbPath();
+  process.env.OTP_PROVIDER = 'mock';
+  process.env.OTP_TEST_ECHO = '1';
+
+  const app = await loadApp();
+
+  await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: {
+      full_name: 'TV',
+      mobile: '7777777792',
+      email: 'timeout-verify@example.com',
+      country: 'India',
+      firebase_id_token: 'mock:7777777792',
+      consent_privacy: true,
+      consent_terms: true,
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'timeout-device' }
+    }
+  });
+
+  const send = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/otp/send',
+    body: { mobile: '7777777792' }
+  });
+  assert.equal(send.status, 200);
+
+  const { db } = await import('../src/lib/db.js');
+  const originalPrepare = db.prepare.bind(db);
+  t.after(() => {
+    db.prepare = originalPrepare;
+  });
+  db.prepare = (sql) => {
+    if (String(sql).includes('SELECT * FROM users WHERE mobile_hash = ?')) {
+      throw new Error('database query failed: database query timed out after 32000ms');
+    }
+    return originalPrepare(sql);
+  };
+
+  const verify = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/otp/verify',
+    body: {
+      mobile: '7777777792',
+      otp: send.body.otp,
+      device_context: { device_id: 'timeout-device' }
+    }
+  });
+  assert.equal(verify.status, 503);
+  assert.equal(verify.body.error, 'service_temporarily_unavailable');
+});
+
+test('protected routes return 503 on transient session lookup timeout', async (t) => {
+  process.env.DB_PATH = buildTestDbPath();
+  process.env.OTP_PROVIDER = 'mock';
+  process.env.OTP_TEST_ECHO = '1';
+
+  const app = await loadApp();
+
+  const register = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: {
+      full_name: 'TS',
+      mobile: '7777777793',
+      email: 'timeout-session@example.com',
+      country: 'India',
+      firebase_id_token: 'mock:7777777793',
+      consent_privacy: true,
+      consent_terms: true,
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'timeout-session-device' }
+    }
+  });
+  assert.equal(register.status, 201);
+
+  const { hashToken } = await import('../src/lib/auth.js');
+  const { invalidateAuthSessionCache } = await import('../src/middleware/requireAuth.js');
+  invalidateAuthSessionCache(hashToken(register.body.token));
+
+  const { db } = await import('../src/lib/db.js');
+  const originalPrepare = db.prepare.bind(db);
+  t.after(() => {
+    db.prepare = originalPrepare;
+  });
+  db.prepare = (sql) => {
+    if (String(sql).includes('FROM sessions s')) {
+      throw new Error('database query failed: Connection terminated due to connection timeout');
+    }
+    return originalPrepare(sql);
+  };
+
+  const me = await appRequest(app, {
+    method: 'GET',
+    path: '/api/auth/me',
+    token: register.body.token,
+    headers: { 'x-device-id': 'timeout-session-device' }
+  });
+  assert.equal(me.status, 503);
+  assert.equal(me.body.error, 'service_temporarily_unavailable');
+});
+
 test('expired family members can login, see admin renewal info, and leave into their own trial', async () => {
   process.env.DB_PATH = buildTestDbPath();
   process.env.OTP_PROVIDER = 'mock';

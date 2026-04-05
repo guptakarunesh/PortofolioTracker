@@ -22,6 +22,7 @@ import notificationRoutes from './routes/notifications.js';
 import { supportApiRouter, supportConsoleRouter } from './routes/support.js';
 import requireAuth from './middleware/requireAuth.js';
 import { attachAccountContext } from './middleware/accountAccess.js';
+import { handleTransientDatabaseError } from './lib/httpErrors.js';
 
 const app = express();
 
@@ -189,6 +190,9 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/user', requireAuth, userRoutes);
 
 app.use((err, _req, res, _next) => {
+  if (handleTransientDatabaseError(res, err)) {
+    return;
+  }
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
 });

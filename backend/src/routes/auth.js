@@ -33,6 +33,7 @@ import {
 import { getAccountAccessState } from '../lib/accountLifecycle.js';
 import { resolveOpenAiApiKey } from '../lib/openai.js';
 import requireAuth, { invalidateAuthSessionCache, primeAuthSessionCache } from '../middleware/requireAuth.js';
+import { handleTransientDatabaseError } from '../lib/httpErrors.js';
 
 const router = Router();
 const COUNTRY_CURRENCY = {
@@ -79,6 +80,24 @@ function currencyFromCountry(value = '') {
 
 function currentCalendarYearEndDate() {
   return `${new Date().getFullYear()}-12-31`;
+}
+
+function safeAsyncAuthRoute(label, handler) {
+  return async (req, res, next) => {
+    try {
+      await handler(req, res, next);
+    } catch (error) {
+      if (
+        handleTransientDatabaseError(res, error, {
+          logLabel: `auth:${label}`,
+          message: 'Authentication is temporarily unavailable. Please try again in a few seconds.'
+        })
+      ) {
+        return;
+      }
+      return next(error);
+    }
+  };
 }
 
 function logFamilyAudit(ownerUserId, actorUserId, action, meta = {}) {
@@ -588,7 +607,7 @@ router.get('/support-chat/history', requireAuth, (req, res) => {
   return res.json({ items });
 });
 
-router.post('/register', async (req, res) => {
+router.post('/register', safeAsyncAuthRoute('register', async (req, res) => {
   const {
     full_name,
     mobile,
@@ -793,7 +812,7 @@ router.post('/register', async (req, res) => {
     req
   });
   return res.status(201).json({ token, user: publicUser(user) });
-});
+}));
 
 router.post('/login', (req, res) => {
   const { mobile, mpin } = req.body || {};
@@ -1017,7 +1036,7 @@ router.post('/biometric/login', (req, res) => {
   return res.json({ token, user: publicUser(user) });
 });
 
-router.post('/otp/send', async (req, res) => {
+router.post('/otp/send', safeAsyncAuthRoute('otp_send', async (req, res) => {
   const { mobile } = req.body || {};
   const cleanMobile = normalizeMobile(mobile);
 
@@ -1038,9 +1057,9 @@ router.post('/otp/send', async (req, res) => {
   }
   const otpResp = await sendOtpForPurpose(cleanMobile, mobileHash, OTP_PURPOSE_LOGIN, req.body || {});
   return res.status(otpResp.status).json(otpResp.body);
-});
+}));
 
-router.post('/otp/verify', async (req, res) => {
+router.post('/otp/verify', safeAsyncAuthRoute('otp_verify', async (req, res) => {
   const { mobile, otp, firebase_id_token: firebaseIdToken } = req.body || {};
   const context = extractDeviceContext(req, req.body?.device_context);
   const cleanMobile = normalizeMobile(mobile);
@@ -1138,9 +1157,9 @@ router.post('/otp/verify', async (req, res) => {
   });
 
   return res.json({ token, user: publicUser(user) });
-});
+}));
 
-router.post('/mpin/reset/request', async (req, res) => {
+router.post('/mpin/reset/request', safeAsyncAuthRoute('mpin_reset_request', async (req, res) => {
   const cleanMobile = normalizeMobile(req.body?.mobile);
   if (!isValidIndianMobile(cleanMobile)) {
     return res.status(400).json({ error: 'Valid Indian mobile number is required' });
@@ -1168,9 +1187,9 @@ router.post('/mpin/reset/request', async (req, res) => {
     meta: { status: otpResp.status }
   });
   return res.status(otpResp.status).json(otpResp.body);
-});
+}));
 
-router.post('/mpin/reset/confirm', async (req, res) => {
+router.post('/mpin/reset/confirm', safeAsyncAuthRoute('mpin_reset_confirm', async (req, res) => {
   const cleanMobile = normalizeMobile(req.body?.mobile);
   const otp = String(req.body?.otp || '');
   const firebaseIdToken = String(req.body?.firebase_id_token || '');
@@ -1247,9 +1266,9 @@ router.post('/mpin/reset/confirm', async (req, res) => {
   });
 
   return res.json({ ok: true, message: 'MPIN reset successful. Please login again.' });
-});
+}));
 
-router.post('/security-pin/reset/request', requireAuth, async (req, res) => {
+router.post('/security-pin/reset/request', requireAuth, safeAsyncAuthRoute('security_pin_reset_request', async (req, res) => {
   const userId = req.userId;
   if (requireUnlockedReset(res, userId, 'security_pin_reset')) return;
 
@@ -1269,9 +1288,9 @@ router.post('/security-pin/reset/request', requireAuth, async (req, res) => {
     meta: { status: otpResp.status }
   });
   return res.status(otpResp.status).json(otpResp.body);
-});
+}));
 
-router.post('/security-pin/reset/confirm', requireAuth, async (req, res) => {
+router.post('/security-pin/reset/confirm', requireAuth, safeAsyncAuthRoute('security_pin_reset_confirm', async (req, res) => {
   const userId = req.userId;
   const otp = String(req.body?.otp || '');
   const firebaseIdToken = String(req.body?.firebase_id_token || '');
@@ -1348,7 +1367,7 @@ router.post('/security-pin/reset/confirm', requireAuth, async (req, res) => {
   });
 
   return res.json({ ok: true, message: 'Security PIN reset successful.' });
-});
+}));
 
 router.post('/security/context', requireAuth, (req, res) => {
   const context = extractDeviceContext(req, req.body?.device_context);

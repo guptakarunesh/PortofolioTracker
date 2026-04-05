@@ -37,6 +37,13 @@ test('internal shared-news refresh returns immediately and completes in backgrou
   try {
     const app = await loadApp();
 
+    const health = await appRequest(app, {
+      method: 'GET',
+      path: '/health'
+    });
+    assert.equal(health.status, 200);
+    assert.equal(health.body.ok, true);
+
     const startedAtMs = Date.now();
     const refresh = await appRequest(app, {
       method: 'POST',
@@ -54,7 +61,7 @@ test('internal shared-news refresh returns immediately and completes in backgrou
       await new Promise((resolve) => setTimeout(resolve, 40));
       ping = await appRequest(app, {
         method: 'GET',
-        path: '/internal/cron/ping',
+        path: '/internal/cron/ping?include_db_state=1',
         headers: { 'x-internal-cron-secret': 'test-secret' }
       });
       if (!ping.body?.refresh_job?.running && ping.body?.refresh_job?.last_result) break;

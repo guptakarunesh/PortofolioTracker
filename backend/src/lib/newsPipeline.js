@@ -347,7 +347,6 @@ export function getSharedCuratedNewsState({
   staleAfterHours = SHARED_CURATED_NEWS_REFRESH_HOURS,
   limit = 60
 } = {}) {
-  pruneOldNews();
   const items = getCuratedNews({ limit });
   const meaningfulItems = filterMeaningfulCuratedNewsItems(items);
   const latestMeaningfulMs = latestFreshTimestamp(meaningfulItems);

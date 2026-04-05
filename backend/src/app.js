@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import { db } from './lib/db.js';
 import dashboardRoutes from './routes/dashboard.js';
 import assetRoutes from './routes/assets.js';
 import liabilityRoutes from './routes/liabilities.js';
@@ -58,13 +57,7 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (_req, res) => {
-  const counts = {
-    users: db.prepare('SELECT COUNT(*) as c FROM users').get().c,
-    assets: db.prepare('SELECT COUNT(*) as c FROM assets').get().c,
-    liabilities: db.prepare('SELECT COUNT(*) as c FROM liabilities').get().c,
-    reminders: db.prepare('SELECT COUNT(*) as c FROM reminders').get().c
-  };
-  res.json({ ok: true, counts });
+  res.json({ ok: true, now: new Date().toISOString() });
 });
 
 app.get('/cashfree/checkout-page', (req, res) => {

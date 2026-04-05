@@ -1,5 +1,12 @@
 import { db, nowIso } from './db.js';
 
+const AUTH_TOUCH_MIN_INTERVAL_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.AUTH_TOUCH_MIN_INTERVAL_MS || '15000', 10)
+);
+const recentSessionTouches = new Map();
+const recentDeviceTouches = new Map();
+
 function clampString(value, maxLen = 120) {
   return String(value || '').trim().slice(0, maxLen);
 }
@@ -43,6 +50,22 @@ export function extractDeviceContext(req, bodyContext = null) {
     geo_lng: toNullableNumber(body.geo_lng, 2),
     geo_accuracy_m: toNullableNumber(body.geo_accuracy_m, 0)
   };
+}
+
+function rememberTouch(map, key, nowMs = Date.now()) {
+  if (!key) return false;
+  const lastSeen = Number(map.get(key) || 0);
+  if (lastSeen && nowMs - lastSeen < AUTH_TOUCH_MIN_INTERVAL_MS) {
+    return false;
+  }
+  map.set(key, nowMs);
+  if (map.size > 5000) {
+    const cutoff = nowMs - AUTH_TOUCH_MIN_INTERVAL_MS * 4;
+    for (const [entryKey, ts] of map.entries()) {
+      if (ts < cutoff) map.delete(entryKey);
+    }
+  }
+  return true;
 }
 
 export function countTrustedDevices(userId) {
@@ -123,6 +146,19 @@ export function upsertUserDevice(userId, context, req) {
   return { device_id: deviceId, last_seen_at: now, ip, user_agent: userAgent };
 }
 
+export function safeUpsertUserDevice(userId, context, req) {
+  try {
+    return upsertUserDevice(userId, context, req);
+  } catch (error) {
+    console.warn('[auth] device upsert skipped', {
+      user_id: userId,
+      device_id: String(context?.device_id || '').trim(),
+      error: String(error?.message || error)
+    });
+    return null;
+  }
+}
+
 export function touchSession(sessionTokenHash, req) {
   const now = nowIso();
   db.prepare(
@@ -132,6 +168,21 @@ export function touchSession(sessionTokenHash, req) {
     WHERE token_hash = ?
   `
   ).run(now, getClientIp(req), clampString(req.headers['user-agent'] || '', 320), sessionTokenHash);
+}
+
+export function safeTouchSession(sessionTokenHash, req) {
+  const tokenHash = String(sessionTokenHash || '').trim();
+  if (!tokenHash) return false;
+  if (!rememberTouch(recentSessionTouches, tokenHash)) return false;
+  try {
+    touchSession(tokenHash, req);
+    return true;
+  } catch (error) {
+    console.warn('[auth] session touch skipped', {
+      error: String(error?.message || error)
+    });
+    return false;
+  }
 }
 
 export function touchDeviceForUser(userId, context, req) {
@@ -154,6 +205,24 @@ export function touchDeviceForUser(userId, context, req) {
     userId,
     deviceId
   );
+}
+
+export function safeTouchDeviceForUser(userId, context, req) {
+  const deviceId = clampString(context?.device_id, 128);
+  if (!deviceId) return false;
+  const cacheKey = `${userId}:${deviceId}`;
+  if (!rememberTouch(recentDeviceTouches, cacheKey)) return false;
+  try {
+    touchDeviceForUser(userId, context, req);
+    return true;
+  } catch (error) {
+    console.warn('[auth] device touch skipped', {
+      user_id: userId,
+      device_id: deviceId,
+      error: String(error?.message || error)
+    });
+    return false;
+  }
 }
 
 export function logAuthEvent({
@@ -202,4 +271,3 @@ export function logAuthEvent({
     nowIso()
   );
 }
-

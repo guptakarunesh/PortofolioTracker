@@ -2,7 +2,62 @@ import { db } from '../lib/db.js';
 import { hashToken } from '../lib/auth.js';
 import { decryptString } from '../lib/crypto.js';
 import { getAccountAccessState } from '../lib/accountLifecycle.js';
-import { extractDeviceContext, logAuthEvent, touchDeviceForUser, touchSession } from '../lib/deviceSecurity.js';
+import { extractDeviceContext, logAuthEvent, safeTouchDeviceForUser, safeTouchSession } from '../lib/deviceSecurity.js';
+
+const AUTH_SESSION_CACHE_TTL_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.AUTH_SESSION_CACHE_TTL_MS || '10000', 10)
+);
+const authSessionCache = new Map();
+
+function cacheSessionRecord(tokenHash, session) {
+  if (!tokenHash || !session) return session;
+  authSessionCache.set(tokenHash, {
+    cached_at: Date.now(),
+    session: { ...session }
+  });
+  if (authSessionCache.size > 5000) {
+    const cutoff = Date.now() - AUTH_SESSION_CACHE_TTL_MS * 2;
+    for (const [key, value] of authSessionCache.entries()) {
+      if (Number(value?.cached_at || 0) < cutoff) authSessionCache.delete(key);
+    }
+  }
+  return session;
+}
+
+function readCachedSession(tokenHash) {
+  const entry = authSessionCache.get(tokenHash);
+  if (!entry) return null;
+  if (Date.now() - Number(entry.cached_at || 0) > AUTH_SESSION_CACHE_TTL_MS) {
+    authSessionCache.delete(tokenHash);
+    return null;
+  }
+  return { ...entry.session };
+}
+
+export function primeAuthSessionCache(tokenHash, session) {
+  return cacheSessionRecord(String(tokenHash || '').trim(), session);
+}
+
+export function invalidateAuthSessionCache(tokenHash) {
+  authSessionCache.delete(String(tokenHash || '').trim());
+}
+
+function loadSessionForToken(tokenHash) {
+  const cached = readCachedSession(tokenHash);
+  if (cached) return cached;
+  const session = db.prepare(`
+    SELECT s.user_id, s.expires_at, s.device_id, s.auth_method, u.full_name, u.mobile, u.email
+    FROM sessions s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.token_hash = ?
+  `).get(tokenHash);
+  if (!session) {
+    invalidateAuthSessionCache(tokenHash);
+    return null;
+  }
+  return cacheSessionRecord(tokenHash, session);
+}
 
 export default function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization || '';
@@ -17,24 +72,21 @@ export default function requireAuth(req, res, next) {
 
   const tokenHash = hashToken(token);
   const context = extractDeviceContext(req, null);
-  const session = db.prepare(`
-    SELECT s.user_id, s.expires_at, s.device_id, s.auth_method, u.full_name, u.mobile, u.email
-    FROM sessions s
-    JOIN users u ON u.id = s.user_id
-    WHERE s.token_hash = ?
-  `).get(tokenHash);
+  const session = loadSessionForToken(tokenHash);
 
   if (!session) {
     return res.status(401).json({ error: 'Session not found' });
   }
 
   if (new Date(session.expires_at).getTime() < Date.now()) {
+    invalidateAuthSessionCache(tokenHash);
     db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
     return res.status(401).json({ error: 'Session expired' });
   }
 
   const access = getAccountAccessState(session.user_id);
   if (access.status === 'disabled') {
+    invalidateAuthSessionCache(tokenHash);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(session.user_id);
     logAuthEvent({
       userId: session.user_id,
@@ -94,9 +146,9 @@ export default function requireAuth(req, res, next) {
   req.sessionTokenHash = tokenHash;
   req.deviceContext = context;
 
-  touchSession(tokenHash, req);
+  safeTouchSession(tokenHash, req);
   if (requestDeviceId) {
-    touchDeviceForUser(session.user_id, context, req);
+    safeTouchDeviceForUser(session.user_id, context, req);
   }
 
   return next();

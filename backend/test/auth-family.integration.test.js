@@ -260,6 +260,56 @@ test('biometric login can create a fresh session after logout on the same truste
   assert.equal(me.body.user.mobile, '7777777778');
 });
 
+test('logout invalidates a recently cached auth session', async () => {
+  process.env.DB_PATH = buildTestDbPath();
+  process.env.OTP_PROVIDER = 'mock';
+  process.env.OTP_TEST_ECHO = '1';
+
+  const app = await loadApp();
+
+  const register = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: {
+      full_name: 'LC',
+      mobile: '7777777791',
+      email: 'logout-cache@example.com',
+      country: 'India',
+      firebase_id_token: 'mock:7777777791',
+      consent_privacy: true,
+      consent_terms: true,
+      privacy_policy_version: 'v1.1',
+      terms_version: 'v1.1',
+      device_context: { device_id: 'cache-test-device' }
+    }
+  });
+  assert.equal(register.status, 201);
+
+  const meBeforeLogout = await appRequest(app, {
+    method: 'GET',
+    path: '/api/auth/me',
+    token: register.body.token,
+    headers: { 'x-device-id': 'cache-test-device' }
+  });
+  assert.equal(meBeforeLogout.status, 200);
+
+  const logout = await appRequest(app, {
+    method: 'POST',
+    path: '/api/auth/logout',
+    token: register.body.token,
+    headers: { 'x-device-id': 'cache-test-device' }
+  });
+  assert.equal(logout.status, 204);
+
+  const meAfterLogout = await appRequest(app, {
+    method: 'GET',
+    path: '/api/auth/me',
+    token: register.body.token,
+    headers: { 'x-device-id': 'cache-test-device' }
+  });
+  assert.equal(meAfterLogout.status, 401);
+});
+
 test('expired family members can login, see admin renewal info, and leave into their own trial', async () => {
   process.env.DB_PATH = buildTestDbPath();
   process.env.OTP_PROVIDER = 'mock';

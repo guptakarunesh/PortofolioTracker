@@ -28,11 +28,11 @@ import {
   getClientIp,
   isTrustedDevice,
   logAuthEvent,
-  upsertUserDevice
+  safeUpsertUserDevice
 } from '../lib/deviceSecurity.js';
 import { getAccountAccessState } from '../lib/accountLifecycle.js';
 import { resolveOpenAiApiKey } from '../lib/openai.js';
-import requireAuth from '../middleware/requireAuth.js';
+import requireAuth, { invalidateAuthSessionCache, primeAuthSessionCache } from '../middleware/requireAuth.js';
 
 const router = Router();
 const COUNTRY_CURRENCY = {
@@ -492,8 +492,10 @@ async function callSupportAssistant({ apiKey, model, message, history = [] }) {
   return outputText;
 }
 
-function createBoundSession({ userId, token, authMethod, context, req, createdAt = nowIso() }) {
+function createBoundSession({ userId, token, authMethod, context, req, createdAt = nowIso(), sessionUser = null }) {
   const deviceId = String(context?.device_id || '').trim() || null;
+  const tokenHash = hashToken(token);
+  const expiresAt = sessionExpiryIso();
   db.prepare(`
     INSERT INTO sessions (
       user_id, token_hash, device_id, auth_method,
@@ -502,7 +504,7 @@ function createBoundSession({ userId, token, authMethod, context, req, createdAt
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     userId,
-    hashToken(token),
+    tokenHash,
     deviceId,
     String(authMethod || ''),
     getClientIp(req),
@@ -510,9 +512,18 @@ function createBoundSession({ userId, token, authMethod, context, req, createdAt
     createdAt,
     getClientIp(req),
     String(req.headers['user-agent'] || ''),
-    sessionExpiryIso(),
+    expiresAt,
     createdAt
   );
+  primeAuthSessionCache(tokenHash, {
+    user_id: userId,
+    expires_at: expiresAt,
+    device_id: deviceId,
+    auth_method: String(authMethod || ''),
+    full_name: sessionUser?.full_name || '',
+    mobile: sessionUser?.mobile || '',
+    email: sessionUser?.email || ''
+  });
 }
 
 router.post('/support-chat', async (req, res) => {
@@ -734,11 +745,12 @@ router.post('/register', async (req, res) => {
         authMethod: 'register_otp',
         context,
         req,
-        createdAt: nowIso()
+        createdAt: nowIso(),
+        sessionUser: user
       });
 
       registerStage = 'upsert_device';
-      upsertUserDevice(user.id, context, req);
+      safeUpsertUserDevice(user.id, context, req);
 
       registerStage = 'consent_log';
       db.prepare(`
@@ -870,7 +882,7 @@ router.post('/login', (req, res) => {
   }
 
   db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(nowIso(), user.id);
-  upsertUserDevice(user.id, context, req);
+  safeUpsertUserDevice(user.id, context, req);
   const token = createSessionToken();
   createBoundSession({
     userId: user.id,
@@ -878,7 +890,8 @@ router.post('/login', (req, res) => {
     authMethod: 'mpin',
     context,
     req,
-    createdAt: nowIso()
+    createdAt: nowIso(),
+    sessionUser: user
   });
   logAuthEvent({
     userId: user.id,
@@ -980,7 +993,7 @@ router.post('/biometric/login', (req, res) => {
 
   const nowIsoStr = nowIso();
   db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(nowIsoStr, user.id);
-  upsertUserDevice(user.id, context, req);
+  safeUpsertUserDevice(user.id, context, req);
   const token = createSessionToken();
   createBoundSession({
     userId: user.id,
@@ -988,7 +1001,8 @@ router.post('/biometric/login', (req, res) => {
     authMethod: 'biometric',
     context,
     req,
-    createdAt: nowIsoStr
+    createdAt: nowIsoStr,
+    sessionUser: user
   });
   logAuthEvent({
     userId: user.id,
@@ -1102,7 +1116,7 @@ router.post('/otp/verify', async (req, res) => {
 
   const nowIsoStr = new Date().toISOString();
   db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(nowIsoStr, user.id);
-  upsertUserDevice(user.id, context, req);
+  safeUpsertUserDevice(user.id, context, req);
   const token = createSessionToken();
   createBoundSession({
     userId: user.id,
@@ -1110,7 +1124,8 @@ router.post('/otp/verify', async (req, res) => {
     authMethod: 'otp',
     context,
     req,
-    createdAt: nowIsoStr
+    createdAt: nowIsoStr,
+    sessionUser: user
   });
   logAuthEvent({
     userId: user.id,
@@ -1337,7 +1352,7 @@ router.post('/security-pin/reset/confirm', requireAuth, async (req, res) => {
 
 router.post('/security/context', requireAuth, (req, res) => {
   const context = extractDeviceContext(req, req.body?.device_context);
-  upsertUserDevice(req.userId, context, req);
+  safeUpsertUserDevice(req.userId, context, req);
   return res.json({ ok: true });
 });
 
@@ -1480,6 +1495,7 @@ router.post('/logout', requireAuth, (req, res) => {
     req
   });
   db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(req.sessionTokenHash);
+  invalidateAuthSessionCache(req.sessionTokenHash);
   res.status(204).send();
 });
 

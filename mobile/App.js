@@ -703,7 +703,8 @@ export default function App() {
     });
   }, []);
 
-  const openAiInsights = async () => {
+  const openAiInsights = async (options = {}) => {
+    const forceRefresh = options?.forceRefresh === true;
     setAiError('');
     if (!user) return;
     if (!premiumActive) {
@@ -713,7 +714,7 @@ export default function App() {
     setAiVisible(true);
     try {
       setAiLoading(true);
-      const data = await api.getAiInsights({ forceRefresh: true });
+      const data = await api.getAiInsights({ forceRefresh });
       setAiPayload(data || null);
     } catch (e) {
       setAiError(String(e?.message || e));
@@ -2020,26 +2021,13 @@ export default function App() {
                   </View>
                   <View style={styles.accountMeta}>
                     <Text style={[styles.accountNameText, { color: theme.text }]} numberOfLines={1}>
-                      {t('Account')}
+                      {roleLabel}
                     </Text>
                     {accountExpiryNotice ? (
                       <Text style={[styles.accountExpiryNotice, { color: theme.warn }]} numberOfLines={1}>
                         {accountExpiryNotice}
                       </Text>
                     ) : null}
-                  </View>
-                  <View
-                    style={[
-                      styles.accountRoleBadge,
-                      {
-                        backgroundColor: isDarkTheme ? 'rgba(36,178,214,0.16)' : (theme.accentSoft || 'rgba(36,178,214,0.12)'),
-                        borderColor: isDarkTheme ? 'rgba(36,178,214,0.44)' : theme.accent
-                      }
-                    ]}
-                  >
-                    <Text style={[styles.accountRoleBadgeText, { color: isDarkTheme ? '#EAF9FF' : theme.accent }]} numberOfLines={1}>
-                      {roleLabel}
-                    </Text>
                   </View>
                   <Text style={[styles.accountChevron, { color: theme.info }]}>{'\u203A'}</Text>
                 </AnimatedPressable>
@@ -2490,7 +2478,12 @@ export default function App() {
 
                 <View style={styles.rowTight}>
                   {user && premiumActive ? (
-                    <PillButton label={t('Refresh')} kind="ghost" onPress={() => openAiInsights().catch(() => {})} disabled={aiLoading} />
+                    <PillButton
+                      label={t('Refresh')}
+                      kind="ghost"
+                      onPress={() => openAiInsights({ forceRefresh: true }).catch(() => {})}
+                      disabled={aiLoading}
+                    />
                   ) : null}
                   <PillButton label={t('Close')} kind="ghost" onPress={() => setAiVisible(false)} />
                 </View>
@@ -3162,21 +3155,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.1
-  },
-  accountRoleBadge: {
-    minHeight: 26,
-    maxWidth: 128,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  accountRoleBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    textTransform: 'uppercase'
   },
   accountExpiryNotice: {
     marginTop: 2,

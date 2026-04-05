@@ -658,7 +658,7 @@ export default function AccountScreen({
         <PillButton
           label={t('Accounts Recent Activity')}
           kind="ghost"
-          style={[styles.fullWidthButton, isDark ? styles.accountGhostButtonDark : styles.accountGhostButtonLight]}
+          style={[styles.profileRecentActivityButton, isDark ? styles.accountGhostButtonDark : styles.accountGhostButtonLight]}
           onPress={() => Promise.resolve(onOpenRecentActivity?.()).catch(() => {})}
         />
       </SectionCard>
@@ -1031,6 +1031,11 @@ const styles = StyleSheet.create({
   },
   fullWidthButton: {
     width: '100%'
+  },
+  profileRecentActivityButton: {
+    alignSelf: 'stretch',
+    marginTop: 10,
+    marginHorizontal: 4
   },
   inlineActionRow: {
     flexDirection: 'row',

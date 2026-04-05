@@ -23,6 +23,10 @@ const INGEST_RETRY_COOLDOWN_MS = Math.max(
   5 * 60 * 1000,
   Number.parseInt(process.env.NEWS_INGEST_RETRY_COOLDOWN_MS || '900000', 10)
 );
+const SHARED_CURATED_NEWS_JOB_TIMEOUT_MS = Math.max(
+  30_000,
+  Number.parseInt(process.env.SHARED_CURATED_NEWS_JOB_TIMEOUT_MS || '180000', 10)
+);
 
 function resolveSharedNewsModel(fallback = INSIGHT_MODEL_FALLBACK) {
   return String(process.env.OPENAI_NEWS_MODEL || process.env.OPENAI_MODEL || fallback).trim() || fallback;
@@ -1330,13 +1334,23 @@ export function triggerSharedCuratedNewsRefresh({
 
   setTimeout(() => {
     sharedCuratedNewsRefreshJob.started_at = nowIso();
-    ensureSharedCuratedNewsFresh({
-      apiKey,
-      country,
-      staleAfterHours,
-      forceRefresh,
-      minFreshItems
-    })
+    let timeoutHandle = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutHandle = setTimeout(
+        () => reject(new Error(`shared_curated_news_job_timeout_${SHARED_CURATED_NEWS_JOB_TIMEOUT_MS}ms`)),
+        SHARED_CURATED_NEWS_JOB_TIMEOUT_MS
+      );
+    });
+    Promise.race([
+      ensureSharedCuratedNewsFresh({
+        apiKey,
+        country,
+        staleAfterHours,
+        forceRefresh,
+        minFreshItems
+      }),
+      timeoutPromise
+    ])
       .then((result) => {
         sharedCuratedNewsRefreshJob.last_result = summarizeRefreshResult(result);
         console.log('[news] shared curated news refresh finished', {
@@ -1352,6 +1366,7 @@ export function triggerSharedCuratedNewsRefresh({
         });
       })
       .finally(() => {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
         sharedCuratedNewsRefreshJob.running = false;
         sharedCuratedNewsRefreshJob.finished_at = nowIso();
       });

@@ -1274,14 +1274,47 @@ export async function ensureSharedCuratedNewsFresh({
 }
 
 const sharedCuratedNewsRefreshJob = {
+  run_id: 0,
   running: false,
   trigger: '',
   requested_at: '',
   started_at: '',
   finished_at: '',
   last_error: '',
-  last_result: null
+  last_result: null,
+  timeout_handle: null
 };
+
+function refreshJobStartedAtMs() {
+  const dt = parseIsoDate(sharedCuratedNewsRefreshJob.started_at || sharedCuratedNewsRefreshJob.requested_at || '');
+  return dt?.getTime() || 0;
+}
+
+function releaseStaleSharedCuratedNewsRefreshJob() {
+  if (!sharedCuratedNewsRefreshJob.running) return false;
+  const startedAtMs = refreshJobStartedAtMs();
+  if (!startedAtMs) return false;
+  const ageMs = Date.now() - startedAtMs;
+  const staleAfterMs = SHARED_CURATED_NEWS_JOB_TIMEOUT_MS + 15_000;
+  if (ageMs <= staleAfterMs) return false;
+
+  const retiredRunId = Number(sharedCuratedNewsRefreshJob.run_id || 0);
+  if (sharedCuratedNewsRefreshJob.timeout_handle) {
+    clearTimeout(sharedCuratedNewsRefreshJob.timeout_handle);
+    sharedCuratedNewsRefreshJob.timeout_handle = null;
+  }
+  sharedCuratedNewsRefreshJob.run_id = retiredRunId + 1;
+  sharedCuratedNewsRefreshJob.running = false;
+  sharedCuratedNewsRefreshJob.finished_at = nowIso();
+  sharedCuratedNewsRefreshJob.last_error = `stale_shared_curated_news_job_reset_${ageMs}ms`;
+  sharedCuratedNewsRefreshJob.last_result = null;
+  console.warn('[news] shared curated news refresh reset after stale run', {
+    trigger: sharedCuratedNewsRefreshJob.trigger,
+    run_id: retiredRunId,
+    age_ms: ageMs
+  });
+  return true;
+}
 
 function summarizeRefreshResult(result = null) {
   if (!result || typeof result !== 'object') return null;
@@ -1297,6 +1330,7 @@ function summarizeRefreshResult(result = null) {
 }
 
 export function getSharedCuratedNewsRefreshStatus() {
+  releaseStaleSharedCuratedNewsRefreshJob();
   return {
     running: Boolean(sharedCuratedNewsRefreshJob.running),
     trigger: String(sharedCuratedNewsRefreshJob.trigger || ''),
@@ -1316,6 +1350,7 @@ export function triggerSharedCuratedNewsRefresh({
   minFreshItems = 8,
   trigger = 'manual'
 } = {}) {
+  releaseStaleSharedCuratedNewsRefreshJob();
   if (sharedCuratedNewsRefreshJob.running) {
     return {
       started: false,
@@ -1325,6 +1360,8 @@ export function triggerSharedCuratedNewsRefresh({
   }
 
   const requestedAt = nowIso();
+  const runId = Number(sharedCuratedNewsRefreshJob.run_id || 0) + 1;
+  sharedCuratedNewsRefreshJob.run_id = runId;
   sharedCuratedNewsRefreshJob.running = true;
   sharedCuratedNewsRefreshJob.trigger = String(trigger || 'manual');
   sharedCuratedNewsRefreshJob.requested_at = requestedAt;
@@ -1333,6 +1370,7 @@ export function triggerSharedCuratedNewsRefresh({
   sharedCuratedNewsRefreshJob.last_error = '';
 
   setTimeout(() => {
+    if (runId !== sharedCuratedNewsRefreshJob.run_id) return;
     sharedCuratedNewsRefreshJob.started_at = nowIso();
     let timeoutHandle = null;
     const timeoutPromise = new Promise((_, reject) => {
@@ -1340,6 +1378,7 @@ export function triggerSharedCuratedNewsRefresh({
         () => reject(new Error(`shared_curated_news_job_timeout_${SHARED_CURATED_NEWS_JOB_TIMEOUT_MS}ms`)),
         SHARED_CURATED_NEWS_JOB_TIMEOUT_MS
       );
+      sharedCuratedNewsRefreshJob.timeout_handle = timeoutHandle;
     });
     Promise.race([
       ensureSharedCuratedNewsFresh({
@@ -1352,6 +1391,7 @@ export function triggerSharedCuratedNewsRefresh({
       timeoutPromise
     ])
       .then((result) => {
+        if (runId !== sharedCuratedNewsRefreshJob.run_id) return;
         sharedCuratedNewsRefreshJob.last_result = summarizeRefreshResult(result);
         console.log('[news] shared curated news refresh finished', {
           trigger: sharedCuratedNewsRefreshJob.trigger,
@@ -1359,6 +1399,7 @@ export function triggerSharedCuratedNewsRefresh({
         });
       })
       .catch((error) => {
+        if (runId !== sharedCuratedNewsRefreshJob.run_id) return;
         sharedCuratedNewsRefreshJob.last_error = String(error?.message || error);
         console.error('[news] shared curated news refresh failed', {
           trigger: sharedCuratedNewsRefreshJob.trigger,
@@ -1367,6 +1408,10 @@ export function triggerSharedCuratedNewsRefresh({
       })
       .finally(() => {
         if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (sharedCuratedNewsRefreshJob.timeout_handle === timeoutHandle) {
+          sharedCuratedNewsRefreshJob.timeout_handle = null;
+        }
+        if (runId !== sharedCuratedNewsRefreshJob.run_id) return;
         sharedCuratedNewsRefreshJob.running = false;
         sharedCuratedNewsRefreshJob.finished_at = nowIso();
       });

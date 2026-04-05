@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInsightNewsBullets, resolveNewsIngestModel, resolveNewsInsightModel } from '../src/lib/newsPipeline.js';
+import {
+  buildInsightNewsBullets,
+  getSharedCuratedNewsRefreshStatus,
+  resolveNewsIngestModel,
+  resolveNewsInsightModel,
+  triggerSharedCuratedNewsRefresh
+} from '../src/lib/newsPipeline.js';
 
 function makeItem(overrides = {}) {
   return {
@@ -182,5 +188,75 @@ test('resolveNewsInsightModel uses the shared OPENAI_NEWS_MODEL setting', () => 
     else process.env.OPENAI_NEWS_MODEL = previousNews;
     if (previousGeneric === undefined) delete process.env.OPENAI_MODEL;
     else process.env.OPENAI_MODEL = previousGeneric;
+  }
+});
+
+test('stale shared news refresh jobs are released so a new job can start', async () => {
+  const originalFetch = global.fetch;
+  const originalDateNow = Date.now;
+
+  global.fetch = async () => new Promise(() => {});
+
+  try {
+    const first = triggerSharedCuratedNewsRefresh({
+      apiKey: 'test-key',
+      country: 'IN',
+      forceRefresh: true,
+      trigger: 'test_hang'
+    });
+    assert.equal(first.started, true);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const runningStatus = getSharedCuratedNewsRefreshStatus();
+    assert.equal(runningStatus.running, true);
+
+    Date.now = () => originalDateNow() + 10 * 60 * 1000;
+    const resetStatus = getSharedCuratedNewsRefreshStatus();
+    assert.equal(resetStatus.running, false);
+    assert.match(resetStatus.last_error, /stale_shared_curated_news_job_reset_/);
+
+    global.fetch = async () => ({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          output_text: JSON.stringify({
+            items: [
+              {
+                source_key: 'moneycontrol',
+                source_name: 'Moneycontrol',
+                category: 'stocks',
+                title: 'Fresh shared-news run after stale reset',
+                summary: 'A replacement refresh completed successfully.',
+                url: 'https://www.moneycontrol.com/news/business/markets/stale-reset-test.html',
+                published_at: new Date(originalDateNow()).toISOString()
+              }
+            ]
+          })
+        })
+    });
+    Date.now = originalDateNow;
+
+    const second = triggerSharedCuratedNewsRefresh({
+      apiKey: 'test-key',
+      country: 'IN',
+      forceRefresh: true,
+      trigger: 'test_recovery'
+    });
+    assert.equal(second.started, true);
+    assert.equal(second.already_running, false);
+
+    let finalStatus = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      finalStatus = getSharedCuratedNewsRefreshStatus();
+      if (!finalStatus.running && finalStatus.last_result) break;
+    }
+
+    assert.equal(finalStatus?.running, false);
+    assert.equal(finalStatus?.trigger, 'test_recovery');
+    assert.equal(finalStatus?.last_result?.ingest_ok, true);
+  } finally {
+    Date.now = originalDateNow;
+    global.fetch = originalFetch;
   }
 });

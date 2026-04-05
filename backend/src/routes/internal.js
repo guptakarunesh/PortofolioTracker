@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { nowIso } from '../lib/db.js';
-import { ensureSharedCuratedNewsFresh, getSharedCuratedNewsState } from '../lib/newsPipeline.js';
+import {
+  getSharedCuratedNewsRefreshStatus,
+  getSharedCuratedNewsState,
+  triggerSharedCuratedNewsRefresh
+} from '../lib/newsPipeline.js';
 import { resolveOpenAiApiKey } from '../lib/openai.js';
 
 const router = Router();
@@ -21,6 +25,28 @@ function summarizeSharedCuratedNewsState(state = {}) {
     last_run_status: String(state?.last_run_status || ''),
     last_run_message: String(state?.last_run_message || ''),
     last_run_finished_at: String(state?.last_run_finished_at || '')
+  };
+}
+
+function summarizeRefreshJobState(state = {}) {
+  return {
+    running: Boolean(state?.running),
+    trigger: String(state?.trigger || ''),
+    requested_at: String(state?.requested_at || ''),
+    started_at: String(state?.started_at || ''),
+    finished_at: String(state?.finished_at || ''),
+    last_error: String(state?.last_error || ''),
+    last_result: state?.last_result
+      ? {
+          refreshed: Boolean(state.last_result.refreshed),
+          count: Number(state.last_result.count || 0),
+          meaningful_count: Number(state.last_result.meaningful_count || 0),
+          stale: Boolean(state.last_result.stale),
+          ingest_ok: state.last_result.ingest_ok !== false,
+          ingest_warning: String(state.last_result.ingest_warning || ''),
+          ingest_error: String(state.last_result.ingest_error || '')
+        }
+      : null
   };
 }
 
@@ -51,11 +77,12 @@ router.get('/cron/ping', (_req, res) => {
   return res.json({
     ok: true,
     now: nowIso(),
-    shared_curated_news: summarizeSharedCuratedNewsState(state)
+    shared_curated_news: summarizeSharedCuratedNewsState(state),
+    refresh_job: summarizeRefreshJobState(getSharedCuratedNewsRefreshStatus())
   });
 });
 
-router.post('/cron/shared-news/maintenance', async (_req, res, next) => {
+router.post('/cron/shared-news/maintenance', (_req, res, next) => {
   try {
     const before = getSharedCuratedNewsState({ staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS });
     if (!before.stale && before.meaningful_count >= 8) {
@@ -63,46 +90,48 @@ router.post('/cron/shared-news/maintenance', async (_req, res, next) => {
         ok: true,
         action: 'noop',
         now: nowIso(),
-        shared_curated_news: summarizeSharedCuratedNewsState(before)
+        shared_curated_news: summarizeSharedCuratedNewsState(before),
+        refresh_job: summarizeRefreshJobState(getSharedCuratedNewsRefreshStatus())
       });
     }
 
-    const refreshed = await ensureSharedCuratedNewsFresh({
+    const refresh = triggerSharedCuratedNewsRefresh({
       apiKey: resolveOpenAiApiKey(),
       country: SHARED_CURATED_NEWS_COUNTRY,
       staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS,
-      forceRefresh: true
+      forceRefresh: true,
+      trigger: 'maintenance'
     });
 
-    return res.json({
-      ok: refreshed.ingest_ok !== false,
-      action: 'refresh_attempted',
+    return res.status(202).json({
+      ok: true,
+      action: refresh.already_running ? 'refresh_already_running' : 'refresh_started',
       now: nowIso(),
-      ingest_warning: refreshed.ingest_warning || '',
-      ingest_error: refreshed.ingest_error || '',
-      shared_curated_news: summarizeSharedCuratedNewsState(refreshed)
+      shared_curated_news: summarizeSharedCuratedNewsState(before),
+      refresh_job: summarizeRefreshJobState(refresh.status)
     });
   } catch (error) {
     return next(error);
   }
 });
 
-router.post('/cron/shared-news/refresh', async (_req, res, next) => {
+router.post('/cron/shared-news/refresh', (_req, res, next) => {
   try {
-    const refreshed = await ensureSharedCuratedNewsFresh({
+    const before = getSharedCuratedNewsState({ staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS });
+    const refresh = triggerSharedCuratedNewsRefresh({
       apiKey: resolveOpenAiApiKey(),
       country: SHARED_CURATED_NEWS_COUNTRY,
       staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS,
-      forceRefresh: true
+      forceRefresh: true,
+      trigger: 'force_refresh'
     });
 
-    return res.json({
-      ok: refreshed.ingest_ok !== false,
-      action: 'force_refresh_attempted',
+    return res.status(202).json({
+      ok: true,
+      action: refresh.already_running ? 'force_refresh_already_running' : 'force_refresh_started',
       now: nowIso(),
-      ingest_warning: refreshed.ingest_warning || '',
-      ingest_error: refreshed.ingest_error || '',
-      shared_curated_news: summarizeSharedCuratedNewsState(refreshed)
+      shared_curated_news: summarizeSharedCuratedNewsState(before),
+      refresh_job: summarizeRefreshJobState(refresh.status)
     });
   } catch (error) {
     return next(error);

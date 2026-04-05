@@ -24,6 +24,18 @@ const INGEST_RETRY_COOLDOWN_MS = Math.max(
   Number.parseInt(process.env.NEWS_INGEST_RETRY_COOLDOWN_MS || '900000', 10)
 );
 
+function resolveSharedNewsModel(fallback = INSIGHT_MODEL_FALLBACK) {
+  return String(process.env.OPENAI_NEWS_MODEL || process.env.OPENAI_MODEL || fallback).trim() || fallback;
+}
+
+export function resolveNewsIngestModel() {
+  return String(process.env.OPENAI_NEWS_INGEST_MODEL || '').trim() || resolveSharedNewsModel(INGEST_MODEL_FALLBACK);
+}
+
+export function resolveNewsInsightModel() {
+  return resolveSharedNewsModel(INSIGHT_MODEL_FALLBACK);
+}
+
 function safeJsonParse(raw, fallback = null) {
   try {
     return raw ? JSON.parse(raw) : fallback;
@@ -657,7 +669,7 @@ function normalizeIngestedItem(rawItem = {}, options = {}) {
 
 export async function ingestCuratedNews({
   apiKey,
-  ingestModel = process.env.OPENAI_NEWS_INGEST_MODEL || process.env.OPENAI_NEWS_MODEL || INGEST_MODEL_FALLBACK,
+  ingestModel = resolveNewsIngestModel(),
   country = 'IN',
   forceRefresh = false
 } = {}) {
@@ -1063,7 +1075,7 @@ export async function buildInsightNewsBullets({
   country = 'IN',
   currency = 'INR',
   portfolio = {},
-  model = process.env.OPENAI_NEWS_MODEL || process.env.OPENAI_MODEL || INSIGHT_MODEL_FALLBACK
+  model = resolveNewsInsightModel()
 } = {}) {
   const curated = dedupeItems(items).slice(0, 12);
   if (!curated.length) {
@@ -1258,32 +1270,124 @@ export async function ensureSharedCuratedNewsFresh({
   };
 }
 
+const sharedCuratedNewsRefreshJob = {
+  running: false,
+  trigger: '',
+  requested_at: '',
+  started_at: '',
+  finished_at: '',
+  last_error: '',
+  last_result: null
+};
+
+function summarizeRefreshResult(result = null) {
+  if (!result || typeof result !== 'object') return null;
+  return {
+    refreshed: Boolean(result?.refreshed),
+    count: Number(result?.count || 0),
+    meaningful_count: Number(result?.meaningful_count || 0),
+    stale: Boolean(result?.stale),
+    ingest_ok: result?.ingest_ok !== false,
+    ingest_warning: String(result?.ingest_warning || ''),
+    ingest_error: String(result?.ingest_error || '')
+  };
+}
+
+export function getSharedCuratedNewsRefreshStatus() {
+  return {
+    running: Boolean(sharedCuratedNewsRefreshJob.running),
+    trigger: String(sharedCuratedNewsRefreshJob.trigger || ''),
+    requested_at: String(sharedCuratedNewsRefreshJob.requested_at || ''),
+    started_at: String(sharedCuratedNewsRefreshJob.started_at || ''),
+    finished_at: String(sharedCuratedNewsRefreshJob.finished_at || ''),
+    last_error: String(sharedCuratedNewsRefreshJob.last_error || ''),
+    last_result: summarizeRefreshResult(sharedCuratedNewsRefreshJob.last_result)
+  };
+}
+
+export function triggerSharedCuratedNewsRefresh({
+  apiKey,
+  country = 'IN',
+  staleAfterHours = SHARED_CURATED_NEWS_REFRESH_HOURS,
+  forceRefresh = false,
+  minFreshItems = 8,
+  trigger = 'manual'
+} = {}) {
+  if (sharedCuratedNewsRefreshJob.running) {
+    return {
+      started: false,
+      already_running: true,
+      status: getSharedCuratedNewsRefreshStatus()
+    };
+  }
+
+  const requestedAt = nowIso();
+  sharedCuratedNewsRefreshJob.running = true;
+  sharedCuratedNewsRefreshJob.trigger = String(trigger || 'manual');
+  sharedCuratedNewsRefreshJob.requested_at = requestedAt;
+  sharedCuratedNewsRefreshJob.started_at = '';
+  sharedCuratedNewsRefreshJob.finished_at = '';
+  sharedCuratedNewsRefreshJob.last_error = '';
+
+  setTimeout(() => {
+    sharedCuratedNewsRefreshJob.started_at = nowIso();
+    ensureSharedCuratedNewsFresh({
+      apiKey,
+      country,
+      staleAfterHours,
+      forceRefresh,
+      minFreshItems
+    })
+      .then((result) => {
+        sharedCuratedNewsRefreshJob.last_result = summarizeRefreshResult(result);
+        console.log('[news] shared curated news refresh finished', {
+          trigger: sharedCuratedNewsRefreshJob.trigger,
+          ...sharedCuratedNewsRefreshJob.last_result
+        });
+      })
+      .catch((error) => {
+        sharedCuratedNewsRefreshJob.last_error = String(error?.message || error);
+        console.error('[news] shared curated news refresh failed', {
+          trigger: sharedCuratedNewsRefreshJob.trigger,
+          error: sharedCuratedNewsRefreshJob.last_error
+        });
+      })
+      .finally(() => {
+        sharedCuratedNewsRefreshJob.running = false;
+        sharedCuratedNewsRefreshJob.finished_at = nowIso();
+      });
+  }, 0);
+
+  return {
+    started: true,
+    already_running: false,
+    status: getSharedCuratedNewsRefreshStatus()
+  };
+}
+
 let sharedCuratedNewsBootstrapStarted = false;
 
 export function startSharedCuratedNewsBootstrap() {
   if (sharedCuratedNewsBootstrapStarted) return;
   sharedCuratedNewsBootstrapStarted = true;
 
-  const runBootstrapRefresh = async () => {
+  const runBootstrapRefresh = () => {
     try {
       const state = getSharedCuratedNewsState({ staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS });
       if (!state.stale && state.meaningful_count >= 8) return;
       const apiKey = resolveOpenAiApiKey();
       if (!apiKey) return;
-      const out = await ensureSharedCuratedNewsFresh({
+      const out = triggerSharedCuratedNewsRefresh({
         apiKey,
         country: SHARED_CURATED_NEWS_COUNTRY,
         staleAfterHours: SHARED_CURATED_NEWS_REFRESH_HOURS,
-        forceRefresh: true
+        forceRefresh: true,
+        trigger: 'startup_bootstrap'
       });
-      const summary = {
-        refreshed: Boolean(out?.refreshed),
-        count: Number(out?.count || 0),
-        meaningful_count: Number(out?.meaningful_count || 0),
-        ingest_warning: String(out?.ingest_warning || ''),
-        ingest_error: String(out?.ingest_error || '')
-      };
-      console.log('[news] shared curated news bootstrap finished', summary);
+      console.log('[news] shared curated news bootstrap queued', {
+        started: Boolean(out?.started),
+        already_running: Boolean(out?.already_running)
+      });
     } catch (error) {
       console.error('[news] shared curated news bootstrap failed', String(error?.message || error));
     }
@@ -1291,6 +1395,6 @@ export function startSharedCuratedNewsBootstrap() {
 
   // Defer until after the web process is up so startup stays responsive.
   setTimeout(() => {
-    runBootstrapRefresh().catch(() => {});
+    runBootstrapRefresh();
   }, 5_000);
 }

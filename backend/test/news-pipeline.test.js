@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInsightNewsBullets } from '../src/lib/newsPipeline.js';
+import { buildInsightNewsBullets, resolveNewsIngestModel, resolveNewsInsightModel } from '../src/lib/newsPipeline.js';
 
 function makeItem(overrides = {}) {
   return {
@@ -144,5 +144,43 @@ test('buildInsightNewsBullets pads duplicate AI bullets to five bullets with fal
     assert.ok(result.bullets.some((bullet) => /EPF \/ NPS \/ Retirement/.test(bullet)));
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test('resolveNewsIngestModel falls back to OPENAI_NEWS_MODEL before generic OPENAI_MODEL', () => {
+  const previousIngest = process.env.OPENAI_NEWS_INGEST_MODEL;
+  const previousNews = process.env.OPENAI_NEWS_MODEL;
+  const previousGeneric = process.env.OPENAI_MODEL;
+
+  delete process.env.OPENAI_NEWS_INGEST_MODEL;
+  process.env.OPENAI_NEWS_MODEL = 'shared-news-model';
+  process.env.OPENAI_MODEL = 'generic-model';
+
+  try {
+    assert.equal(resolveNewsIngestModel(), 'shared-news-model');
+  } finally {
+    if (previousIngest === undefined) delete process.env.OPENAI_NEWS_INGEST_MODEL;
+    else process.env.OPENAI_NEWS_INGEST_MODEL = previousIngest;
+    if (previousNews === undefined) delete process.env.OPENAI_NEWS_MODEL;
+    else process.env.OPENAI_NEWS_MODEL = previousNews;
+    if (previousGeneric === undefined) delete process.env.OPENAI_MODEL;
+    else process.env.OPENAI_MODEL = previousGeneric;
+  }
+});
+
+test('resolveNewsInsightModel uses the shared OPENAI_NEWS_MODEL setting', () => {
+  const previousNews = process.env.OPENAI_NEWS_MODEL;
+  const previousGeneric = process.env.OPENAI_MODEL;
+
+  process.env.OPENAI_NEWS_MODEL = 'shared-news-model';
+  process.env.OPENAI_MODEL = 'generic-model';
+
+  try {
+    assert.equal(resolveNewsInsightModel(), 'shared-news-model');
+  } finally {
+    if (previousNews === undefined) delete process.env.OPENAI_NEWS_MODEL;
+    else process.env.OPENAI_NEWS_MODEL = previousNews;
+    if (previousGeneric === undefined) delete process.env.OPENAI_MODEL;
+    else process.env.OPENAI_MODEL = previousGeneric;
   }
 });

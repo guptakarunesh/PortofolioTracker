@@ -19,6 +19,11 @@ const SHARED_CURATED_NEWS_REFRESH_HOURS = Math.max(
   Number.parseInt(process.env.SHARED_CURATED_NEWS_REFRESH_HOURS || '12', 10)
 );
 const SHARED_CURATED_NEWS_COUNTRY = String(process.env.SHARED_CURATED_NEWS_COUNTRY || 'IN').trim().toUpperCase() || 'IN';
+const SHARED_CURATED_NEWS_BOOTSTRAP_ON_START = (() => {
+  const raw = String(process.env.SHARED_CURATED_NEWS_BOOTSTRAP_ON_START || '').trim().toLowerCase();
+  if (!raw) return false;
+  return !['0', 'false', 'off', 'no'].includes(raw);
+})();
 const INGEST_RETRY_COOLDOWN_MS = Math.max(
   5 * 60 * 1000,
   Number.parseInt(process.env.NEWS_INGEST_RETRY_COOLDOWN_MS || '900000', 10)
@@ -1429,6 +1434,10 @@ let sharedCuratedNewsBootstrapStarted = false;
 export function startSharedCuratedNewsBootstrap() {
   if (sharedCuratedNewsBootstrapStarted) return;
   sharedCuratedNewsBootstrapStarted = true;
+  if (!SHARED_CURATED_NEWS_BOOTSTRAP_ON_START) {
+    console.log('[news] shared curated news bootstrap disabled');
+    return;
+  }
 
   const runBootstrapRefresh = () => {
     try {

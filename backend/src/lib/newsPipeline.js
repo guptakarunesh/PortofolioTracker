@@ -294,6 +294,20 @@ function truncateForLog(value = '', max = 180) {
   return `${text.slice(0, max - 3)}...`;
 }
 
+function traceNews(debugContext, stage, details = {}) {
+  if (!debugContext?.trace) return;
+  const payload = {
+    run_id: Number(debugContext?.run_id || 0) || undefined,
+    trigger: String(debugContext?.trigger || '') || undefined,
+    stage: String(stage || '').trim() || undefined,
+    ...details
+  };
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined || payload[key] === '') delete payload[key];
+  });
+  console.log('[news][trace]', payload);
+}
+
 function persistCuratedNewsItems(items = []) {
   let inserted = 0;
   const failures = [];
@@ -492,7 +506,8 @@ async function callOpenAIResponses({
   country = 'IN',
   searchContextSize = 'low',
   timeoutMs = null,
-  responseFormat = null
+  responseFormat = null,
+  debugContext = null
 }) {
   const toolVariants = useWebSearch
     ? [
@@ -546,6 +561,14 @@ async function callOpenAIResponses({
     const variantTimeoutMs = Math.max(8_000, Math.floor(remainingMs / remainingVariants));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), variantTimeoutMs);
+    traceNews(debugContext, 'openai_variant_begin', {
+      tool_variant: variantName,
+      variant_index: idx + 1,
+      variant_timeout_ms: variantTimeoutMs,
+      remaining_budget_ms: remainingMs,
+      model,
+      use_web_search: Boolean(useWebSearch)
+    });
     try {
       const body = {
         model,
@@ -573,6 +596,12 @@ async function callOpenAIResponses({
       });
 
       const raw = await response.text();
+      traceNews(debugContext, 'openai_variant_http', {
+        tool_variant: variantName,
+        status: Number(response.status || 0),
+        ok: Boolean(response.ok),
+        raw_chars: raw.length
+      });
       if (!response.ok) {
         throw new Error(raw || `OpenAI request failed (${response.status})`);
       }
@@ -587,6 +616,11 @@ async function callOpenAIResponses({
       variantAttempts.push({
         tool_variant: variantName,
         timeout_ms: variantTimeoutMs,
+        output_text_chars: outputText.length,
+        items: items.length
+      });
+      traceNews(debugContext, 'openai_variant_parsed', {
+        tool_variant: variantName,
         output_text_chars: outputText.length,
         items: items.length
       });
@@ -608,6 +642,10 @@ async function callOpenAIResponses({
         tool_variant: variantName,
         timeout_ms: variantTimeoutMs,
         error: String(error?.message || error)
+      });
+      traceNews(debugContext, 'openai_variant_error', {
+        tool_variant: variantName,
+        error: truncateForLog(String(error?.message || error), 400)
       });
     } finally {
       clearTimeout(timeout);
@@ -679,14 +717,35 @@ export async function ingestCuratedNews({
   apiKey,
   ingestModel = resolveNewsIngestModel(),
   country = 'IN',
-  forceRefresh = false
+  forceRefresh = false,
+  debugContext = null
 } = {}) {
   const effectiveApiKey = String(apiKey || resolveOpenAiApiKey()).trim();
   const startedAt = nowIso();
+  traceNews(debugContext, 'ingest_begin', {
+    country,
+    ingest_model: ingestModel,
+    force_refresh: Boolean(forceRefresh),
+    api_key_present: Boolean(effectiveApiKey)
+  });
+  traceNews(debugContext, 'ingest_prune_begin');
   pruneOldNews();
+  traceNews(debugContext, 'ingest_prune_end');
+  traceNews(debugContext, 'ingest_existing_read_begin');
   const existing = getCuratedNews({ limit: 60 });
+  traceNews(debugContext, 'ingest_existing_read_end', {
+    existing_count: existing.length
+  });
   const existingMeaningfulCount = countMeaningfulItems(existing);
+  traceNews(debugContext, 'ingest_existing_summary', {
+    existing_count: existing.length,
+    existing_meaningful_count: existingMeaningfulCount
+  });
   if (!forceRefresh && existingMeaningfulCount >= 10) {
+    traceNews(debugContext, 'ingest_skip_fresh_news_present', {
+      existing_count: existing.length,
+      existing_meaningful_count: existingMeaningfulCount
+    });
     logIngestRun({
       status: 'skipped',
       source: 'pipeline',
@@ -699,6 +758,7 @@ export async function ingestCuratedNews({
     return { ok: true, skipped: true, inserted: 0, total_fresh_items: existing.length };
   }
   if (!effectiveApiKey) {
+    traceNews(debugContext, 'ingest_skip_missing_api_key');
     logIngestRun({
       status: 'error',
       source: 'pipeline',
@@ -747,6 +807,13 @@ export async function ingestCuratedNews({
     let normalized = [];
 
     for (const attempt of attemptConfigs) {
+      traceNews(debugContext, 'ingest_attempt_begin', {
+        attempt: attempt.name,
+        max_age_hours: attempt.maxAgeHours,
+        retry_mode: Boolean(attempt.retryMode),
+        timeout_ms: attempt.timeoutMs,
+        search_context_size: attempt.searchContextSize
+      });
       const prompt = buildIngestPrompt({
         country,
         maxAgeHours: attempt.maxAgeHours,
@@ -761,12 +828,22 @@ export async function ingestCuratedNews({
           country,
           searchContextSize: attempt.searchContextSize,
           timeoutMs: attempt.timeoutMs,
-          responseFormat: ingestJsonFormat()
+          responseFormat: ingestJsonFormat(),
+          debugContext: {
+            ...debugContext,
+            attempt: attempt.name
+          }
         });
 
         const currentRawItems = Array.isArray(out?.items) ? out.items : [];
         const { normalized: currentNormalized, rejections: currentRejections } = normalizeIngestedBatch(currentRawItems, {
           maxAgeHours: attempt.maxAgeHours
+        });
+        traceNews(debugContext, 'ingest_attempt_normalized', {
+          attempt: attempt.name,
+          model_items_raw: currentRawItems.length,
+          model_items_normalized: currentNormalized.length,
+          rejection_reasons: Object.keys(currentRejections).length ? currentRejections : undefined
         });
         attemptSummary.push({
           attempt: attempt.name,
@@ -791,6 +868,10 @@ export async function ingestCuratedNews({
       } catch (attemptError) {
         const attemptErrorText = String(attemptError?.message || attemptError);
         openAiError = attemptErrorText;
+        traceNews(debugContext, 'ingest_attempt_error', {
+          attempt: attempt.name,
+          error: truncateForLog(attemptErrorText, 400)
+        });
         attemptSummary.push({
           attempt: attempt.name,
           error: attemptErrorText
@@ -805,30 +886,57 @@ export async function ingestCuratedNews({
 
     if (normalized.length) {
       effectiveItems = normalized;
+      traceNews(debugContext, 'ingest_effective_items_model', {
+        effective_items: effectiveItems.length
+      });
     } else if (existingMeaningfulCount > 0) {
       message = 'ingest_completed_using_existing_after_empty_model_output';
       warning = 'model_output_empty_using_existing';
+      traceNews(debugContext, 'ingest_effective_items_existing', {
+        existing_meaningful_count: existingMeaningfulCount,
+        warning
+      });
     } else {
       effectiveItems = fallbackItems;
       message = 'ingest_completed_with_catalog_fallback';
       warning = 'catalog_fallback_used';
+      traceNews(debugContext, 'ingest_effective_items_catalog_fallback', {
+        fallback_items: fallbackItems.length,
+        warning
+      });
     }
 
     if (normalized.length) {
+      traceNews(debugContext, 'ingest_purge_catalog_fallback_begin');
       purgeCatalogFallbackItems();
+      traceNews(debugContext, 'ingest_purge_catalog_fallback_end');
     }
     let writeFailures = [];
     let insertedCount = 0;
     if (effectiveItems.length) {
+      traceNews(debugContext, 'ingest_persist_begin', {
+        effective_items: effectiveItems.length
+      });
       const writeResult = persistCuratedNewsItems(effectiveItems);
       insertedCount = writeResult.inserted;
       writeFailures = writeResult.failures;
+      traceNews(debugContext, 'ingest_persist_end', {
+        inserted_count: insertedCount,
+        write_failures_count: writeFailures.length
+      });
       if (!warning && writeFailures.length) {
         warning = insertedCount > 0 ? 'partial_write_failures' : 'persist_failed';
       }
     }
+    traceNews(debugContext, 'ingest_post_persist_prune_begin');
     pruneOldNews();
+    traceNews(debugContext, 'ingest_post_persist_prune_end');
+    traceNews(debugContext, 'ingest_refreshed_read_begin');
     const refreshed = getCuratedNews({ limit: 60 });
+    traceNews(debugContext, 'ingest_refreshed_read_end', {
+      refreshed_count: refreshed.length,
+      refreshed_meaningful_count: countMeaningfulItems(refreshed)
+    });
     const totalFreshItems = refreshed.length;
     logIngestRun({
       status: warning ? 'warning' : 'ok',
@@ -866,9 +974,20 @@ export async function ingestCuratedNews({
     if (writeFailures.length) payload.write_failures = writeFailures.slice(0, 3);
     if (!openAiError && writeFailures.length) payload.error = writeFailures[0].error;
     if (openAiError) payload.error = openAiError;
+    traceNews(debugContext, 'ingest_complete', {
+      ok: true,
+      inserted: insertedCount,
+      total_fresh_items: totalFreshItems,
+      warning: warning || undefined,
+      error: openAiError || undefined
+    });
     return payload;
   } catch (error) {
     const errorText = String(error?.message || error);
+    traceNews(debugContext, 'ingest_fatal_error', {
+      error: truncateForLog(errorText, 400),
+      existing_meaningful_count: existingMeaningfulCount
+    });
     if (existingMeaningfulCount > 0) {
       logIngestRun({
         status: 'error',
@@ -893,7 +1012,14 @@ export async function ingestCuratedNews({
     }
 
     const effectiveItems = dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
+    traceNews(debugContext, 'ingest_fatal_catalog_fallback_begin', {
+      effective_items: effectiveItems.length
+    });
     const fallbackWrite = persistCuratedNewsItems(effectiveItems);
+    traceNews(debugContext, 'ingest_fatal_catalog_fallback_persisted', {
+      inserted: fallbackWrite.inserted,
+      write_failures_count: fallbackWrite.failures.length
+    });
     pruneOldNews();
     const totalFreshItems = getCuratedNews({ limit: 60 }).length;
     logIngestRun({
@@ -1220,9 +1346,9 @@ export async function ensureCuratedNews({
         meaningful_count: meaningfulCurrentCount,
         ingest_ok: false,
         ingest_warning: 'ingest_retry_cooldown_active'
-      };
-    }
+    };
   }
+}
 
   const ingestResult = await ingestCuratedNews({ apiKey: effectiveApiKey, country, forceRefresh });
   const refreshed = getCuratedNews({ limit: 60 });
@@ -1242,11 +1368,29 @@ export async function ensureSharedCuratedNewsFresh({
   country = 'IN',
   staleAfterHours = SHARED_CURATED_NEWS_REFRESH_HOURS,
   forceRefresh = false,
-  minFreshItems = 8
+  minFreshItems = 8,
+  debugContext = null
 } = {}) {
   const effectiveApiKey = String(apiKey || resolveOpenAiApiKey()).trim();
+  traceNews(debugContext, 'shared_refresh_state_before_begin', {
+    country,
+    stale_after_hours: staleAfterHours,
+    force_refresh: Boolean(forceRefresh),
+    min_fresh_items: minFreshItems,
+    api_key_present: Boolean(effectiveApiKey)
+  });
   const before = getSharedCuratedNewsState({ staleAfterHours });
+  traceNews(debugContext, 'shared_refresh_state_before_end', {
+    count: before.count,
+    meaningful_count: before.meaningful_count,
+    stale: Boolean(before.stale),
+    last_success_at: before.last_success_at || undefined
+  });
   if (!forceRefresh && !before.stale && before.meaningful_count >= minFreshItems) {
+    traceNews(debugContext, 'shared_refresh_skip_already_fresh', {
+      count: before.count,
+      meaningful_count: before.meaningful_count
+    });
     return {
       ...before,
       refreshed: false,
@@ -1255,6 +1399,7 @@ export async function ensureSharedCuratedNewsFresh({
   }
 
   if (!effectiveApiKey) {
+    traceNews(debugContext, 'shared_refresh_skip_missing_api_key');
     return {
       ...before,
       refreshed: false,
@@ -1263,12 +1408,30 @@ export async function ensureSharedCuratedNewsFresh({
     };
   }
 
+  traceNews(debugContext, 'shared_refresh_ingest_begin', {
+    country
+  });
   const ingestResult = await ingestCuratedNews({
     apiKey: effectiveApiKey,
     country,
-    forceRefresh: true
+    forceRefresh: true,
+    debugContext
   });
+  traceNews(debugContext, 'shared_refresh_ingest_end', {
+    ingest_ok: ingestResult?.ok !== false,
+    ingest_warning: ingestResult?.warning || undefined,
+    ingest_error: ingestResult?.error || undefined,
+    inserted: Number(ingestResult?.inserted || 0),
+    total_fresh_items: Number(ingestResult?.total_fresh_items || 0)
+  });
+  traceNews(debugContext, 'shared_refresh_state_after_begin');
   const after = getSharedCuratedNewsState({ staleAfterHours });
+  traceNews(debugContext, 'shared_refresh_state_after_end', {
+    count: after.count,
+    meaningful_count: after.meaningful_count,
+    stale: Boolean(after.stale),
+    last_success_at: after.last_success_at || undefined
+  });
   return {
     ...after,
     refreshed: true,
@@ -1373,10 +1536,20 @@ export function triggerSharedCuratedNewsRefresh({
   sharedCuratedNewsRefreshJob.started_at = '';
   sharedCuratedNewsRefreshJob.finished_at = '';
   sharedCuratedNewsRefreshJob.last_error = '';
+  traceNews({ trace: true, run_id: runId, trigger: sharedCuratedNewsRefreshJob.trigger }, 'shared_refresh_job_queued', {
+    country,
+    stale_after_hours: staleAfterHours,
+    force_refresh: Boolean(forceRefresh),
+    min_fresh_items: minFreshItems,
+    job_timeout_ms: SHARED_CURATED_NEWS_JOB_TIMEOUT_MS
+  });
 
   setTimeout(() => {
     if (runId !== sharedCuratedNewsRefreshJob.run_id) return;
     sharedCuratedNewsRefreshJob.started_at = nowIso();
+    traceNews({ trace: true, run_id: runId, trigger: sharedCuratedNewsRefreshJob.trigger }, 'shared_refresh_job_started', {
+      started_at: sharedCuratedNewsRefreshJob.started_at
+    });
     let timeoutHandle = null;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutHandle = setTimeout(
@@ -1391,7 +1564,12 @@ export function triggerSharedCuratedNewsRefresh({
         country,
         staleAfterHours,
         forceRefresh,
-        minFreshItems
+        minFreshItems,
+        debugContext: {
+          trace: true,
+          run_id: runId,
+          trigger: sharedCuratedNewsRefreshJob.trigger
+        }
       }),
       timeoutPromise
     ])

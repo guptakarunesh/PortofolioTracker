@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { db } from '../src/lib/db.js';
 import {
   buildInsightNewsBullets,
   getSharedCuratedNewsRefreshStatus,
@@ -257,6 +258,62 @@ test('stale shared news refresh jobs are released so a new job can start', async
     assert.equal(finalStatus?.last_result?.ingest_ok, true);
   } finally {
     Date.now = originalDateNow;
+    global.fetch = originalFetch;
+  }
+});
+
+test('shared news refresh finishes with warning when curated-news persistence fails', async () => {
+  const originalFetch = global.fetch;
+  const originalPrepare = db.prepare.bind(db);
+
+  global.fetch = async () => ({
+    ok: true,
+    text: async () =>
+      JSON.stringify({
+        output_text: JSON.stringify({
+          items: []
+        })
+      })
+  });
+
+  db.prepare = (sql) => {
+    const statement = originalPrepare(sql);
+    if (String(sql).includes('INSERT INTO news_items')) {
+      return {
+        ...statement,
+        run: () => {
+          throw new Error('database query failed: mock persist timeout');
+        }
+      };
+    }
+    return statement;
+  };
+
+  try {
+    originalPrepare('DELETE FROM news_items').run();
+    originalPrepare('DELETE FROM news_ingest_runs').run();
+    const refresh = triggerSharedCuratedNewsRefresh({
+      apiKey: 'test-key',
+      country: 'IN',
+      forceRefresh: true,
+      trigger: 'test_persist_failure'
+    });
+    assert.equal(refresh.started, true);
+
+    let finalStatus = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      finalStatus = getSharedCuratedNewsRefreshStatus();
+      if (!finalStatus.running && finalStatus.last_result) break;
+    }
+
+    assert.equal(finalStatus?.running, false);
+    assert.equal(finalStatus?.trigger, 'test_persist_failure');
+    assert.equal(finalStatus?.last_error, '');
+    assert.equal(finalStatus?.last_result?.ingest_ok, false);
+    assert.match(finalStatus?.last_result?.ingest_warning || '', /persist_failed/);
+  } finally {
+    db.prepare = originalPrepare;
     global.fetch = originalFetch;
   }
 });

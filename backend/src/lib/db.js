@@ -176,9 +176,10 @@ function createPostgresCompatDb(connectionString) {
         run: (...args) => {
           const q = toPgQuery(baseSql, args);
           const isInsert = /^\s*insert\s+/i.test(q.text);
+          const isUpsert = isInsert && /\bon\s+conflict\b/i.test(q.text);
           const result = querySync(q.text, q.values);
           let lastInsertRowid = null;
-          if (isInsert) {
+          if (isInsert && !isUpsert) {
             const tableMatch = q.text.match(/^\s*insert\s+into\s+([^\s(]+)/i);
             const tableName = tableMatch?.[1]?.replace(/"/g, '') || null;
             if (tableName) {

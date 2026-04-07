@@ -288,6 +288,64 @@ function upsertNewsItem(item) {
   );
 }
 
+function newsItemDbValues(item, timestamp = nowIso()) {
+  return [
+    item.source_key,
+    item.source_name,
+    item.source_domain,
+    item.category,
+    item.investment_label,
+    item.title,
+    item.summary,
+    item.canonical_url,
+    item.published_at,
+    item.fetched_at,
+    item.trust_score,
+    item.is_official ? 1 : 0,
+    item.source_priority,
+    item.content_hash,
+    JSON.stringify(item.metadata || {}),
+    timestamp,
+    timestamp
+  ];
+}
+
+function bulkUpsertNewsItems(items = []) {
+  const rows = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!rows.length) return { changes: 0, lastInsertRowid: null };
+
+  const placeholders = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+  const sql = `
+    INSERT INTO news_items (
+      source_key, source_name, source_domain, category, investment_label, title, summary,
+      canonical_url, published_at, fetched_at, trust_score, is_official, source_priority,
+      content_hash, metadata, created_at, updated_at
+    ) VALUES ${rows.map(() => placeholders).join(', ')}
+    ON CONFLICT(canonical_url) DO UPDATE SET
+      source_key = excluded.source_key,
+      source_name = excluded.source_name,
+      source_domain = excluded.source_domain,
+      category = excluded.category,
+      investment_label = excluded.investment_label,
+      title = excluded.title,
+      summary = excluded.summary,
+      published_at = excluded.published_at,
+      fetched_at = excluded.fetched_at,
+      trust_score = excluded.trust_score,
+      is_official = excluded.is_official,
+      source_priority = excluded.source_priority,
+      content_hash = excluded.content_hash,
+      metadata = excluded.metadata,
+      updated_at = excluded.updated_at
+  `;
+
+  const values = [];
+  for (const item of rows) {
+    values.push(...newsItemDbValues(item));
+  }
+  return db.prepare(sql).run(...values);
+}
+
 function truncateForLog(value = '', max = 180) {
   const text = String(value || '');
   if (text.length <= max) return text;
@@ -309,21 +367,22 @@ function traceNews(debugContext, stage, details = {}) {
 }
 
 function persistCuratedNewsItems(items = []) {
-  let inserted = 0;
-  const failures = [];
-  for (const item of Array.isArray(items) ? items : []) {
-    try {
-      upsertNewsItem(item);
-      inserted += 1;
-    } catch (error) {
-      failures.push({
+  const rows = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!rows.length) return { inserted: 0, failures: [] };
+  try {
+    bulkUpsertNewsItems(rows);
+    return { inserted: rows.length, failures: [] };
+  } catch (error) {
+    const errorText = String(error?.message || error);
+    return {
+      inserted: 0,
+      failures: rows.slice(0, 3).map((item, index) => ({
         canonical_url: truncateForLog(item?.canonical_url || '', 240),
         title: truncateForLog(item?.title || '', 120),
-        error: String(error?.message || error)
-      });
-    }
+        error: index === 0 ? errorText : 'skipped_after_bulk_failure'
+      }))
+    };
   }
-  return { inserted, failures };
 }
 
 export function getCuratedNews({ maxAgeHours = NEWS_MAX_AGE_HOURS, limit = 24 } = {}) {
@@ -922,11 +981,61 @@ export async function ingestCuratedNews({
       writeFailures = writeResult.failures;
       traceNews(debugContext, 'ingest_persist_end', {
         inserted_count: insertedCount,
+        write_failures_count: writeFailures.length,
+        write_failure_sample: writeFailures.length
+          ? truncateForLog(
+              `${writeFailures[0]?.title || writeFailures[0]?.canonical_url || 'item'} :: ${writeFailures[0]?.error || 'persist_failed'}`,
+              240
+            )
+          : undefined
+      });
+      if (writeFailures.length) {
+        warning = insertedCount > 0 ? (warning || 'partial_write_failures') : 'persist_failed';
+      }
+    }
+    if (!insertedCount && writeFailures.length) {
+      const persistError = String(writeFailures[0]?.error || 'persist_failed');
+      traceNews(debugContext, 'ingest_persist_failed_return', {
+        warning,
+        error: truncateForLog(persistError, 320),
         write_failures_count: writeFailures.length
       });
-      if (!warning && writeFailures.length) {
-        warning = insertedCount > 0 ? 'partial_write_failures' : 'persist_failed';
-      }
+      logIngestRun({
+        status: 'warning',
+        source: 'pipeline',
+        itemCount: 0,
+        message: 'ingest_persist_failed',
+        metadata: {
+          attempted_items: effectiveItems.length,
+          persisted_items: 0,
+          total_fresh_items: existing.length,
+          meaningful_count: existingMeaningfulCount,
+          model_items_raw: rawItems.length,
+          model_items: normalized.length,
+          rejected_items: Math.max(0, rawItems.length - normalized.length),
+          rejection_reasons: Object.keys(normalizationRejections).length ? normalizationRejections : undefined,
+          write_failures_count: writeFailures.length,
+          write_failures: writeFailures.slice(0, 3),
+          attempts: attemptSummary,
+          openai_error: openAiError || undefined,
+          warning: warning || undefined
+        },
+        startedAt,
+        finishedAt: nowIso()
+      });
+      const payload = {
+        ok: false,
+        inserted: 0,
+        total_fresh_items: existing.length,
+        model_items_raw: rawItems.length,
+        model_items_normalized: normalized.length,
+        warning: warning || 'persist_failed',
+        error: persistError,
+        write_failures: writeFailures.slice(0, 3)
+      };
+      if (attemptSummary.length) payload.ingest_attempts = attemptSummary;
+      if (Object.keys(normalizationRejections).length) payload.normalization_rejections = normalizationRejections;
+      return payload;
     }
     traceNews(debugContext, 'ingest_post_persist_prune_begin');
     pruneOldNews();

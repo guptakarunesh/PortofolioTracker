@@ -32,6 +32,14 @@ const SHARED_CURATED_NEWS_JOB_TIMEOUT_MS = Math.max(
   30_000,
   Number.parseInt(process.env.SHARED_CURATED_NEWS_JOB_TIMEOUT_MS || '180000', 10)
 );
+const AI_WEB_TIMEOUT_MS = Math.max(
+  20_000,
+  Number.parseInt(process.env.AI_WEB_TIMEOUT_MS || '60000', 10)
+);
+const AI_NONWEB_TIMEOUT_MS = Math.max(
+  10_000,
+  Number.parseInt(process.env.AI_NONWEB_TIMEOUT_MS || '25000', 10)
+);
 
 const sharedCuratedNewsMemory = {
   items: [],
@@ -691,7 +699,7 @@ async function callOpenAIResponses({
     : [{ name: 'none', tools: [] }];
 
   const variantAttempts = [];
-  const totalTimeoutMs = timeoutMs || (useWebSearch ? 60_000 : 25_000);
+  const totalTimeoutMs = timeoutMs || (useWebSearch ? AI_WEB_TIMEOUT_MS : AI_NONWEB_TIMEOUT_MS);
   const startedAtMs = Date.now();
   let lastError = null;
   let emptyItemsParsed = null;
@@ -942,14 +950,14 @@ export async function ingestCuratedNews({
         maxAgeHours: NEWS_MAX_AGE_HOURS,
         retryMode: false,
         searchContextSize: 'medium',
-        timeoutMs: 28_000
+        timeoutMs: AI_WEB_TIMEOUT_MS
       },
       {
         name: 'retry_72h_relaxed',
         maxAgeHours: Math.max(72, NEWS_MAX_AGE_HOURS),
         retryMode: true,
         searchContextSize: 'medium',
-        timeoutMs: 36_000
+        timeoutMs: Math.max(AI_WEB_TIMEOUT_MS, Math.round(AI_WEB_TIMEOUT_MS * 1.5))
       }
     ];
     const attemptSummary = [];

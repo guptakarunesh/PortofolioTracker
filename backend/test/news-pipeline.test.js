@@ -337,3 +337,74 @@ test('shared news refresh keeps meaningful items in memory when persistence fail
     global.fetch = originalFetch;
   }
 });
+
+test('shared news refresh still completes when ingest-run logging fails', async () => {
+  const originalFetch = global.fetch;
+  const originalPrepare = db.prepare.bind(db);
+
+  global.fetch = async () => ({
+    ok: true,
+    text: async () =>
+      JSON.stringify({
+        output_text: JSON.stringify({
+          items: [
+            {
+              source_key: 'moneycontrol',
+              source_name: 'Moneycontrol',
+              category: 'stocks',
+              title: 'Sensex rises after policy cues',
+              summary: 'Markets responded to policy signals and banking commentary.',
+              url: 'https://www.moneycontrol.com/news/business/markets/sensex-policy-cues.html',
+              published_at: new Date().toISOString()
+            }
+          ]
+        })
+      })
+  });
+
+  db.prepare = (sql) => {
+    const statement = originalPrepare(sql);
+    if (String(sql).includes('INSERT INTO news_ingest_runs')) {
+      return {
+        ...statement,
+        run: () => {
+          throw new Error('database query failed: mock ingest-run insert timeout');
+        }
+      };
+    }
+    return statement;
+  };
+
+  try {
+    originalPrepare('DELETE FROM news_items').run();
+    originalPrepare('DELETE FROM news_ingest_runs').run();
+    const refresh = triggerSharedCuratedNewsRefresh({
+      apiKey: 'test-key',
+      country: 'IN',
+      forceRefresh: true,
+      trigger: 'test_ingest_run_log_failure'
+    });
+    assert.equal(refresh.started, true);
+
+    let finalStatus = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      finalStatus = getSharedCuratedNewsRefreshStatus();
+      if (!finalStatus.running && finalStatus.last_result) break;
+    }
+
+    assert.equal(finalStatus?.running, false);
+    assert.equal(finalStatus?.last_error, '');
+    assert.equal(finalStatus?.last_result?.ingest_ok, true);
+    assert.equal(finalStatus?.last_result?.count, 1);
+    assert.equal(finalStatus?.last_result?.meaningful_count, 1);
+
+    const sharedState = getSharedCuratedNewsState();
+    assert.equal(sharedState.count, 1);
+    assert.equal(sharedState.meaningful_count, 1);
+    assert.match(sharedState.items[0]?.title || '', /Sensex rises/);
+  } finally {
+    db.prepare = originalPrepare;
+    global.fetch = originalFetch;
+  }
+});

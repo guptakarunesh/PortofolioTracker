@@ -310,18 +310,26 @@ function purgeCatalogFallbackItems() {
 }
 
 function logIngestRun({ status = 'ok', source = 'pipeline', itemCount = 0, message = '', metadata = {}, startedAt, finishedAt }) {
-  db.prepare(`
-    INSERT INTO news_ingest_runs (status, source, item_count, message, metadata, started_at, finished_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    status,
-    source,
-    Number(itemCount || 0),
-    String(message || ''),
-    JSON.stringify(metadata || {}),
-    String(startedAt || nowIso()),
-    String(finishedAt || nowIso())
-  );
+  try {
+    db.prepare(`
+      INSERT INTO news_ingest_runs (status, source, item_count, message, metadata, started_at, finished_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      status,
+      source,
+      Number(itemCount || 0),
+      String(message || ''),
+      JSON.stringify(metadata || {}),
+      String(startedAt || nowIso()),
+      String(finishedAt || nowIso())
+    );
+  } catch (error) {
+    console.error('[news] ingest run logging failed', {
+      status: String(status || ''),
+      message: String(message || ''),
+      error: String(error?.message || error)
+    });
+  }
 }
 
 function upsertNewsItem(item) {

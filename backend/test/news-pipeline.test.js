@@ -480,3 +480,60 @@ test('shared news refresh limits ingested items to five per source', async () =>
     global.fetch = originalFetch;
   }
 });
+
+test('shared news refresh accepts latest available items without a 48-hour cutoff', async () => {
+  const originalFetch = global.fetch;
+  const olderButRecentEnough = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+
+  global.fetch = async () => ({
+    ok: true,
+    text: async () =>
+      JSON.stringify({
+        output_text: JSON.stringify({
+          items: [
+            {
+              source_key: 'mint',
+              source_name: 'LiveMint',
+              category: 'retirement',
+              title: 'Retirement allocation resets after rate pause',
+              summary: 'A latest available retirement-focused story from the allowlist.',
+              url: 'https://www.livemint.com/money/personal-finance/retirement-allocation-rate-pause.html',
+              published_at: olderButRecentEnough
+            }
+          ]
+        })
+      })
+  });
+
+  try {
+    db.prepare('DELETE FROM news_items').run();
+    db.prepare('DELETE FROM news_ingest_runs').run();
+
+    const refresh = triggerSharedCuratedNewsRefresh({
+      apiKey: 'test-key',
+      country: 'IN',
+      forceRefresh: true,
+      trigger: 'test_latest_available'
+    });
+    assert.equal(refresh.started, true);
+
+    let finalStatus = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      finalStatus = getSharedCuratedNewsRefreshStatus();
+      if (!finalStatus.running && finalStatus.last_result) break;
+    }
+
+    assert.equal(finalStatus?.running, false);
+    assert.equal(finalStatus?.last_error, '');
+    assert.equal(finalStatus?.last_result?.ingest_ok, true);
+
+    const sharedState = getSharedCuratedNewsState();
+    assert.equal(sharedState.count, 1);
+    assert.equal(sharedState.meaningful_count, 1);
+    assert.equal(sharedState.stale, false);
+    assert.match(sharedState.items[0]?.title || '', /Retirement allocation resets/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

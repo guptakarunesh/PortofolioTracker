@@ -219,9 +219,14 @@ function parseIsoDate(value = '') {
   return dt;
 }
 
+function hasAgeWindow(maxAgeHours = NEWS_MAX_AGE_HOURS) {
+  return Number.isFinite(Number(maxAgeHours)) && Number(maxAgeHours) > 0;
+}
+
 function withinFreshWindow(dateValue, maxAgeHours = NEWS_MAX_AGE_HOURS) {
   const dt = parseIsoDate(dateValue);
   if (!dt) return false;
+  if (!hasAgeWindow(maxAgeHours)) return true;
   return Date.now() - dt.getTime() <= maxAgeHours * 60 * 60 * 1000;
 }
 
@@ -489,21 +494,35 @@ function persistCuratedNewsItems(items = []) {
   }
 }
 
-export function getCuratedNews({ maxAgeHours = NEWS_MAX_AGE_HOURS, limit = 24 } = {}) {
-  const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString();
-  return db
-    .prepare(
-      `
-      SELECT id, source_key, source_name, source_domain, category, investment_label, title, summary,
-             canonical_url, published_at, fetched_at, trust_score, is_official, source_priority, metadata
-      FROM news_items
-      WHERE published_at >= ?
-      ORDER BY is_official DESC, source_priority DESC, published_at DESC
-      LIMIT ?
-    `
-    )
-    .all(cutoff, limit)
-    .map((row) => ({ ...row, metadata: safeJsonParse(row.metadata, {}) }));
+export function getCuratedNews({ maxAgeHours = null, limit = 24 } = {}) {
+  const sqlBase = `
+    SELECT id, source_key, source_name, source_domain, category, investment_label, title, summary,
+           canonical_url, published_at, fetched_at, trust_score, is_official, source_priority, metadata
+    FROM news_items
+  `;
+  const orderClause = `
+    ORDER BY is_official DESC, source_priority DESC, published_at DESC
+    LIMIT ?
+  `;
+  const rows = hasAgeWindow(maxAgeHours)
+    ? db
+        .prepare(
+          `
+          ${sqlBase}
+          WHERE published_at >= ?
+          ${orderClause}
+        `
+        )
+        .all(new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString(), limit)
+    : db
+        .prepare(
+          `
+          ${sqlBase}
+          ${orderClause}
+        `
+        )
+        .all(limit);
+  return rows.map((row) => ({ ...row, metadata: safeJsonParse(row.metadata, {}) }));
 }
 
 function latestFreshTimestamp(items = []) {
@@ -591,7 +610,9 @@ function buildIngestPrompt({ country = 'IN', maxAgeHours = NEWS_MAX_AGE_HOURS, r
 
   return [
     'Role: Curated India personal-finance news ingestion service.',
-    `Task: find fresh, India-relevant items from the last ${maxAgeHours} hours only.`,
+    hasAgeWindow(maxAgeHours)
+      ? `Task: find the latest India-relevant items from the last ${maxAgeHours} hours only.`
+      : 'Task: find the latest available, India-relevant items from the allowlisted sources.',
     'Return STRICT JSON with key "items" as an array.',
     'Return ONLY valid JSON. Do not add any explanation before or after the JSON.',
     'If live browsing is unavailable or blocked, return {"items":[]} and nothing else.',
@@ -601,7 +622,9 @@ function buildIngestPrompt({ country = 'IN', maxAgeHours = NEWS_MAX_AGE_HOURS, r
     'Use only these categories:',
     buildCategoryInstructions(),
     'Rules:',
-    `- Only include items with a visible publish timestamp in the last ${maxAgeHours} hours.`,
+    hasAgeWindow(maxAgeHours)
+      ? `- Only include items with a visible publish timestamp in the last ${maxAgeHours} hours.`
+      : '- Prefer the most recent items available from the allowlisted sources, and include the visible publish timestamp when available.',
     `- For gold_metals items, use only these sources: ${buildSourceNameInstructions(GOLD_SILVER_SOURCE_KEYS)}.`,
     '- Prefer major Indian finance publishers in the allowlist for fast market-moving coverage.',
     '- Deduplicate near-identical stories.',
@@ -871,8 +894,10 @@ function normalizeIngestedItem(rawItem = {}, options = {}) {
   if (category === 'gold_metals' && !GOLD_SILVER_SOURCE_KEYS.includes(source.key)) return reject('gold_source_not_allowed');
   const publishedAt = parseIsoDate(rawItem.published_at);
   if (!publishedAt) return reject('invalid_published_at');
-  const maxAgeHours = Number(options?.maxAgeHours || NEWS_MAX_AGE_HOURS);
-  if (!withinFreshWindow(publishedAt.toISOString(), maxAgeHours)) return reject('outside_fresh_window');
+  const maxAgeHours = options && Object.prototype.hasOwnProperty.call(options, 'maxAgeHours')
+    ? options.maxAgeHours
+    : NEWS_MAX_AGE_HOURS;
+  if (hasAgeWindow(maxAgeHours) && !withinFreshWindow(publishedAt.toISOString(), maxAgeHours)) return reject('outside_fresh_window');
 
   const title = normalizeWhitespace(rawItem.title || '');
   if (!title) return reject('missing_title');
@@ -976,15 +1001,15 @@ export async function ingestCuratedNews({
   try {
     const attemptConfigs = [
       {
-        name: 'strict_48h',
-        maxAgeHours: NEWS_MAX_AGE_HOURS,
+        name: 'latest_primary',
+        maxAgeHours: null,
         retryMode: false,
         searchContextSize: 'medium',
         timeoutMs: AI_WEB_TIMEOUT_MS
       },
       {
-        name: 'retry_72h_relaxed',
-        maxAgeHours: Math.max(72, NEWS_MAX_AGE_HOURS),
+        name: 'latest_relaxed',
+        maxAgeHours: null,
         retryMode: true,
         searchContextSize: 'medium',
         timeoutMs: Math.max(AI_WEB_TIMEOUT_MS, Math.round(AI_WEB_TIMEOUT_MS * 1.5))
@@ -1109,7 +1134,7 @@ export async function ingestCuratedNews({
       });
     }
 
-    if (normalized.length) {
+    if (normalized.length || message === 'ingest_completed_with_catalog_fallback') {
       traceNews(debugContext, 'ingest_purge_catalog_fallback_begin');
       purgeCatalogFallbackItems();
       traceNews(debugContext, 'ingest_purge_catalog_fallback_end');

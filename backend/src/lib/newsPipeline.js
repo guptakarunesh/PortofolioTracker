@@ -40,6 +40,14 @@ const AI_NONWEB_TIMEOUT_MS = Math.max(
   10_000,
   Number.parseInt(process.env.AI_NONWEB_TIMEOUT_MS || '25000', 10)
 );
+const MAX_CURATED_ITEMS_PER_SOURCE = Math.max(
+  1,
+  Number.parseInt(process.env.CURATED_NEWS_MAX_ITEMS_PER_SOURCE || '5', 10)
+);
+const MAX_CURATED_ITEMS_TOTAL = Math.max(
+  MAX_CURATED_ITEMS_PER_SOURCE,
+  Number.parseInt(process.env.CURATED_NEWS_MAX_TOTAL_ITEMS || String(MAX_CURATED_ITEMS_PER_SOURCE * 3), 10)
+);
 
 const sharedCuratedNewsMemory = {
   items: [],
@@ -563,6 +571,13 @@ function buildCategoryInstructions() {
   return CURATED_NEWS_CATEGORIES.map((category) => `- ${category.key}: ${category.label}`).join('\n');
 }
 
+function buildSourceNameInstructions(sourceKeys = []) {
+  return sourceKeys
+    .map((key) => sourceByKey(key)?.name || key)
+    .filter(Boolean)
+    .join(', ');
+}
+
 function buildIngestPrompt({ country = 'IN', maxAgeHours = NEWS_MAX_AGE_HOURS, retryMode = false } = {}) {
   const retryRules = retryMode
     ? [
@@ -587,12 +602,12 @@ function buildIngestPrompt({ country = 'IN', maxAgeHours = NEWS_MAX_AGE_HOURS, r
     buildCategoryInstructions(),
     'Rules:',
     `- Only include items with a visible publish timestamp in the last ${maxAgeHours} hours.`,
-    `- For gold_metals items, use only these sources: ${GOLD_SILVER_SOURCE_KEYS.join(', ')}.`,
-    '- Prefer official sources for policy, retirement, compliance, and rule changes.',
+    `- For gold_metals items, use only these sources: ${buildSourceNameInstructions(GOLD_SILVER_SOURCE_KEYS)}.`,
     '- Prefer major Indian finance publishers in the allowlist for fast market-moving coverage.',
     '- Deduplicate near-identical stories.',
     '- Focus on actionable retail-investor context across bank savings, stocks, gold/metals, retirement, real estate, and other savings.',
-    '- Return 12 to 18 items when available.',
+    `- Return up to ${MAX_CURATED_ITEMS_TOTAL} items total when available.`,
+    `- Return no more than ${MAX_CURATED_ITEMS_PER_SOURCE} items from any single source.`,
     ...retryRules,
     `Country focus: ${country}`
   ].join('\n');
@@ -656,6 +671,21 @@ function normalizeIngestedBatch(rawItems = [], { maxAgeHours = NEWS_MAX_AGE_HOUR
       .filter(Boolean)
   );
   return { normalized, rejections };
+}
+
+function limitItemsPerSource(items = [], maxPerSource = MAX_CURATED_ITEMS_PER_SOURCE, maxItems = MAX_CURATED_ITEMS_TOTAL) {
+  const counts = new Map();
+  const selected = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item) continue;
+    const sourceKey = String(item.source_key || '');
+    const currentCount = Number(counts.get(sourceKey) || 0);
+    if (currentCount >= maxPerSource) continue;
+    selected.push(item);
+    counts.set(sourceKey, currentCount + 1);
+    if (selected.length >= maxItems) break;
+  }
+  return selected;
 }
 
 async function callOpenAIResponses({
@@ -999,25 +1029,26 @@ export async function ingestCuratedNews({
         const { normalized: currentNormalized, rejections: currentRejections } = normalizeIngestedBatch(currentRawItems, {
           maxAgeHours: attempt.maxAgeHours
         });
+        const currentNormalizedLimited = limitItemsPerSource(currentNormalized);
         traceNews(debugContext, 'ingest_attempt_normalized', {
           attempt: attempt.name,
           model_items_raw: currentRawItems.length,
-          model_items_normalized: currentNormalized.length,
+          model_items_normalized: currentNormalizedLimited.length,
           rejection_reasons: Object.keys(currentRejections).length ? currentRejections : undefined
         });
         attemptSummary.push({
           attempt: attempt.name,
           max_age_hours: attempt.maxAgeHours,
           model_items_raw: currentRawItems.length,
-          model_items_normalized: currentNormalized.length,
+          model_items_normalized: currentNormalizedLimited.length,
           tool_variant: out?._debug?.tool_variant || undefined,
           tool_attempts: Array.isArray(out?._debug?.tool_attempts) ? out._debug.tool_attempts : undefined,
           rejection_reasons: Object.keys(currentRejections).length ? currentRejections : undefined
         });
 
-        if (currentNormalized.length > normalized.length) {
+        if (currentNormalizedLimited.length > normalized.length) {
           rawItems = currentRawItems;
-          normalized = currentNormalized;
+          normalized = currentNormalizedLimited;
           normalizationRejections = currentRejections;
         } else if (!rawItems.length && currentRawItems.length) {
           rawItems = currentRawItems;
@@ -1039,7 +1070,7 @@ export async function ingestCuratedNews({
       }
     }
 
-    const fallbackItems = dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)).slice(0, 12);
+    const fallbackItems = limitItemsPerSource(dedupeItems(fallbackCatalog.map(normalizeIngestedItem).filter(Boolean)));
     let effectiveItems = [];
     let message = 'ingest_completed';
     let warning = '';

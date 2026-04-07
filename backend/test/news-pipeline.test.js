@@ -408,3 +408,75 @@ test('shared news refresh still completes when ingest-run logging fails', async 
     global.fetch = originalFetch;
   }
 });
+
+test('shared news refresh limits ingested items to five per source', async () => {
+  const originalFetch = global.fetch;
+  const originalPrepare = db.prepare.bind(db);
+  const now = new Date().toISOString();
+
+  global.fetch = async () => ({
+    ok: true,
+    text: async () =>
+      JSON.stringify({
+        output_text: JSON.stringify({
+          items: [
+            ...Array.from({ length: 7 }, (_, index) => ({
+              source_key: 'moneycontrol',
+              source_name: 'Moneycontrol',
+              category: 'stocks',
+              title: `Moneycontrol story ${index + 1}`,
+              summary: `Moneycontrol summary ${index + 1}.`,
+              url: `https://www.moneycontrol.com/news/business/markets/source-cap-${index + 1}.html`,
+              published_at: now
+            })),
+            ...Array.from({ length: 2 }, (_, index) => ({
+              source_key: 'economic_times',
+              source_name: 'The Economic Times',
+              category: 'bank_savings',
+              title: `Economic Times story ${index + 1}`,
+              summary: `Economic Times summary ${index + 1}.`,
+              url: `https://economictimes.indiatimes.com/wealth/source-cap-${index + 1}.cms`,
+              published_at: now
+            }))
+          ]
+        })
+      })
+  });
+
+  try {
+    originalPrepare('DELETE FROM news_items').run();
+    originalPrepare('DELETE FROM news_ingest_runs').run();
+
+    const refresh = triggerSharedCuratedNewsRefresh({
+      apiKey: 'test-key',
+      country: 'IN',
+      forceRefresh: true,
+      trigger: 'test_source_cap'
+    });
+    assert.equal(refresh.started, true);
+
+    let finalStatus = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      finalStatus = getSharedCuratedNewsRefreshStatus();
+      if (!finalStatus.running && finalStatus.last_result) break;
+    }
+
+    assert.equal(finalStatus?.running, false);
+    assert.equal(finalStatus?.last_error, '');
+    assert.equal(finalStatus?.last_result?.ingest_ok, true);
+
+    const sharedState = getSharedCuratedNewsState();
+    assert.equal(sharedState.count, 7);
+    assert.equal(sharedState.meaningful_count, 7);
+
+    const bySource = sharedState.items.reduce((acc, item) => {
+      acc[item.source_key] = Number(acc[item.source_key] || 0) + 1;
+      return acc;
+    }, {});
+    assert.equal(bySource.moneycontrol, 5);
+    assert.equal(bySource.economic_times, 2);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

@@ -8,7 +8,7 @@ export const CURATED_NEWS_SOURCES = [
     trustScore: 90,
     official: false,
     priority: 84,
-    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
+    categories: ['bank_savings', 'stocks', 'retirement', 'gold_metals', 'real_estate', 'other_savings']
   },
   {
     key: 'moneycontrol',
@@ -17,7 +17,7 @@ export const CURATED_NEWS_SOURCES = [
     trustScore: 88,
     official: false,
     priority: 82,
-    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
+    categories: ['bank_savings', 'stocks', 'retirement', 'gold_metals', 'real_estate', 'other_savings']
   },
   {
     key: 'mint',
@@ -26,43 +26,7 @@ export const CURATED_NEWS_SOURCES = [
     trustScore: 87,
     official: false,
     priority: 80,
-    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
-  },
-  {
-    key: 'business_standard',
-    name: 'Business Standard',
-    domains: ['business-standard.com'],
-    trustScore: 87,
-    official: false,
-    priority: 79,
-    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
-  },
-  {
-    key: 'financial_express',
-    name: 'Financial Express',
-    domains: ['financialexpress.com', 'www.financialexpress.com'],
-    trustScore: 86,
-    official: false,
-    priority: 78,
-    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
-  },
-  {
-    key: 'mcx',
-    name: 'MCX India',
-    domains: ['mcxindia.com', 'www.mcxindia.com'],
-    trustScore: 98,
-    official: true,
-    priority: 98,
-    categories: ['gold_metals']
-  },
-  {
-    key: 'ibja',
-    name: 'IBJA',
-    domains: ['ibja.co', 'www.ibja.co'],
-    trustScore: 97,
-    official: true,
-    priority: 97,
-    categories: ['gold_metals']
+    categories: ['bank_savings', 'stocks', 'retirement', 'gold_metals', 'real_estate', 'other_savings']
   }
 ];
 
@@ -129,4 +93,4 @@ export function sourceByUrl(value = '') {
   return CURATED_NEWS_SOURCES.find((item) => item.domains.some((domain) => url.includes(domain))) || null;
 }
 
-export const GOLD_SILVER_SOURCE_KEYS = ['mcx', 'ibja'];
+export const GOLD_SILVER_SOURCE_KEYS = ['economic_times', 'moneycontrol', 'mint'];

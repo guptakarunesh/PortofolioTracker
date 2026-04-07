@@ -33,6 +33,15 @@ const SHARED_CURATED_NEWS_JOB_TIMEOUT_MS = Math.max(
   Number.parseInt(process.env.SHARED_CURATED_NEWS_JOB_TIMEOUT_MS || '180000', 10)
 );
 
+const sharedCuratedNewsMemory = {
+  items: [],
+  updated_at: '',
+  last_run_status: '',
+  last_run_message: '',
+  last_run_finished_at: '',
+  last_run_metadata: {}
+};
+
 function resolveSharedNewsModel(fallback = INSIGHT_MODEL_FALLBACK) {
   return String(process.env.OPENAI_NEWS_MODEL || process.env.OPENAI_MODEL || fallback).trim() || fallback;
 }
@@ -218,6 +227,77 @@ function dedupeItems(items = []) {
     }
   }
   return [...seen.values()];
+}
+
+function snapshotCuratedNewsItems(items = []) {
+  return dedupeItems((Array.isArray(items) ? items : []).filter(Boolean)).map((item) => ({
+    ...item,
+    metadata: { ...(item?.metadata || {}) }
+  }));
+}
+
+function setSharedCuratedNewsMemoryItems(items = []) {
+  const nextItems = snapshotCuratedNewsItems(items);
+  if (!countMeaningfulItems(nextItems)) return false;
+  sharedCuratedNewsMemory.items = nextItems;
+  sharedCuratedNewsMemory.updated_at = nowIso();
+  return true;
+}
+
+function setSharedCuratedNewsMemoryRunMeta({
+  status = '',
+  message = '',
+  metadata = {},
+  finishedAt = ''
+} = {}) {
+  sharedCuratedNewsMemory.last_run_status = String(status || '');
+  sharedCuratedNewsMemory.last_run_message = String(message || '');
+  sharedCuratedNewsMemory.last_run_finished_at = String(finishedAt || nowIso());
+  sharedCuratedNewsMemory.last_run_metadata = metadata && typeof metadata === 'object' ? { ...metadata } : {};
+}
+
+function buildSharedCuratedNewsState({
+  items = [],
+  staleAfterHours = SHARED_CURATED_NEWS_REFRESH_HOURS,
+  lastRunStatus = '',
+  lastRunMessage = '',
+  lastRunFinishedAt = '',
+  lastRunMetadata = {}
+} = {}) {
+  const list = snapshotCuratedNewsItems(items);
+  const meaningfulItems = filterMeaningfulCuratedNewsItems(list);
+  const latestMeaningfulMs = latestFreshTimestamp(meaningfulItems);
+  const lastSuccessAt = latestMeaningfulMs ? new Date(latestMeaningfulMs).toISOString() : '';
+  const staleAfterMs = Math.max(1, Number(staleAfterHours || SHARED_CURATED_NEWS_REFRESH_HOURS)) * 60 * 60 * 1000;
+  const ageMs = latestMeaningfulMs ? Math.max(0, Date.now() - latestMeaningfulMs) : Number.POSITIVE_INFINITY;
+  return {
+    items: list,
+    meaningful_items: meaningfulItems,
+    count: list.length,
+    meaningful_count: meaningfulItems.length,
+    stale: !latestMeaningfulMs || ageMs > staleAfterMs,
+    age_hours: Number.isFinite(ageMs) ? Math.round((ageMs / (60 * 60 * 1000)) * 10) / 10 : null,
+    last_success_at: lastSuccessAt,
+    last_run_status: String(lastRunStatus || ''),
+    last_run_message: String(lastRunMessage || ''),
+    last_run_finished_at: String(lastRunFinishedAt || ''),
+    last_run_metadata: lastRunMetadata && typeof lastRunMetadata === 'object' ? { ...lastRunMetadata } : {}
+  };
+}
+
+function getSharedCuratedNewsMemoryState({
+  staleAfterHours = SHARED_CURATED_NEWS_REFRESH_HOURS,
+  limit = 60
+} = {}) {
+  if (!sharedCuratedNewsMemory.items.length) return null;
+  return buildSharedCuratedNewsState({
+    items: sharedCuratedNewsMemory.items.slice(0, limit),
+    staleAfterHours,
+    lastRunStatus: sharedCuratedNewsMemory.last_run_status,
+    lastRunMessage: sharedCuratedNewsMemory.last_run_message,
+    lastRunFinishedAt: sharedCuratedNewsMemory.last_run_finished_at,
+    lastRunMetadata: sharedCuratedNewsMemory.last_run_metadata
+  });
 }
 
 function pruneOldNews() {
@@ -429,26 +509,31 @@ export function getSharedCuratedNewsState({
   staleAfterHours = SHARED_CURATED_NEWS_REFRESH_HOURS,
   limit = 60
 } = {}) {
+  const memoryState = getSharedCuratedNewsMemoryState({ staleAfterHours, limit });
+  if (memoryState?.meaningful_count > 0) {
+    return memoryState;
+  }
+
   const items = getCuratedNews({ limit });
-  const meaningfulItems = filterMeaningfulCuratedNewsItems(items);
-  const latestMeaningfulMs = latestFreshTimestamp(meaningfulItems);
-  const lastSuccessAt = latestMeaningfulMs ? new Date(latestMeaningfulMs).toISOString() : '';
-  const staleAfterMs = Math.max(1, Number(staleAfterHours || SHARED_CURATED_NEWS_REFRESH_HOURS)) * 60 * 60 * 1000;
-  const ageMs = latestMeaningfulMs ? Math.max(0, Date.now() - latestMeaningfulMs) : Number.POSITIVE_INFINITY;
   const lastRun = latestNewsIngestRun();
-  return {
+  const dbState = buildSharedCuratedNewsState({
     items,
-    meaningful_items: meaningfulItems,
-    count: items.length,
-    meaningful_count: meaningfulItems.length,
-    stale: !latestMeaningfulMs || ageMs > staleAfterMs,
-    age_hours: Number.isFinite(ageMs) ? Math.round((ageMs / (60 * 60 * 1000)) * 10) / 10 : null,
-    last_success_at: lastSuccessAt,
-    last_run_status: String(lastRun?.status || ''),
-    last_run_message: String(lastRun?.message || ''),
-    last_run_finished_at: String(lastRun?.finished_at || ''),
-    last_run_metadata: safeJsonParse(lastRun?.metadata || '', {})
-  };
+    staleAfterHours,
+    lastRunStatus: String(lastRun?.status || ''),
+    lastRunMessage: String(lastRun?.message || ''),
+    lastRunFinishedAt: String(lastRun?.finished_at || ''),
+    lastRunMetadata: safeJsonParse(lastRun?.metadata || '', {})
+  });
+  if (dbState.meaningful_count > 0) {
+    sharedCuratedNewsMemory.items = snapshotCuratedNewsItems(dbState.items);
+    sharedCuratedNewsMemory.updated_at = nowIso();
+    sharedCuratedNewsMemory.last_run_status = dbState.last_run_status;
+    sharedCuratedNewsMemory.last_run_message = dbState.last_run_message;
+    sharedCuratedNewsMemory.last_run_finished_at = dbState.last_run_finished_at;
+    sharedCuratedNewsMemory.last_run_metadata = { ...(dbState.last_run_metadata || {}) };
+    return dbState;
+  }
+  return memoryState || dbState;
 }
 
 function buildSourceInstructions() {
@@ -965,6 +1050,18 @@ export async function ingestCuratedNews({
       });
     }
 
+    const memoryItems = countMeaningfulItems(effectiveItems)
+      ? effectiveItems
+      : existingMeaningfulCount > 0
+        ? existing
+        : [];
+    if (memoryItems.length && setSharedCuratedNewsMemoryItems(memoryItems)) {
+      traceNews(debugContext, 'ingest_memory_snapshot_seeded', {
+        items: memoryItems.length,
+        meaningful_count: countMeaningfulItems(memoryItems)
+      });
+    }
+
     if (normalized.length) {
       traceNews(debugContext, 'ingest_purge_catalog_fallback_begin');
       purgeCatalogFallbackItems();
@@ -1023,6 +1120,26 @@ export async function ingestCuratedNews({
         startedAt,
         finishedAt: nowIso()
       });
+      setSharedCuratedNewsMemoryRunMeta({
+        status: 'warning',
+        message: 'ingest_persist_failed',
+        metadata: {
+          attempted_items: effectiveItems.length,
+          persisted_items: 0,
+          total_fresh_items: existing.length,
+          meaningful_count: Math.max(existingMeaningfulCount, countMeaningfulItems(memoryItems)),
+          model_items_raw: rawItems.length,
+          model_items: normalized.length,
+          rejected_items: Math.max(0, rawItems.length - normalized.length),
+          rejection_reasons: Object.keys(normalizationRejections).length ? normalizationRejections : undefined,
+          write_failures_count: writeFailures.length,
+          write_failures: writeFailures.slice(0, 3),
+          attempts: attemptSummary,
+          openai_error: openAiError || undefined,
+          warning: warning || undefined
+        },
+        finishedAt: nowIso()
+      });
       const payload = {
         ok: false,
         inserted: 0,
@@ -1070,6 +1187,26 @@ export async function ingestCuratedNews({
       startedAt,
       finishedAt: nowIso()
     });
+    setSharedCuratedNewsMemoryRunMeta({
+      status: warning ? 'warning' : 'ok',
+      message,
+      metadata: {
+        attempted_items: effectiveItems.length,
+        persisted_items: insertedCount,
+        total_fresh_items: totalFreshItems,
+        meaningful_count: countMeaningfulItems(refreshed),
+        model_items_raw: rawItems.length,
+        model_items: normalized.length,
+        rejected_items: Math.max(0, rawItems.length - normalized.length),
+        rejection_reasons: Object.keys(normalizationRejections).length ? normalizationRejections : undefined,
+        write_failures_count: writeFailures.length,
+        write_failures: writeFailures.length ? writeFailures.slice(0, 3) : undefined,
+        attempts: attemptSummary,
+        openai_error: openAiError || undefined,
+        warning: warning || undefined
+      },
+      finishedAt: nowIso()
+    });
     const payload = {
       ok: true,
       inserted: insertedCount,
@@ -1098,6 +1235,17 @@ export async function ingestCuratedNews({
       existing_meaningful_count: existingMeaningfulCount
     });
     if (existingMeaningfulCount > 0) {
+      setSharedCuratedNewsMemoryItems(existing);
+      setSharedCuratedNewsMemoryRunMeta({
+        status: 'error',
+        message: 'ingest_error_using_existing',
+        metadata: {
+          total_fresh_items: existing.length,
+          meaningful_count: existingMeaningfulCount,
+          error: errorText
+        },
+        finishedAt: nowIso()
+      });
       logIngestRun({
         status: 'error',
         source: 'pipeline',
@@ -1146,6 +1294,20 @@ export async function ingestCuratedNews({
         write_failures: fallbackWrite.failures.length ? fallbackWrite.failures.slice(0, 3) : undefined
       },
       startedAt,
+      finishedAt: nowIso()
+    });
+    setSharedCuratedNewsMemoryRunMeta({
+      status: 'warning',
+      message: 'ingest_completed_with_error_catalog_fallback',
+      metadata: {
+        attempted_items: effectiveItems.length,
+        persisted_items: fallbackWrite.inserted,
+        total_fresh_items: totalFreshItems,
+        meaningful_count: countMeaningfulItems(getCuratedNews({ limit: 60 })),
+        error: errorText,
+        write_failures_count: fallbackWrite.failures.length,
+        write_failures: fallbackWrite.failures.length ? fallbackWrite.failures.slice(0, 3) : undefined
+      },
       finishedAt: nowIso()
     });
     const payload = {

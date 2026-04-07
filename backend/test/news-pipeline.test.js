@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { db } from '../src/lib/db.js';
 import {
   buildInsightNewsBullets,
+  getSharedCuratedNewsState,
   getSharedCuratedNewsRefreshStatus,
   resolveNewsIngestModel,
   resolveNewsInsightModel,
@@ -262,7 +263,7 @@ test('stale shared news refresh jobs are released so a new job can start', async
   }
 });
 
-test('shared news refresh finishes with warning when curated-news persistence fails', async () => {
+test('shared news refresh keeps meaningful items in memory when persistence fails', async () => {
   const originalFetch = global.fetch;
   const originalPrepare = db.prepare.bind(db);
 
@@ -271,7 +272,17 @@ test('shared news refresh finishes with warning when curated-news persistence fa
     text: async () =>
       JSON.stringify({
         output_text: JSON.stringify({
-          items: []
+          items: [
+            {
+              source_key: 'moneycontrol',
+              source_name: 'Moneycontrol',
+              category: 'stocks',
+              title: 'Markets hold gains after RBI commentary',
+              summary: 'Indian markets reacted to policy commentary and rate expectations.',
+              url: 'https://www.moneycontrol.com/news/business/markets/rbi-commentary-gains.html',
+              published_at: new Date().toISOString()
+            }
+          ]
         })
       })
   });
@@ -312,6 +323,15 @@ test('shared news refresh finishes with warning when curated-news persistence fa
     assert.equal(finalStatus?.last_error, '');
     assert.equal(finalStatus?.last_result?.ingest_ok, false);
     assert.match(finalStatus?.last_result?.ingest_warning || '', /persist_failed/);
+    assert.equal(finalStatus?.last_result?.count, 1);
+    assert.equal(finalStatus?.last_result?.meaningful_count, 1);
+    assert.equal(finalStatus?.last_result?.stale, false);
+
+    const sharedState = getSharedCuratedNewsState();
+    assert.equal(sharedState.count, 1);
+    assert.equal(sharedState.meaningful_count, 1);
+    assert.equal(sharedState.stale, false);
+    assert.match(sharedState.items[0]?.title || '', /Markets hold gains/);
   } finally {
     db.prepare = originalPrepare;
     global.fetch = originalFetch;

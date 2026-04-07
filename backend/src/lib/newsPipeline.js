@@ -581,7 +581,7 @@ function buildIngestPrompt({ country = 'IN', maxAgeHours = NEWS_MAX_AGE_HOURS, r
     `- Only include items with a visible publish timestamp in the last ${maxAgeHours} hours.`,
     `- For gold_metals items, use only these sources: ${GOLD_SILVER_SOURCE_KEYS.join(', ')}.`,
     '- Prefer official sources for policy, retirement, compliance, and rule changes.',
-    '- Prefer Reuters and major Indian finance publishers for fast market-moving coverage.',
+    '- Prefer major Indian finance publishers in the allowlist for fast market-moving coverage.',
     '- Deduplicate near-identical stories.',
     '- Focus on actionable retail-investor context across bank savings, stocks, gold/metals, retirement, real estate, and other savings.',
     '- Return 12 to 18 items when available.',

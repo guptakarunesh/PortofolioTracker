@@ -2,22 +2,13 @@ export const NEWS_MAX_AGE_HOURS = 48;
 
 export const CURATED_NEWS_SOURCES = [
   {
-    key: 'reuters',
-    name: 'Reuters',
-    domains: ['reuters.com'],
-    trustScore: 96,
-    official: false,
-    priority: 90,
-    categories: ['bank_savings', 'stocks', 'gold_metals', 'retirement', 'real_estate', 'other_savings']
-  },
-  {
     key: 'economic_times',
     name: 'The Economic Times',
-    domains: ['economictimes.com', 'm.economictimes.com'],
+    domains: ['economictimes.indiatimes.com', 'm.economictimes.com', 'economictimes.com'],
     trustScore: 90,
     official: false,
     priority: 84,
-    categories: ['bank_savings', 'stocks', 'gold_metals', 'retirement', 'real_estate', 'other_savings']
+    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
   },
   {
     key: 'moneycontrol',
@@ -26,16 +17,16 @@ export const CURATED_NEWS_SOURCES = [
     trustScore: 88,
     official: false,
     priority: 82,
-    categories: ['bank_savings', 'stocks', 'gold_metals', 'retirement', 'real_estate', 'other_savings']
+    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
   },
   {
     key: 'mint',
-    name: 'Mint',
+    name: 'LiveMint',
     domains: ['livemint.com'],
     trustScore: 87,
     official: false,
     priority: 80,
-    categories: ['bank_savings', 'stocks', 'gold_metals', 'retirement', 'real_estate', 'other_savings']
+    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
   },
   {
     key: 'business_standard',
@@ -47,6 +38,24 @@ export const CURATED_NEWS_SOURCES = [
     categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
   },
   {
+    key: 'financial_express',
+    name: 'Financial Express',
+    domains: ['financialexpress.com', 'www.financialexpress.com'],
+    trustScore: 86,
+    official: false,
+    priority: 78,
+    categories: ['bank_savings', 'stocks', 'retirement', 'real_estate', 'other_savings']
+  },
+  {
+    key: 'mcx',
+    name: 'MCX India',
+    domains: ['mcxindia.com', 'www.mcxindia.com'],
+    trustScore: 98,
+    official: true,
+    priority: 98,
+    categories: ['gold_metals']
+  },
+  {
     key: 'ibja',
     name: 'IBJA',
     domains: ['ibja.co', 'www.ibja.co'],
@@ -54,51 +63,6 @@ export const CURATED_NEWS_SOURCES = [
     official: true,
     priority: 97,
     categories: ['gold_metals']
-  },
-  {
-    key: 'rbi',
-    name: 'RBI',
-    domains: ['rbi.org.in'],
-    trustScore: 99,
-    official: true,
-    priority: 100,
-    categories: ['bank_savings', 'other_savings']
-  },
-  {
-    key: 'sebi',
-    name: 'SEBI',
-    domains: ['sebi.gov.in'],
-    trustScore: 99,
-    official: true,
-    priority: 99,
-    categories: ['stocks', 'other_savings']
-  },
-  {
-    key: 'epfo',
-    name: 'EPFO',
-    domains: ['epfindia.gov.in'],
-    trustScore: 99,
-    official: true,
-    priority: 98,
-    categories: ['retirement']
-  },
-  {
-    key: 'pfrda',
-    name: 'PFRDA',
-    domains: ['pfrda.org.in'],
-    trustScore: 99,
-    official: true,
-    priority: 98,
-    categories: ['retirement']
-  },
-  {
-    key: 'pib',
-    name: 'PIB',
-    domains: ['pib.gov.in'],
-    trustScore: 97,
-    official: true,
-    priority: 95,
-    categories: ['bank_savings', 'retirement', 'other_savings']
   }
 ];
 
@@ -165,4 +129,4 @@ export function sourceByUrl(value = '') {
   return CURATED_NEWS_SOURCES.find((item) => item.domains.some((domain) => url.includes(domain))) || null;
 }
 
-export const GOLD_SILVER_SOURCE_KEYS = ['reuters', 'economic_times', 'moneycontrol', 'mint', 'ibja'];
+export const GOLD_SILVER_SOURCE_KEYS = ['mcx', 'ibja'];

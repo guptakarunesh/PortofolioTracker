@@ -2,12 +2,21 @@ import { Router } from 'express';
 import { db, nowIso } from '../lib/db.js';
 import { buildInsightNewsBullets, filterMeaningfulCuratedNewsItems, getSharedCuratedNewsState } from '../lib/newsPipeline.js';
 import { resolveOpenAiApiKey } from '../lib/openai.js';
+import {
+  buildFinancialHealthExplainPrompt,
+  buildFinancialHealthFallbackExplanation,
+  calculateFinancialHealthScore
+} from '../lib/financialHealth.js';
 
 const router = Router();
 const AI_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const AI_BULLET_BUILD_TIMEOUT_MS = Math.max(
   8_000,
   Number.parseInt(process.env.AI_BULLET_BUILD_TIMEOUT_MS || '20000', 10)
+);
+const AI_SCORE_EXPLAIN_TIMEOUT_MS = Math.max(
+  6_000,
+  Number.parseInt(process.env.AI_SCORE_EXPLAIN_TIMEOUT_MS || process.env.AI_NONWEB_TIMEOUT_MS || '12000', 10)
 );
 const SHARED_CURATED_NEWS_REFRESH_HOURS = Math.max(
   1,
@@ -65,6 +74,14 @@ function deleteUserSetting(userId, key) {
 
 function isAiGeneratedNewsSource(value = '') {
   return String(value || '').toLowerCase().startsWith('ai_');
+}
+
+function safeJsonParse(value, fallback = null) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch (_e) {
+    return fallback;
+  }
 }
 
 function normalizeCountry(value = '') {
@@ -237,6 +254,166 @@ async function withTimeout(promise, timeoutMs, message) {
     clearTimeout(timeoutId);
   }
 }
+
+function readFinancialHealthWeights(userId) {
+  const raw = getUserSetting(userId, 'financial_health_weights');
+  const parsed = safeJsonParse(raw, null);
+  if (!parsed || typeof parsed !== 'object') return null;
+  return {
+    debt_to_asset: Number(parsed.debt_to_asset),
+    liquidity: Number(parsed.liquidity),
+    asset_diversity: Number(parsed.asset_diversity)
+  };
+}
+
+function buildFinancialHealthSnapshot(userId) {
+  const assets = db
+    .prepare(
+      `SELECT id, category, current_value
+       FROM assets
+       WHERE user_id = ?
+       ORDER BY id DESC`
+    )
+    .all(userId);
+  const liabilities = db
+    .prepare(
+      `SELECT id, loan_type, outstanding_amount, tenure_remaining, end_date
+       FROM liabilities
+       WHERE user_id = ?
+       ORDER BY id DESC`
+    )
+    .all(userId);
+
+  return calculateFinancialHealthScore({
+    assets,
+    liabilities,
+    weights: readFinancialHealthWeights(userId),
+    asOf: nowIso()
+  });
+}
+
+function extractExplainOutputText(parsed = {}) {
+  if (typeof parsed?.output_text === 'string' && parsed.output_text.trim()) return parsed.output_text.trim();
+  const output = Array.isArray(parsed?.output) ? parsed.output : [];
+  const parts = [];
+  for (const item of output) {
+    if (item?.type !== 'message') continue;
+    for (const chunk of Array.isArray(item?.content) ? item.content : []) {
+      if (typeof chunk?.text === 'string' && chunk.text.trim()) parts.push(chunk.text.trim());
+      else if (typeof chunk?.text?.value === 'string' && chunk.text.value.trim()) parts.push(chunk.text.value.trim());
+      else if (typeof chunk?.output_text === 'string' && chunk.output_text.trim()) parts.push(chunk.output_text.trim());
+    }
+  }
+  return parts.join('\n').trim();
+}
+
+function parseExplainPayload(raw = '') {
+  const direct = safeJsonParse(raw, null);
+  if (direct && typeof direct === 'object') return direct;
+  const text = String(raw || '').trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    const recovered = safeJsonParse(text.slice(start, end + 1), null);
+    if (recovered && typeof recovered === 'object') return recovered;
+  }
+  throw new Error('invalid_explain_payload');
+}
+
+async function buildFinancialHealthAiExplanation(snapshot, apiKey) {
+  const prompt = buildFinancialHealthExplainPrompt(snapshot);
+  const response = await withTimeout(
+    fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: String(process.env.OPENAI_SUPPORT_MODEL || process.env.OPENAI_MODEL || 'gpt-5-nano').trim() || 'gpt-5-nano',
+        reasoning: { effort: 'low' },
+        input: [
+          {
+            role: 'user',
+            content: [{ type: 'input_text', text: prompt }]
+          }
+        ],
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'financial_health_explanation',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                headline: { type: 'string' },
+                body: { type: 'string' }
+              },
+              required: ['headline', 'body']
+            }
+          }
+        }
+      })
+    }),
+    AI_SCORE_EXPLAIN_TIMEOUT_MS,
+    'financial_health_explanation_timeout'
+  );
+
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(raw || `OpenAI request failed (${response.status})`);
+  }
+  const parsed = JSON.parse(raw);
+  const outputText = extractExplainOutputText(parsed);
+  if (!outputText) throw new Error('financial_health_explanation_empty');
+  const payload = parseExplainPayload(outputText);
+  return {
+    source: 'ai',
+    headline: String(payload?.headline || '').trim(),
+    body: String(payload?.body || '').trim(),
+    actions: []
+  };
+}
+
+router.get('/health-score', async (req, res) => {
+  const snapshot = buildFinancialHealthSnapshot(req.accountUserId);
+  return res.json({
+    ...snapshot,
+    disclaimer:
+      'This score is calculated from the assets and liabilities you entered. It is educational only and not investment, tax, or legal advice.',
+    explain_available: true
+  });
+});
+
+router.post('/health-score/explain', async (req, res) => {
+  const snapshot = buildFinancialHealthSnapshot(req.accountUserId);
+  const apiKey = resolveOpenAiApiKey();
+
+  try {
+    const explanation = apiKey
+      ? await buildFinancialHealthAiExplanation(snapshot, apiKey)
+      : buildFinancialHealthFallbackExplanation(snapshot);
+    return res.json({
+      as_of: snapshot.as_of,
+      score: snapshot.score,
+      explanation,
+      disclaimer:
+        explanation.source === 'ai'
+          ? 'AI-generated explanation for awareness only. It can be incomplete or incorrect.'
+          : 'Rule-based explanation generated from your latest asset and liability snapshot.'
+    });
+  } catch (_error) {
+    const fallback = buildFinancialHealthFallbackExplanation(snapshot);
+    return res.json({
+      as_of: snapshot.as_of,
+      score: snapshot.score,
+      explanation: fallback,
+      warning: 'ai_explanation_unavailable_using_rule_based',
+      disclaimer: 'Rule-based explanation generated from your latest asset and liability snapshot.'
+    });
+  }
+});
 
 router.get('/insights', async (req, res) => {
   const apiKey = resolveOpenAiApiKey();

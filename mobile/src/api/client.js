@@ -334,6 +334,6 @@ export const api = {
   getSupportChatHistory: (limit = 500) =>
     apiRequest(`/api/auth/support-chat/history?limit=${encodeURIComponent(Math.max(1, Number(limit || 500)))}`),
 
-  getAiInsights: (options = {}) =>
-    apiRequest(`/api/ai/insights${options?.forceRefresh ? '?force_refresh=1' : ''}`)
+  getAiHealthScore: () => apiRequest('/api/ai/health-score'),
+  explainAiHealthScore: () => apiRequest('/api/ai/health-score/explain', { method: 'POST', body: JSON.stringify({}) })
 };

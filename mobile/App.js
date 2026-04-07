@@ -545,6 +545,9 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiPayload, setAiPayload] = useState(null);
+  const [aiExplainLoading, setAiExplainLoading] = useState(false);
+  const [aiExplainError, setAiExplainError] = useState('');
+  const [aiExplainPayload, setAiExplainPayload] = useState(null);
   const [supportVisible, setSupportVisible] = useState(false);
   const [supportChatMode, setSupportChatMode] = useState(false);
   const [supportChatInput, setSupportChatInput] = useState('');
@@ -703,9 +706,11 @@ export default function App() {
     });
   }, []);
 
-  const openAiInsights = async (options = {}) => {
-    const forceRefresh = options?.forceRefresh === true;
+  const openAiInsights = async () => {
     setAiError('');
+    setAiPayload(null);
+    setAiExplainError('');
+    setAiExplainPayload(null);
     if (!user) return;
     if (!premiumActive) {
       setPremiumPrompt(premiumPromptContent.ai);
@@ -714,7 +719,7 @@ export default function App() {
     setAiVisible(true);
     try {
       setAiLoading(true);
-      const data = await api.getAiInsights({ forceRefresh });
+      const data = await api.getAiHealthScore();
       setAiPayload(data || null);
     } catch (e) {
       setAiError(String(e?.message || e));
@@ -723,11 +728,33 @@ export default function App() {
     }
   };
 
-  const openSupport = React.useCallback(() => {
+  const explainAiScore = async () => {
+    setAiExplainError('');
+    if (!user || !premiumActive) return;
+    try {
+      setAiExplainLoading(true);
+      const data = await api.explainAiHealthScore();
+      setAiExplainPayload(data || null);
+    } catch (e) {
+      setAiExplainError(String(e?.message || e));
+    } finally {
+      setAiExplainLoading(false);
+    }
+  };
+
+  const closeAiInsights = React.useCallback(() => {
     setAiVisible(false);
+    setAiError('');
+    setAiPayload(null);
+    setAiExplainError('');
+    setAiExplainPayload(null);
+  }, []);
+
+  const openSupport = React.useCallback(() => {
+    closeAiInsights();
     setSupportVisible(true);
     setSupportChatMode(false);
-  }, []);
+  }, [closeAiInsights]);
 
   const closeSupport = React.useCallback(() => {
     setSupportVisible(false);
@@ -1711,7 +1738,7 @@ export default function App() {
   };
 
   const openOnboarding = () => {
-    setAiVisible(false);
+    closeAiInsights();
     setOnboardingIndex(0);
     setOnboardingTargets({});
     setPinSetupVisible(false);
@@ -2371,7 +2398,7 @@ export default function App() {
             ) : null}
           <Modal visible={aiVisible} transparent animationType="fade">
           <View style={styles.modalBackdrop}>
-            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setAiVisible(false)} />
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={closeAiInsights} />
             <View
               style={[
                 styles.aiModalCard,
@@ -2387,7 +2414,7 @@ export default function App() {
                 <Text style={[styles.modalTitle, { color: theme.text }]}>{t('AI Insights')}</Text>
                 {!user ? (
                   <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>
-                    {t('Login to view AI-enabled portfolio insights and a brief news-aware context.')}
+                    {t('Login to view your financial health score and an on-demand explanation.')}
                   </Text>
                 ) : null}
 
@@ -2396,7 +2423,7 @@ export default function App() {
                     {String(
                       aiPayload?.disclaimer ||
                         t(
-                          'AI-generated content for awareness only. It can be incomplete, incorrect, or outdated. Please research further and consult your financial advisor before making decisions.'
+                          'This score is based on the assets and liabilities you entered. It is for awareness only and not investment, tax, or legal advice.'
                         )
                     )}
                   </Text>
@@ -2404,44 +2431,49 @@ export default function App() {
 
                 {aiLoading ? <Text style={[styles.subtitle, { color: theme.muted }]}>{t('Loading...')}</Text> : null}
                 {!!aiError ? <Text style={[styles.authError, { color: theme.danger }]}>{aiError}</Text> : null}
+                {!!aiExplainError ? <Text style={[styles.authError, { color: theme.danger }]}>{aiExplainError}</Text> : null}
 
                 {premiumActive ? (
                   <View style={styles.aiBullets}>
                     {(() => {
-                      const personal = Array.isArray(aiPayload?.personal_bullets)
-                        ? aiPayload.personal_bullets
-                        : Array.isArray(aiPayload?.bullets)
-                          ? aiPayload.bullets
-                          : [];
-                      const news = Array.isArray(aiPayload?.news_bullets)
-                        ? aiPayload.news_bullets
-                        : [];
+                      const drivers = Array.isArray(aiPayload?.drivers) ? aiPayload.drivers : [];
+                      const nextSteps = Array.isArray(aiPayload?.next_steps) ? aiPayload.next_steps : [];
+                      const explanation = aiExplainPayload?.explanation || null;
 
                       return (
                         <>
-                          {personal.length ? (
+                          {aiPayload ? (
                             <>
                               <View
                                 style={[
-                                  styles.aiSectionHeader,
+                                  styles.aiScoreCard,
                                   {
-                                    backgroundColor: isDarkTheme ? 'rgba(36,178,214,0.16)' : '#E8F4FF',
+                                    backgroundColor: isDarkTheme ? 'rgba(36,178,214,0.12)' : '#EEF7FF',
                                     borderColor: isDarkTheme ? 'rgba(36,178,214,0.28)' : '#C9E0FF'
                                   }
                                 ]}
                               >
-                                <Text style={[styles.aiSectionTitle, { color: isDarkTheme ? '#8FDEEF' : '#1B5FB8' }]}>
-                                  {t('What You May Want To Review')}
+                                <Text style={[styles.aiScoreValue, { color: theme.text }]}>
+                                  {Number(aiPayload?.score || 0).toFixed(1)}
+                                  <Text style={[styles.aiScoreSuffix, { color: theme.muted }]}> / 100</Text>
+                                </Text>
+                                <Text style={[styles.aiScoreLabel, { color: isDarkTheme ? '#8FDEEF' : '#1B5FB8' }]}>
+                                  {String(aiPayload?.label || t('Financial Health Score'))}
+                                </Text>
+                                {!!aiPayload?.summary ? (
+                                  <Text style={[styles.aiScoreSummary, { color: theme.text }]}>
+                                    {String(aiPayload.summary)}
+                                  </Text>
+                                ) : null}
+                                <Text style={[styles.aiScoreMeta, { color: theme.muted }]}>
+                                  {t('Net worth: {value}', {
+                                    value: Math.round(Number(aiPayload?.totals?.net_worth || 0)).toLocaleString()
+                                  })}
                                 </Text>
                               </View>
-                              {personal.slice(0, 4).map((line, idx) => (
-                                <Text key={`p-${idx}-${String(line).slice(0, 20)}`} style={[styles.aiBulletText, { color: theme.text }]}>
-                                  • {String(line)}
-                                </Text>
-                              ))}
                             </>
                           ) : null}
-                          {news.length ? (
+                          {drivers.length ? (
                             <>
                               <View
                                 style={[
@@ -2454,11 +2486,98 @@ export default function App() {
                                 ]}
                               >
                                 <Text style={[styles.aiSectionTitle, { color: isDarkTheme ? '#7CE5C6' : '#0E8A72' }]}>
-                                  {t('News & Market Context In Simple Terms')}
+                                  {t('What Is Driving Your Score')}
                                 </Text>
                               </View>
-                              {news.slice(0, 5).map((line, idx) => (
-                                <Text key={`n-${idx}-${String(line).slice(0, 20)}`} style={[styles.aiBulletText, { color: theme.text }]}>
+                              {drivers.map((driver, idx) => (
+                                <View key={`d-${idx}-${String(driver?.key || idx)}`} style={styles.aiDriverCard}>
+                                  <Text style={[styles.aiBulletText, { color: theme.text }]}>
+                                    • {String(driver?.label || '')}: {String(driver?.value_label || '')}
+                                  </Text>
+                                  <Text style={[styles.aiDriverMeta, { color: theme.muted }]}>
+                                    {String(driver?.detail || '')}
+                                  </Text>
+                                </View>
+                              ))}
+                            </>
+                          ) : null}
+                          {nextSteps.length ? (
+                            <>
+                              <View
+                                style={[
+                                  styles.aiSectionHeader,
+                                  styles.aiSectionHeaderSpaced,
+                                  {
+                                    backgroundColor: isDarkTheme ? 'rgba(255,195,90,0.16)' : '#FFF7E8',
+                                    borderColor: isDarkTheme ? 'rgba(255,195,90,0.28)' : '#F1D9A6'
+                                  }
+                                ]}
+                              >
+                                <Text style={[styles.aiSectionTitle, { color: isDarkTheme ? '#FFD48A' : '#A86B00' }]}>
+                                  {t('What May Improve It')}
+                                </Text>
+                              </View>
+                              {nextSteps.map((line, idx) => (
+                                <Text key={`s-${idx}-${String(line).slice(0, 20)}`} style={[styles.aiBulletText, { color: theme.text }]}>
+                                  • {String(line)}
+                                </Text>
+                              ))}
+                            </>
+                          ) : null}
+                          {explanation ? (
+                            <>
+                              <View
+                                style={[
+                                  styles.aiSectionHeader,
+                                  styles.aiSectionHeaderSpaced,
+                                  {
+                                    backgroundColor: isDarkTheme ? 'rgba(163,132,255,0.16)' : '#F2ECFF',
+                                    borderColor: isDarkTheme ? 'rgba(163,132,255,0.28)' : '#D8C8FF'
+                                  }
+                                ]}
+                              >
+                                <Text style={[styles.aiSectionTitle, { color: isDarkTheme ? '#C8B4FF' : '#5F3FA8' }]}>
+                                  {t('Explain My Score')}
+                                </Text>
+                              </View>
+                              {!!explanation?.headline ? (
+                                <Text style={[styles.aiExplainHeadline, { color: theme.text }]}>
+                                  {String(explanation.headline)}
+                                </Text>
+                              ) : null}
+                              {!!explanation?.body ? (
+                                <Text style={[styles.aiExplainBody, { color: theme.text }]}>
+                                  {String(explanation.body)}
+                                </Text>
+                              ) : null}
+                              <Text style={[styles.aiExplainDisclaimer, { color: theme.muted }]}>
+                                {t('This score uses your latest assets and liabilities to assess debt level, liquidity coverage, and diversification.')}
+                              </Text>
+                              <Text style={[styles.aiExplainDisclaimer, { color: theme.muted }]}>
+                                {t('It is an internal educational score from 0 to 100, not a credit score or an official financial standard.')}
+                              </Text>
+                              <View
+                                style={[
+                                  styles.aiSectionHeader,
+                                  styles.aiSectionHeaderSpaced,
+                                  {
+                                    backgroundColor: isDarkTheme ? 'rgba(128,140,155,0.14)' : '#F4F6F8',
+                                    borderColor: isDarkTheme ? 'rgba(128,140,155,0.24)' : '#D8E0E7'
+                                  }
+                                ]}
+                              >
+                                <Text style={[styles.aiSectionTitle, { color: theme.text }]}>
+                                  {t('How This Score Works')}
+                                </Text>
+                              </View>
+                              {[
+                                t('Financial Health Score: Your overall score from 0 to 100 based on your current balance sheet. Higher is better.'),
+                                t('Debt-to-Asset Ratio: Total liabilities divided by total assets. Lower debt compared to assets improves the score.'),
+                                t('Liquidity Coverage: Liquid assets divided by short-term liabilities. Higher coverage means you are better placed to handle near-term obligations.'),
+                                t('Asset Diversity: A measure of how spread out your assets are across different types such as cash, stocks, retirement funds, and real estate. Better spread improves the score.'),
+                                t('Net Worth: Total assets minus total liabilities.')
+                              ].map((line, idx) => (
+                                <Text key={`ht-${idx}-${String(line).slice(0, 24)}`} style={[styles.aiBulletText, { color: theme.text }]}>
                                   • {String(line)}
                                 </Text>
                               ))}
@@ -2479,13 +2598,13 @@ export default function App() {
                 <View style={styles.rowTight}>
                   {user && premiumActive ? (
                     <PillButton
-                      label={t('Refresh')}
+                      label={aiExplainLoading ? t('Explaining...') : t('Explain my score')}
                       kind="ghost"
-                      onPress={() => openAiInsights({ forceRefresh: true }).catch(() => {})}
-                      disabled={aiLoading}
+                      onPress={() => explainAiScore().catch(() => {})}
+                      disabled={aiLoading || aiExplainLoading || !aiPayload}
                     />
                   ) : null}
-                  <PillButton label={t('Close')} kind="ghost" onPress={() => setAiVisible(false)} />
+                  <PillButton label={t('Close')} kind="ghost" onPress={closeAiInsights} />
                 </View>
               </ScrollView>
             </View>
@@ -3304,6 +3423,38 @@ const styles = StyleSheet.create({
     marginTop: 10,
     gap: 8
   },
+  aiScoreCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 6
+  },
+  aiScoreValue: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '900'
+  },
+  aiScoreSuffix: {
+    fontSize: 16,
+    fontWeight: '700'
+  },
+  aiScoreLabel: {
+    fontSize: 13,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    fontWeight: '800'
+  },
+  aiScoreSummary: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700'
+  },
+  aiScoreMeta: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600'
+  },
   aiSectionHeader: {
     alignSelf: 'flex-start',
     borderWidth: 1,
@@ -3323,6 +3474,29 @@ const styles = StyleSheet.create({
   aiBulletText: {
     fontSize: 13,
     lineHeight: 18,
+    fontWeight: '600'
+  },
+  aiDriverCard: {
+    gap: 4
+  },
+  aiDriverMeta: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600'
+  },
+  aiExplainHeadline: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '800'
+  },
+  aiExplainBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600'
+  },
+  aiExplainDisclaimer: {
+    fontSize: 11,
+    lineHeight: 16,
     fontWeight: '600'
   },
   aiAsOf: {

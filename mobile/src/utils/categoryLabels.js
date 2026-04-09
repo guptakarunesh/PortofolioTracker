@@ -10,11 +10,18 @@ const CATEGORY_DETAIL_LABELS = {
   'Collectibles': 'Art, Memorabilia, Trading Cards'
 };
 
-export function getCategoryDisplayLabel(category, t = (value) => value) {
+export function getCategoryDisplayParts(category, t = (value) => value) {
   const base = String(category || '').trim();
-  if (!base) return '';
+  if (!base) return { title: '', detail: '' };
   const detail = CATEGORY_DETAIL_LABELS[base];
-  if (!detail) return t(base);
-  return `${t(base)} (${t(detail)})`;
+  return {
+    title: t(base),
+    detail: detail ? t(detail) : ''
+  };
 }
 
+export function getCategoryDisplayLabel(category, t = (value) => value) {
+  const { title, detail } = getCategoryDisplayParts(category, t);
+  if (!title) return '';
+  return detail ? `${title} (${detail})` : title;
+}

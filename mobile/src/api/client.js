@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
+import { clearGuestSession, guestApi, isGuestSessionActive, startGuestSession } from './guestSession';
 
 function inferExpoHost() {
   const hostUri =
@@ -73,6 +74,20 @@ export function setAuthToken(token) {
 
 export function getAuthToken() {
   return authToken;
+}
+
+export function beginGuestSession() {
+  authToken = null;
+  return startGuestSession();
+}
+
+export function endGuestSession() {
+  authToken = null;
+  clearGuestSession();
+}
+
+export function isGuestPreviewActive() {
+  return isGuestSessionActive();
 }
 
 export const buildApiUrl = (path) => `${API_BASE_URL}${path}`;
@@ -169,7 +184,20 @@ export async function apiRequestRaw(path, options = {}) {
   return response;
 }
 
+function guestAware(name, liveFn) {
+  return (...args) => {
+    if (isGuestSessionActive() && typeof guestApi?.[name] === 'function') {
+      return Promise.resolve(guestApi[name](...args));
+    }
+    return liveFn(...args);
+  };
+}
+
 export const api = {
+  getAppVersionStatus: (platform, currentVersion) =>
+    apiRequest(
+      `/api/app/version-check?platform=${encodeURIComponent(String(platform || ''))}&current_version=${encodeURIComponent(String(currentVersion || ''))}`
+    ),
   getLegalVersions: () => apiRequest('/legal/versions'),
   register: async (payload) =>
     apiRequest('/api/auth/register', {
@@ -224,93 +252,93 @@ export const api = {
     }),
   confirmSecurityPinReset: (payload) =>
     apiRequest('/api/auth/security-pin/reset/confirm', { method: 'POST', body: JSON.stringify(payload) }),
-  me: async () => {
+  me: guestAware('me', async () => {
     const data = await apiRequest('/api/auth/me');
     return data?.user || null;
-  },
-  logout: () => apiRequest('/api/auth/logout', { method: 'POST' }),
-  postSecurityContext: async () =>
+  }),
+  logout: guestAware('logout', () => apiRequest('/api/auth/logout', { method: 'POST' })),
+  postSecurityContext: guestAware('postSecurityContext', async () =>
     apiRequest('/api/auth/security/context', {
       method: 'POST',
       body: JSON.stringify({ device_context: await getDeviceContext().catch(() => null) })
-    }),
+    })),
   getSecurityDevices: () => apiRequest('/api/auth/security/devices'),
   revokeSecurityDevice: (id) => apiRequest(`/api/auth/security/devices/${id}`, { method: 'DELETE' }),
   getSecurityLoginEvents: (limit = 100) =>
     apiRequest(`/api/auth/security/login-events?limit=${encodeURIComponent(Math.max(1, Number(limit || 100)))}`),
   getSecurityIncidentReport: (limit = 300) =>
     apiRequest(`/api/auth/security/incident-report?limit=${encodeURIComponent(Math.max(20, Number(limit || 300)))}`),
-  exportUserData: () => apiRequest('/api/user/export'),
-  deleteAccount: (reason = 'user_requested') =>
-    apiRequest('/api/user/account', { method: 'DELETE', body: JSON.stringify({ reason }) }),
+  exportUserData: guestAware('exportUserData', () => apiRequest('/api/user/export')),
+  deleteAccount: guestAware('deleteAccount', (reason = 'user_requested') =>
+    apiRequest('/api/user/account', { method: 'DELETE', body: JSON.stringify({ reason }) })),
 
-  getSummary: () => apiRequest('/api/dashboard/summary'),
+  getSummary: guestAware('getSummary', () => apiRequest('/api/dashboard/summary')),
   getLiveMarketRates: () => apiRequest('/api/market-rates/live'),
   getLiveFxRates: ({ base = 'INR', symbols = [] } = {}) => {
     const symbolsParam = Array.isArray(symbols) && symbols.length ? `&symbols=${encodeURIComponent(symbols.join(','))}` : '';
     return apiRequest(`/api/fx/live?base=${encodeURIComponent(base)}${symbolsParam}`);
   },
 
-  getAssets: () => apiRequest('/api/assets'),
-  revealAssetSensitive: (id, pin) =>
-    apiRequest(`/api/assets/${id}/reveal`, { method: 'POST', body: JSON.stringify({ pin }) }),
-  createAsset: (payload) => apiRequest('/api/assets', { method: 'POST', body: JSON.stringify(payload) }),
-  updateAsset: (id, payload) => apiRequest(`/api/assets/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  deleteAsset: (id) => apiRequest(`/api/assets/${id}`, { method: 'DELETE' }),
+  getAssets: guestAware('getAssets', () => apiRequest('/api/assets')),
+  revealAssetSensitive: guestAware('revealAssetSensitive', (id, pin) =>
+    apiRequest(`/api/assets/${id}/reveal`, { method: 'POST', body: JSON.stringify({ pin }) })),
+  createAsset: guestAware('createAsset', (payload) => apiRequest('/api/assets', { method: 'POST', body: JSON.stringify(payload) })),
+  updateAsset: guestAware('updateAsset', (id, payload) => apiRequest(`/api/assets/${id}`, { method: 'PUT', body: JSON.stringify(payload) })),
+  deleteAsset: guestAware('deleteAsset', (id) => apiRequest(`/api/assets/${id}`, { method: 'DELETE' })),
 
-  getLiabilities: () => apiRequest('/api/liabilities'),
-  revealLiabilitySensitive: (id, pin) =>
-    apiRequest(`/api/liabilities/${id}/reveal`, { method: 'POST', body: JSON.stringify({ pin }) }),
-  createLiability: (payload) => apiRequest('/api/liabilities', { method: 'POST', body: JSON.stringify(payload) }),
-  updateLiability: (id, payload) =>
-    apiRequest(`/api/liabilities/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  deleteLiability: (id) => apiRequest(`/api/liabilities/${id}`, { method: 'DELETE' }),
+  getLiabilities: guestAware('getLiabilities', () => apiRequest('/api/liabilities')),
+  revealLiabilitySensitive: guestAware('revealLiabilitySensitive', (id, pin) =>
+    apiRequest(`/api/liabilities/${id}/reveal`, { method: 'POST', body: JSON.stringify({ pin }) })),
+  createLiability: guestAware('createLiability', (payload) => apiRequest('/api/liabilities', { method: 'POST', body: JSON.stringify(payload) })),
+  updateLiability: guestAware('updateLiability', (id, payload) =>
+    apiRequest(`/api/liabilities/${id}`, { method: 'PUT', body: JSON.stringify(payload) })),
+  deleteLiability: guestAware('deleteLiability', (id) => apiRequest(`/api/liabilities/${id}`, { method: 'DELETE' })),
 
-  getNotifications: (params = {}) => {
+  getNotifications: guestAware('getNotifications', (params = {}) => {
     const unread = params.unread === false ? '0' : '1';
     const limit = Number(params.limit || 30);
     return apiRequest(`/api/notifications?unread=${encodeURIComponent(unread)}&limit=${encodeURIComponent(limit)}`);
-  },
-  registerPushToken: (payload) =>
-    apiRequest('/api/notifications/push-token', { method: 'POST', body: JSON.stringify(payload) }),
-  unregisterPushToken: (payload = {}) =>
-    apiRequest('/api/notifications/push-token', { method: 'DELETE', body: JSON.stringify(payload) }),
-  markNotificationRead: (id) => apiRequest(`/api/notifications/${id}/read`, { method: 'PATCH' }),
-  markAllNotificationsRead: () => apiRequest('/api/notifications/read-all', { method: 'PATCH' }),
+  }),
+  registerPushToken: guestAware('registerPushToken', (payload) =>
+    apiRequest('/api/notifications/push-token', { method: 'POST', body: JSON.stringify(payload) })),
+  unregisterPushToken: guestAware('unregisterPushToken', (payload = {}) =>
+    apiRequest('/api/notifications/push-token', { method: 'DELETE', body: JSON.stringify(payload) })),
+  markNotificationRead: guestAware('markNotificationRead', (id) => apiRequest(`/api/notifications/${id}/read`, { method: 'PATCH' })),
+  markAllNotificationsRead: guestAware('markAllNotificationsRead', () => apiRequest('/api/notifications/read-all', { method: 'PATCH' })),
 
   getTransactions: () => apiRequest('/api/transactions'),
   createTransaction: (payload) => apiRequest('/api/transactions', { method: 'POST', body: JSON.stringify(payload) }),
 
-  getReminders: () => apiRequest('/api/reminders'),
-  createReminder: (payload) => apiRequest('/api/reminders', { method: 'POST', body: JSON.stringify(payload) }),
-  updateReminder: (id, payload) => apiRequest(`/api/reminders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  updateReminderStatus: (id, status) =>
-    apiRequest(`/api/reminders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
-  snoozeReminder: (id, days = 1) =>
-    apiRequest(`/api/reminders/${id}/snooze`, { method: 'PATCH', body: JSON.stringify({ days }) }),
+  getReminders: guestAware('getReminders', () => apiRequest('/api/reminders')),
+  createReminder: guestAware('createReminder', (payload) => apiRequest('/api/reminders', { method: 'POST', body: JSON.stringify(payload) })),
+  updateReminder: guestAware('updateReminder', (id, payload) => apiRequest(`/api/reminders/${id}`, { method: 'PUT', body: JSON.stringify(payload) })),
+  updateReminderStatus: guestAware('updateReminderStatus', (id, status) =>
+    apiRequest(`/api/reminders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })),
+  snoozeReminder: guestAware('snoozeReminder', (id, days = 1) =>
+    apiRequest(`/api/reminders/${id}/snooze`, { method: 'PATCH', body: JSON.stringify({ days }) })),
 
-  getPerformanceLastSix: () => apiRequest('/api/performance/last-six'),
+  getPerformanceLastSix: guestAware('getPerformanceLastSix', () => apiRequest('/api/performance/last-six')),
   getSnapshotReport: (date) =>
     apiRequest(`/api/reports/snapshot${date ? `?date=${encodeURIComponent(date)}` : ''}`),
 
-  getSettings: () => apiRequest('/api/settings'),
-  upsertSettings: (payload) => apiRequest('/api/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  getSettings: guestAware('getSettings', () => apiRequest('/api/settings')),
+  upsertSettings: guestAware('upsertSettings', (payload) => apiRequest('/api/settings', { method: 'PUT', body: JSON.stringify(payload) })),
 
-  getFamilyMembers: () => apiRequest('/api/family'),
-  getFamilyAccess: () => apiRequest('/api/family/access'),
-  getRecentActivity: () => apiRequest('/api/family/recent-activity'),
-  addFamilyMember: (payload) => apiRequest('/api/family', { method: 'POST', body: JSON.stringify(payload) }),
-  updateFamilyMember: (id, payload) =>
-    apiRequest(`/api/family/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  removeFamilyMember: (id) => apiRequest(`/api/family/${id}`, { method: 'DELETE' }),
-  leaveFamilyAccess: () => apiRequest('/api/family/leave', { method: 'POST' }),
-  cancelFamilyInvite: (id) => apiRequest(`/api/family/invites/${id}`, { method: 'DELETE' }),
-  resendFamilyInvite: (id) => apiRequest(`/api/family/invites/${id}/resend`, { method: 'POST' }),
-  getFamilyAudit: () => apiRequest('/api/family/audit'),
+  getFamilyMembers: guestAware('getFamilyMembers', () => apiRequest('/api/family')),
+  getFamilyAccess: guestAware('getFamilyAccess', () => apiRequest('/api/family/access')),
+  getRecentActivity: guestAware('getRecentActivity', () => apiRequest('/api/family/recent-activity')),
+  addFamilyMember: guestAware('addFamilyMember', (payload) => apiRequest('/api/family', { method: 'POST', body: JSON.stringify(payload) })),
+  updateFamilyMember: guestAware('updateFamilyMember', (id, payload) =>
+    apiRequest(`/api/family/${id}`, { method: 'PUT', body: JSON.stringify(payload) })),
+  removeFamilyMember: guestAware('removeFamilyMember', (id) => apiRequest(`/api/family/${id}`, { method: 'DELETE' })),
+  leaveFamilyAccess: guestAware('leaveFamilyAccess', () => apiRequest('/api/family/leave', { method: 'POST' })),
+  cancelFamilyInvite: guestAware('cancelFamilyInvite', (id) => apiRequest(`/api/family/invites/${id}`, { method: 'DELETE' })),
+  resendFamilyInvite: guestAware('resendFamilyInvite', (id) => apiRequest(`/api/family/invites/${id}/resend`, { method: 'POST' })),
+  getFamilyAudit: guestAware('getFamilyAudit', () => apiRequest('/api/family/audit')),
 
-  getSubscriptionStatus: () => apiRequest('/api/subscription/status'),
-  getSubscriptionHistory: () => apiRequest('/api/subscription/history'),
-  getSubscriptionReceipt: (id) => apiRequest(`/api/subscription/history/${encodeURIComponent(id)}/receipt`),
+  getSubscriptionStatus: guestAware('getSubscriptionStatus', () => apiRequest('/api/subscription/status')),
+  getSubscriptionHistory: guestAware('getSubscriptionHistory', () => apiRequest('/api/subscription/history')),
+  getSubscriptionReceipt: guestAware('getSubscriptionReceipt', (id) => apiRequest(`/api/subscription/history/${encodeURIComponent(id)}/receipt`)),
   getGooglePlaySubscriptionConfig: () => apiRequest('/api/subscription/google-play/config'),
   verifyGooglePlaySubscription: (payload) =>
     apiRequest('/api/subscription/google-play/verify', { method: 'POST', body: JSON.stringify(payload) }),
@@ -329,11 +357,11 @@ export const api = {
     apiRequest('/api/subscription/checkout', { method: 'POST', body: JSON.stringify(payload) }),
   purchaseSubscription: (plan) =>
     apiRequest('/api/subscription/purchase', { method: 'POST', body: JSON.stringify({ plan }) }),
-  chatSupportAgent: (payload) =>
-    apiRequest('/api/auth/support-chat', { method: 'POST', body: JSON.stringify(payload || {}) }),
-  getSupportChatHistory: (limit = 500) =>
-    apiRequest(`/api/auth/support-chat/history?limit=${encodeURIComponent(Math.max(1, Number(limit || 500)))}`),
+  chatSupportAgent: guestAware('chatSupportAgent', (payload) =>
+    apiRequest('/api/auth/support-chat', { method: 'POST', body: JSON.stringify(payload || {}) })),
+  getSupportChatHistory: guestAware('getSupportChatHistory', (limit = 500) =>
+    apiRequest(`/api/auth/support-chat/history?limit=${encodeURIComponent(Math.max(1, Number(limit || 500)))}`)),
 
-  getAiHealthScore: () => apiRequest('/api/ai/health-score'),
-  explainAiHealthScore: () => apiRequest('/api/ai/health-score/explain', { method: 'POST', body: JSON.stringify({}) })
+  getAiHealthScore: guestAware('getAiHealthScore', () => apiRequest('/api/ai/health-score')),
+  explainAiHealthScore: guestAware('explainAiHealthScore', () => apiRequest('/api/ai/health-score/explain', { method: 'POST', body: JSON.stringify({}) }))
 };

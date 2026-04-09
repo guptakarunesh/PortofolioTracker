@@ -53,6 +53,10 @@ function todayLocalYmd() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function isValidReminderDate(dateValue) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(dateValue || '').trim());
+}
+
 function nextRecurringFutureDate(dateValue, repeatType, repeatEveryDays) {
   let nextDate = nextRecurringDate(dateValue, repeatType, repeatEveryDays);
   const today = todayLocalYmd();
@@ -110,6 +114,12 @@ router.post('/', (req, res) => {
 
   if (!due_date || !category || !description) {
     return res.status(400).json({ error: 'due_date, category and description are required' });
+  }
+  if (!isValidReminderDate(due_date)) {
+    return res.status(400).json({ error: 'invalid due_date' });
+  }
+  if (String(due_date) < todayLocalYmd()) {
+    return res.status(400).json({ error: 'due_date cannot be in the past' });
   }
   if (!REPEAT_TYPES.has(normalizedRepeatType)) {
     return res.status(400).json({ error: 'invalid repeat_type' });
@@ -177,6 +187,12 @@ router.put('/:id', (req, res) => {
 
   if (!due_date || !category || !description) {
     return res.status(400).json({ error: 'due_date, category and description are required' });
+  }
+  if (!isValidReminderDate(due_date)) {
+    return res.status(400).json({ error: 'invalid due_date' });
+  }
+  if (String(due_date) < todayLocalYmd()) {
+    return res.status(400).json({ error: 'due_date cannot be in the past' });
   }
   if (!REPEAT_TYPES.has(normalizedRepeatType)) {
     return res.status(400).json({ error: 'invalid repeat_type' });

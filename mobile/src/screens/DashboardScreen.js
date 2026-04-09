@@ -5,7 +5,7 @@ import SectionCard from '../components/SectionCard';
 import StatTile from '../components/StatTile';
 import PillButton from '../components/PillButton';
 import DateField from '../components/DateField';
-import { api, buildApiUrl, getAuthToken } from '../api/client';
+import { api, buildApiUrl, getAuthToken, isGuestPreviewActive } from '../api/client';
 import { formatDate, formatAmountFromInr, formatPct } from '../utils/format';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
@@ -96,6 +96,8 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
   const [activePanel, setActivePanel] = useState('allocation');
   const [snapshotExpanded, setSnapshotExpanded] = useState(false);
+  const [targetSortType, setTargetSortType] = useState('percent');
+  const [targetSortDirection, setTargetSortDirection] = useState('desc');
 
   const loadSummary = useCallback(async () => {
     const response = await api.getSummary();
@@ -136,25 +138,43 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
     };
   })
     .filter((row) => row.target > 0)
-    .sort((a, b) => a.pct - b.pct);
+    .sort((a, b) => {
+      if (targetSortType === 'name') {
+        return targetSortDirection === 'asc'
+          ? String(a.category || '').localeCompare(String(b.category || ''))
+          : String(b.category || '').localeCompare(String(a.category || ''));
+      }
+      return targetSortDirection === 'asc'
+        ? Number(a.pct || 0) - Number(b.pct || 0)
+        : Number(b.pct || 0) - Number(a.pct || 0);
+    });
 
   const performancePoints = Array.isArray(data.performance) ? data.performance : [];
   const currency = preferredCurrency || settings?.preferred_currency || 'INR';
+  const guestPreviewActive = isGuestPreviewActive();
+  const toggleTargetNameSort = () => {
+    setTargetSortType('name');
+    setTargetSortDirection((current) => (targetSortType === 'name' && current === 'asc' ? 'desc' : 'asc'));
+  };
+  const toggleTargetPercentSort = () => {
+    setTargetSortType('percent');
+    setTargetSortDirection((current) => (targetSortType === 'percent' && current === 'asc' ? 'desc' : 'asc'));
+  };
 
   return (
     <View>
       <SectionCard title={t('Net Worth Summary')} titleStyle={styles.sectionTitle}>
         <BrandSummaryIntro theme={theme} isLight={isLight} t={t} />
         <View style={styles.row}>
-          <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} positive />
-          <StatTile label={t('Liabilities')} value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} positive={false} />
-        </View>
-        <View style={styles.netWorthWrap}>
           <StatTile
             label={t('Net Worth')}
             value={displayAmount(data.netWorth, hideSensitive, currency, fxRates)}
             positive={data.netWorth >= 0}
           />
+          <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} positive />
+        </View>
+        <View style={styles.netWorthWrap}>
+          <StatTile label={t('Liabilities')} value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} positive={false} />
         </View>
         <Text style={[styles.muted, { color: theme.muted }]}>{t('Last updated: {date}', { date: formatDate(data.lastUpdated) })}</Text>
 
@@ -181,6 +201,10 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
               <PillButton
                 label={t('Download Snapshot PDF')}
                 onPress={() => {
+                  if (guestPreviewActive) {
+                    setError(t('Snapshot PDF download is available after signup.'));
+                    return;
+                  }
                   const token = getAuthToken();
                   if (!token) {
                     setError(t('Session expired. Please login again.'));
@@ -308,28 +332,62 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
 
         {activePanel === 'targets' ? (
           targetProgressRows.length ? (
-            targetProgressRows.map((row) => (
-              <View key={row.category} style={[styles.targetRow, { borderBottomColor: theme.border }]}>
-                <View style={styles.targetHeadRow}>
-                  <Text style={[styles.targetLabel, { color: theme.text }]}>{t(row.category)}</Text>
-                  <Text style={[styles.targetPct, { color: targetProgressColor(row.pctClamped) }]}>{formatPct(row.pct)}</Text>
-                </View>
-                <Text style={[styles.targetSub, { color: theme.muted }]}>
-                  {displayAmount(row.current, hideSensitive, currency, fxRates)} of {displayAmount(row.target, hideSensitive, currency, fxRates)}
-                </Text>
-                <View style={[styles.progressTrack, { backgroundColor: theme.border }]}> 
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${row.pctClamped}%`,
-                        backgroundColor: targetProgressColor(row.pctClamped)
-                      }
-                    ]}
-                  />
-                </View>
+            <>
+              <View style={styles.sortActionsRow}>
+                <Pressable
+                  onPress={toggleTargetNameSort}
+                  style={[
+                    styles.sortIconButton,
+                    { borderColor: theme.border, backgroundColor: theme.inputBg },
+                    targetSortType === 'name' && {
+                      borderColor: isLight ? theme.accent : '#155EAF',
+                      backgroundColor: isLight ? theme.accent : '#155EAF'
+                    }
+                  ]}
+                >
+                  <Text style={[styles.sortIconGlyph, { color: targetSortType === 'name' ? '#FFFFFF' : theme.muted }]}>
+                    {targetSortDirection === 'asc' && targetSortType === 'name' ? 'A→Z' : 'Z→A'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={toggleTargetPercentSort}
+                  style={[
+                    styles.sortIconButton,
+                    { borderColor: theme.border, backgroundColor: theme.inputBg },
+                    targetSortType === 'percent' && {
+                      borderColor: isLight ? theme.accent : '#155EAF',
+                      backgroundColor: isLight ? theme.accent : '#155EAF'
+                    }
+                  ]}
+                >
+                  <Text style={[styles.sortIconGlyph, { color: targetSortType === 'percent' ? '#FFFFFF' : theme.muted }]}>
+                    {targetSortDirection === 'asc' && targetSortType === 'percent' ? '↑%' : '↓%'}
+                  </Text>
+                </Pressable>
               </View>
-            ))
+              {targetProgressRows.map((row) => (
+                <View key={row.category} style={[styles.targetRow, { borderBottomColor: theme.border }]}>
+                  <View style={styles.targetHeadRow}>
+                    <Text style={[styles.targetLabel, { color: theme.text }]}>{t(row.category)}</Text>
+                    <Text style={[styles.targetPct, { color: targetProgressColor(row.pctClamped) }]}>{formatPct(row.pct)}</Text>
+                  </View>
+                  <Text style={[styles.targetSub, { color: theme.muted }]}>
+                    {displayAmount(row.current, hideSensitive, currency, fxRates)} of {displayAmount(row.target, hideSensitive, currency, fxRates)}
+                  </Text>
+                  <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        {
+                          width: `${row.pctClamped}%`,
+                          backgroundColor: targetProgressColor(row.pctClamped)
+                        }
+                      ]}
+                    />
+                  </View>
+                </View>
+              ))}
+            </>
           ) : (
             <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('No yearly targets set yet. Add them in Settings.')}</Text>
           )
@@ -506,6 +564,26 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 999,
     backgroundColor: ACCENT
+  },
+  sortActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12
+  },
+  sortIconButton: {
+    minWidth: 64,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  sortIconGlyph: {
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: '900'
   },
   snapshotBox: {
     marginTop: 16,

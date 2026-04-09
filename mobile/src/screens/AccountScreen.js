@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, TextInput, Linking, Share, Pressable, Animated, Modal, ScrollView } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TextInput, Linking, Share, Animated, Modal, ScrollView } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import SectionCard from '../components/SectionCard';
@@ -13,7 +13,6 @@ import {
 } from '../firebase/nativePhoneAuth';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
-import { FAQ_ITEMS } from '../constants/faqs';
 
 
 function toCamelCaseWords(value = '') {
@@ -368,6 +367,7 @@ export default function AccountScreen({
   premiumActive = false,
   preferredCurrency = 'INR',
   fxRates = { INR: 1 },
+  appVersionLabel = '',
   onRegisterOnboardingTarget,
   onMeasureOnboardingTarget,
   onGetOnboardingZoomStyle,
@@ -379,7 +379,6 @@ export default function AccountScreen({
   const { language, setLanguage, t } = useI18n();
   const isDark = theme.key === 'worthio' || theme.key === 'dark';
   const [pin, setPin] = useState('');
-  const [openFaqs, setOpenFaqs] = useState({});
   const [message, setMessage] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [subscription, setSubscription] = useState(subscriptionStatus || null);
@@ -461,21 +460,6 @@ export default function AccountScreen({
     ],
     [theme.accent, theme.text]
   );
-  const faqSections = useMemo(() => {
-    const grouped = FAQ_ITEMS.reduce((acc, item) => {
-      const section = String(item.section || 'faq_section_account');
-      if (!acc[section]) acc[section] = [];
-      acc[section].push(item);
-      return acc;
-    }, {});
-    return Object.entries(grouped)
-      .map(([section, items]) => ({
-        section,
-        items: [...items].sort((a, b) => t(a.q).localeCompare(t(b.q)))
-      }))
-      .sort((a, b) => t(a.section).localeCompare(t(b.section)));
-  }, [t]);
-
   const saveSecurityPin = async () => {
     if (!/^\d{4}$/.test(pin)) {
       setMessage(t('Enter a valid 4-digit PIN.'));
@@ -560,16 +544,12 @@ export default function AccountScreen({
   const deleteAccount = async () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
-      setMessage(t('Tap Delete Account again to confirm permanent deletion.'));
+      setMessage(t('Tap Delete My Account again to confirm permanent deletion.'));
       return;
     }
     await api.deleteAccount('user_requested_from_mobile');
     setMessage(t('Account deleted.'));
     onLogout?.();
-  };
-
-  const toggleFaq = (question) => {
-    setOpenFaqs((prev) => ({ ...prev, [question]: !prev[question] }));
   };
 
   const viewReceipt = async (paymentId) => {
@@ -651,10 +631,16 @@ export default function AccountScreen({
         </View>
       </Modal>
       <SectionCard title={t('Profile')}>
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Name')}</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{toInitials(user?.full_name || '-')}</Text>
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile')}</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{maskMobile(user?.mobile || '')}</Text>
+        <View style={styles.profileInfoRow}>
+          <View style={styles.profileInfoCol}>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Name')}</Text>
+            <Text style={[styles.value, { color: theme.text }]}>{toInitials(user?.full_name || '-')}</Text>
+          </View>
+          <View style={styles.profileInfoCol}>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile')}</Text>
+            <Text style={[styles.value, { color: theme.text }]}>{maskMobile(user?.mobile || '')}</Text>
+          </View>
+        </View>
         <PillButton
           label={t('Accounts Recent Activity')}
           kind="ghost"
@@ -894,30 +880,9 @@ export default function AccountScreen({
 
       <SectionCard title={t('Worthio Support')}>
         <Text style={[styles.helper, { color: theme.muted }]}>
-          {t('Open support for FAQs and AI-assisted help with login, subscription, family access, and setup.')}
+          {t('Open support to browse FAQs by category and see how to reach the support team if you still need help.')}
         </Text>
         <PillButton label={t('Worthio Support')} kind="primary" style={isDark ? styles.accountPrimaryButtonDark : null} onPress={onOpenSupport} />
-      </SectionCard>
-
-      <SectionCard title={t('FAQs')}>
-        {faqSections.map((group) => (
-          <View key={group.section} style={styles.faqSection}>
-            <Text style={[styles.faqSectionTitle, { color: theme.muted }]}>{t(group.section)}</Text>
-            {group.items.map((item) => (
-              <View key={item.q} style={styles.faqItem}>
-                <Pressable style={styles.faqHeader} onPress={() => toggleFaq(item.q)}>
-                  <Text style={[styles.faqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
-                  <Text style={[styles.faqChevron, { color: theme.muted }]}>
-                    {openFaqs[item.q] ? '−' : '+'}
-                  </Text>
-                </Pressable>
-                {openFaqs[item.q] ? (
-                  <Text style={[styles.faqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
-                ) : null}
-              </View>
-            ))}
-          </View>
-        ))}
       </SectionCard>
 
       <SectionCard title={t('Quick Tour')}>
@@ -959,7 +924,7 @@ export default function AccountScreen({
             onPress={() => exportData().catch((e) => setMessage(e.message))}
           />
           <PillButton
-            label={confirmDelete ? t('Confirm Delete Account') : t('Delete Account')}
+            label={confirmDelete ? t('Confirm Delete My Account') : t('Delete My Account')}
             kind="danger"
             style={styles.halfWidthButton}
             onPress={() => deleteAccount().catch((e) => setMessage(e.message))}
@@ -970,12 +935,22 @@ export default function AccountScreen({
       <SectionCard title={t('Session')}>
         <PillButton label={t('Logout')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={onLogout} />
       </SectionCard>
+      {!!appVersionLabel ? (
+        <Text style={[styles.versionText, { color: theme.muted }]}>{t('App Version: {value}', { value: appVersionLabel })}</Text>
+      ) : null}
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  profileInfoRow: {
+    flexDirection: 'row',
+    gap: 16
+  },
+  profileInfoCol: {
+    flex: 1
+  },
   label: {
     color: '#4b647f',
     fontSize: 12,
@@ -1036,6 +1011,14 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     marginTop: 10,
     marginHorizontal: 4
+  },
+  versionText: {
+    marginTop: 4,
+    marginBottom: 12,
+    textAlign: 'center',
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '600'
   },
   inlineActionRow: {
     flexDirection: 'row',
@@ -1132,42 +1115,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12
-  },
-  faqItem: {
-    marginBottom: 10
-  },
-  faqSection: {
-    marginBottom: 10
-  },
-  faqSectionTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-    marginBottom: 8
-  },
-  faqHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10
-  },
-  faqQuestion: {
-    flex: 1,
-    fontWeight: '800',
-    fontSize: 13,
-    marginBottom: 4
-  },
-  faqChevron: {
-    width: 18,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: -2
-  },
-  faqAnswer: {
-    fontSize: 12,
-    lineHeight: 18
   },
   message: {
     color: '#0f3557',

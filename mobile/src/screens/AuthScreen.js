@@ -212,6 +212,7 @@ export default function AuthScreen({
   onLoginWithBiometric,
   onRequestOtp,
   onVerifyOtp,
+  onContinueAsGuest,
   loading = false,
   externalMessage = '',
   onClearExternalMessage = NOOP,
@@ -688,6 +689,24 @@ export default function AuthScreen({
           />
         ) : null}
 
+        {typeof onContinueAsGuest === 'function' ? (
+          <>
+            <PillButton
+              label={t('Continue as Guest Preview')}
+              kind="ghost"
+              style={[styles.primaryActionButton, styles.secondaryActionButton]}
+              disabled={loading}
+              onPress={() => {
+                clearAttemptMessages();
+                onContinueAsGuest().catch((e) => setMessage(String(e?.message || e)));
+              }}
+            />
+            <Text style={[styles.previewNote, { color: authTheme.subtle }]}>
+              {t('Preview mode is valid only for this session. Changes are not saved to your real account.')}
+            </Text>
+          </>
+        ) : null}
+
         {!!effectiveMessage && (
           <View
             style={[
@@ -935,6 +954,13 @@ const styles = StyleSheet.create({
   },
   secondaryActionButton: {
     marginTop: 12
+  },
+  previewNote: {
+    marginTop: 10,
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600'
   },
   label: { fontWeight: '700', marginBottom: 5 },
   input: {

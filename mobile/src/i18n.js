@@ -18,19 +18,19 @@ const translations = {
       'Yes. In Family Access, you can invite members and set permissions. It is a premium feature limited to up to 2 members.',
     'faq_premium_q': 'Which premium features do I get?',
     'faq_premium_a':
-      'Premium unlocks targets, recurring reminders, AI Insights, role-based Family Access, and higher asset and liability limits. Net Worth Trend remains available across plans.',
+      'Premium unlocks targets, recurring reminders, the Financial Health Score with explanation, role-based Family Access, and higher asset and liability limits. Net Worth Trend remains available across plans.',
     'faq_buy_premium_q': 'How do I buy or renew premium?',
     'faq_buy_premium_a':
-      'Open Manage Plan from Account, choose a plan, and complete the purchase. On Android production builds, subscriptions are handled through Google Play.',
-    'faq_ai_q': 'How do AI Insights work?',
+      'Open Account, go to Subscription, choose a plan, and complete the purchase. Android subscriptions are handled through Google Play in production builds.',
+    'faq_ai_q': 'How does the Financial Health Score work?',
     'faq_ai_a':
-      'AI Insights is available for premium users. Open Insights from the app header to view a personal summary and market context.',
+      'Premium users can open the score card from the dashboard header to view a 0 to 100 Financial Health Score, the main drivers behind it, and an explanation of what may improve it over time.',
     'faq_reminders_q': 'Can reminders repeat automatically?',
     'faq_reminders_a':
       'Yes. In Reminders, you can set One Time, Daily, Weekly, Every X Days, Monthly, or Yearly repeats. Recurring reminders stay active and move to the next upcoming date when completed.',
     'faq_trend_q': 'Is Net Worth Trend a premium feature?',
     'faq_trend_a':
-      'No. Net Worth Trend is available in the app without premium. Premium covers targets, reminders, AI Insights, family access, and higher limits.',
+      'No. Net Worth Trend is available in the app without premium. Premium covers targets, reminders, the Financial Health Score, family access, and higher limits.',
     'faq_trial_q': 'Do I get a first-month free premium trial?',
     'faq_trial_a':
       'Yes. New standalone users start with a 30-day Premium trial. During the trial you get premium access. After it ends, premium-only features lock or move to view-only until you buy a paid plan.',
@@ -492,6 +492,7 @@ const translations = {
     'Admin access required to manage family members.':
       'परिवार सदस्यों को मैनेज करने के लिए एडमिन एक्सेस आवश्यक है।',
     'Owner': 'मालिक',
+    'Account Owner': 'अकाउंट ओनर',
     '{used}/{total} used · {left} left': '{used}/{total} उपयोग · {left} बचे',
     'Limit reached': 'सीमा पूरी',
     '10-digit mobile number': '10-अंकों का मोबाइल नंबर',
@@ -819,15 +820,15 @@ const translations = {
     'faq_family_q': 'क्या मैं परिवार के साथ एक्सेस साझा कर सकता हूँ?',
     'faq_family_a': 'हाँ, Family Access से आप सदस्यों को आमंत्रित कर सकते हैं और परमिशन सेट कर सकते हैं। यह 2 सदस्यों तक सीमित प्रीमियम फीचर है।',
     'faq_premium_q': 'मुझे कौन-कौन से प्रीमियम फीचर मिलते हैं?',
-    'faq_premium_a': 'प्रीमियम से लक्ष्य, आवर्ती रिमाइंडर्स, AI Insights, रोल-आधारित Family Access और एसेट/देयता की अधिक सीमाएँ अनलॉक होती हैं। Net Worth Trend सभी प्लान में उपलब्ध रहता है।',
+    'faq_premium_a': 'प्रीमियम से लक्ष्य, आवर्ती रिमाइंडर्स, Financial Health Score और उसकी explanation, रोल-आधारित Family Access और एसेट/देयता की अधिक सीमाएँ अनलॉक होती हैं। Net Worth Trend सभी प्लान में उपलब्ध रहता है।',
     'faq_buy_premium_q': 'मैं प्रीमियम कैसे खरीदूं या रिन्यू करूं?',
-    'faq_buy_premium_a': 'Account से Manage Plan खोलें, प्लान चुनें और खरीदारी पूरी करें। Android प्रोडक्शन बिल्ड्स में सब्सक्रिप्शन Google Play के माध्यम से संभाले जाते हैं।',
-    'faq_ai_q': 'AI Insights कैसे काम करता है?',
-    'faq_ai_a': 'AI Insights प्रीमियम उपयोगकर्ताओं के लिए उपलब्ध है। पर्सनल समरी और मार्केट संदर्भ देखने के लिए हेडर से Insights खोलें।',
+    'faq_buy_premium_a': 'Account में Subscription खोलें, प्लान चुनें और खरीदारी पूरी करें। Android प्रोडक्शन बिल्ड्स में सब्सक्रिप्शन Google Play के माध्यम से संभाले जाते हैं।',
+    'faq_ai_q': 'Financial Health Score कैसे काम करता है?',
+    'faq_ai_a': 'प्रीमियम उपयोगकर्ता डैशबोर्ड हेडर से score card खोलकर 0 से 100 का Financial Health Score, उसके मुख्य drivers और उसे बेहतर करने वाली explanation देख सकते हैं।',
     'faq_reminders_q': 'क्या रिमाइंडर्स अपने आप दोहर सकते हैं?',
     'faq_reminders_a': 'हाँ। Reminders में आप One Time, Daily, Weekly, Every X Days, Monthly या Yearly दोहराव सेट कर सकते हैं। आवर्ती रिमाइंडर्स पूरे होने पर अगली आगामी तारीख पर आगे बढ़ जाते हैं।',
     'faq_trend_q': 'क्या Net Worth Trend प्रीमियम फीचर है?',
-    'faq_trend_a': 'नहीं। Net Worth Trend प्रीमियम के बिना भी उपलब्ध है। प्रीमियम में लक्ष्य, रिमाइंडर्स, AI Insights, फैमिली एक्सेस और अधिक सीमाएँ शामिल हैं।',
+    'faq_trend_a': 'नहीं। Net Worth Trend प्रीमियम के बिना भी उपलब्ध है। प्रीमियम में लक्ष्य, रिमाइंडर्स, Financial Health Score, फैमिली एक्सेस और अधिक सीमाएँ शामिल हैं।',
     'faq_trial_q': 'क्या मुझे पहले महीने का फ्री प्रीमियम ट्रायल मिलता है?',
     'faq_trial_a': 'हाँ। नए standalone उपयोगकर्ताओं को 30 दिन का प्रीमियम ट्रायल मिलता है। ट्रायल के दौरान प्रीमियम एक्सेस उपलब्ध रहता है। ट्रायल समाप्त होने पर प्रीमियम फीचर लॉक हो जाते हैं या व्यू-ओनली मोड में चले जाते हैं, जब तक आप पेड प्लान न खरीद लें।',
     'faq_otp_q': 'मैं OTP से लॉगिन कैसे करूं?',

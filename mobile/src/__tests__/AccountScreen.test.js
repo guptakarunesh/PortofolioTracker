@@ -140,4 +140,40 @@ describe('AccountScreen', () => {
       }
     ]);
   });
+
+  it('renders subscription history rows without crashing when history is present', async () => {
+    api.getSubscriptionHistory.mockResolvedValue([
+      {
+        id: 7,
+        plan: 'premium_yearly',
+        amount_inr: 1499,
+        status: 'paid',
+        provider: 'preview',
+        purchased_at: '2026-04-11T00:00:00.000Z'
+      }
+    ]);
+
+    const { getByText } = render(
+      <AccountScreen
+        user={{ full_name: 'User' }}
+        onLogout={() => {}}
+        onPrivacyConfigChanged={() => {}}
+        onCurrencyChanged={() => {}}
+        biometricEnrolled={false}
+        onEnrollBiometric={() => {}}
+        onDisableBiometric={() => {}}
+        subscriptionStatus={{ status: 'active', plan: 'premium_yearly' }}
+        onOpenSubscription={() => {}}
+        onOpenFamily={() => {}}
+        premiumActive
+        preferredCurrency="INR"
+        onThemeChange={() => {}}
+        themeKey="teal"
+      />
+    );
+
+    await waitFor(() => {
+      expect(getByText('Premium Yearly • INR 1499')).toBeTruthy();
+    });
+  });
 });

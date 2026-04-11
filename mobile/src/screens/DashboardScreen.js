@@ -4,7 +4,6 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import SectionCard from '../components/SectionCard';
 import StatTile from '../components/StatTile';
 import PillButton from '../components/PillButton';
-import DateField from '../components/DateField';
 import { api, buildApiUrl, getAuthToken, isGuestPreviewActive } from '../api/client';
 import { formatDate, formatAmountFromInr, formatPct } from '../utils/format';
 import { useTheme } from '../theme';
@@ -93,7 +92,6 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
   const [data, setData] = useState(null);
   const [settings, setSettings] = useState({});
   const [error, setError] = useState('');
-  const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
   const [activePanel, setActivePanel] = useState('allocation');
   const [snapshotExpanded, setSnapshotExpanded] = useState(false);
   const [targetSortType, setTargetSortType] = useState('percent');
@@ -152,6 +150,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
   const performancePoints = Array.isArray(data.performance) ? data.performance : [];
   const currency = preferredCurrency || settings?.preferred_currency || 'INR';
   const guestPreviewActive = isGuestPreviewActive();
+  const snapshotReportDate = new Date().toISOString().slice(0, 10);
   const toggleTargetNameSort = () => {
     setTargetSortType('name');
     setTargetSortDirection((current) => (targetSortType === 'name' && current === 'asc' ? 'desc' : 'asc'));
@@ -191,13 +190,16 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
           <Pressable style={styles.snapshotHeader} onPress={() => setSnapshotExpanded((value) => !value)}>
             <View style={styles.snapshotHeaderTextWrap}>
               <Text style={[styles.snapshotTitle, { color: theme.text }]}>{t('Snapshot PDF Report')}</Text>
-              <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('Download asset and liability snapshot for a selected date.')}</Text>
+              <Text style={[styles.subtleInfo, { color: theme.muted }]}>
+                {t('This snapshot is as on {date}. Download your asset and liability summary PDF.', {
+                  date: formatDate(snapshotReportDate)
+                })}
+              </Text>
             </View>
             <Text style={[styles.snapshotChevron, { color: theme.accent }]}>{snapshotExpanded ? '▲' : '▼'}</Text>
           </Pressable>
           {snapshotExpanded ? (
             <View style={styles.snapshotContent}>
-              <DateField value={reportDate} onChange={setReportDate} theme={theme} placeholder="YYYY-MM-DD" />
               <PillButton
                 label={t('Download Snapshot PDF')}
                 onPress={() => {
@@ -213,7 +215,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
                   const currency = String(preferredCurrency || 'INR').toUpperCase();
                   const fxRate = currency === 'INR' ? 1 : Number(fxRates?.[currency] || 0);
                   const url = buildApiUrl(
-                    `/api/reports/snapshot/file?date=${encodeURIComponent(reportDate)}&token=${encodeURIComponent(token)}&currency=${encodeURIComponent(currency)}&fx_rate=${encodeURIComponent(fxRate || 1)}`
+                    `/api/reports/snapshot/file?date=${encodeURIComponent(snapshotReportDate)}&token=${encodeURIComponent(token)}&currency=${encodeURIComponent(currency)}&fx_rate=${encodeURIComponent(fxRate || 1)}`
                   );
                   Linking.openURL(url).catch((e) => setError(e.message));
                 }}

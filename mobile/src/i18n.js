@@ -115,6 +115,8 @@ const translations = {
     'Snapshot PDF Report': 'स्नैपशॉट पीडीएफ रिपोर्ट',
     'Download asset and liability snapshot for a selected date.':
       'चुनी गई तारीख के लिए एसेट और देयता स्नैपशॉट डाउनलोड करें।',
+    'This snapshot is as on {date}. Download your asset and liability summary PDF.':
+      'यह स्नैपशॉट {date} की स्थिति के अनुसार है। अपनी एसेट और देयता सारांश पीडीएफ डाउनलोड करें।',
     'Download Snapshot PDF': 'स्नैपशॉट पीडीएफ डाउनलोड करें',
     'Session expired. Please login again.': 'सेशन समाप्त हो गया है। कृपया फिर से लॉगिन करें।',
     'Pick Snapshot Day': 'स्नैपशॉट दिन चुनें',

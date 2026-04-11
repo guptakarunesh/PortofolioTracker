@@ -492,6 +492,7 @@ function ScreenRenderer({
           appVersionLabel={appVersionLabel}
           onThemeChange={onThemeChange}
           themeKey={themeKey}
+          pinSetupRequired={pinSetupRequired}
           onRequestScrollTo={onRequestScrollTo}
         />
       );

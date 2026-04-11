@@ -126,6 +126,18 @@ describe('AccountScreen', () => {
         'bad-row',
         { id: 42, plan: 'premium_monthly' }
       ])
-    ).toEqual([{ id: 42, plan: 'premium_monthly' }]);
+    ).toEqual([
+      {
+        id: '42',
+        plan: 'premium_monthly',
+        amount_inr: 0,
+        status: '',
+        provider: '',
+        purchased_at: '',
+        valid_until: '',
+        period: '',
+        provider_txn_id: ''
+      }
+    ]);
   });
 });

@@ -374,6 +374,7 @@ export default function AccountScreen({
   onGetOnboardingZoomStyle,
   onThemeChange,
   themeKey = 'worthio',
+  pinSetupRequired = false,
   onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
@@ -393,22 +394,11 @@ export default function AccountScreen({
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
   const fieldOffsetsRef = useRef({});
-  const hasSecurityPin = /^\d{4}$/.test(pin);
+  const hasSecurityPin = !pinSetupRequired || /^\d{4}$/.test(pin);
   const safeSubscriptionHistory = useMemo(
     () => sanitizeSubscriptionHistory(subscriptionHistory),
     [subscriptionHistory]
   );
-
-  useEffect(() => {
-    api
-      .getSettings()
-      .then((settings) => {
-        setPin(String(settings?.privacy_pin || ''));
-        const storedLang = String(settings?.language || 'en').toLowerCase();
-        setLanguage(storedLang === 'hi' ? 'hi' : 'en');
-      })
-      .catch((e) => setMessage(e.message));
-  }, []);
 
   useEffect(() => {
     setSubscription(subscriptionStatus || null);
@@ -423,14 +413,22 @@ export default function AccountScreen({
   }, [pinResetOtpCooldown]);
 
   useEffect(() => {
-    api
-      .getSubscriptionStatus()
-      .then((status) => setSubscription(status))
-      .catch(() => {});
+    let cancelled = false;
     api
       .getSubscriptionHistory()
-      .then((rows) => setSubscriptionHistory(Array.isArray(rows) ? rows : []))
-      .catch(() => {});
+      .then((rows) => {
+        if (!cancelled) {
+          setSubscriptionHistory(sanitizeSubscriptionHistory(rows));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSubscriptionHistory([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setFieldOffset = useCallback((key, layoutY) => {

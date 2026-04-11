@@ -821,7 +821,7 @@ export default function AssetsScreen({
                 <View style={styles.actionsRow}>
                   {readOnlyDueToFamilyRole ? null : (
                     <>
-                      <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
+                      <PillButton label={t('Full View')} kind="ghost" onPress={() => openReveal(item)} />
                       <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
                       <PillButton
                         label={t('Delete')}

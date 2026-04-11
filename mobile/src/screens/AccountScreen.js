@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, Linking, Share, Animated, Modal, ScrollView } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -13,6 +13,7 @@ import {
 } from '../firebase/nativePhoneAuth';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
+import { sanitizeSubscriptionHistory } from '../utils/accountData';
 
 
 function toCamelCaseWords(value = '') {
@@ -393,6 +394,10 @@ export default function AccountScreen({
   const [receiptData, setReceiptData] = useState(null);
   const fieldOffsetsRef = useRef({});
   const hasSecurityPin = /^\d{4}$/.test(pin);
+  const safeSubscriptionHistory = useMemo(
+    () => sanitizeSubscriptionHistory(subscriptionHistory),
+    [subscriptionHistory]
+  );
 
   useEffect(() => {
     api
@@ -849,10 +854,10 @@ export default function AccountScreen({
           </Text>
         ) : null}
         <Text style={[styles.label, { color: theme.muted }]}>{t('Purchase History')}</Text>
-        {subscriptionHistory.length ? (
+        {safeSubscriptionHistory.length ? (
           <View style={styles.historyWrap}>
-            {subscriptionHistory.slice(0, 8).map((row) => (
-              <View key={row.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
+            {safeSubscriptionHistory.slice(0, 8).map((row, index) => (
+              <View key={String(row.id || `history-${index}`)} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
                 <Text style={[styles.historyPrimary, { color: theme.text }]}>
                   {`${t(formatPlanLabel(row.plan))} • INR ${Number(row.amount_inr || 0)}`}
                 </Text>
@@ -860,7 +865,7 @@ export default function AccountScreen({
                   <Pressable
                     style={[styles.receiptIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
                     onPress={() => viewReceipt(row.id).catch((e) => setReceiptError(e.message))}
-                    disabled={receiptLoading}
+                    disabled={receiptLoading || !row.id}
                   >
                     <Text style={styles.receiptIcon}>🧾</Text>
                   </Pressable>

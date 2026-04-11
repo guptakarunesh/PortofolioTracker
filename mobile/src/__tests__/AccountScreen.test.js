@@ -2,6 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import AccountScreen from '../screens/AccountScreen';
 import { api } from '../api/client';
+import { sanitizeSubscriptionHistory } from '../utils/accountData';
 
 jest.mock('expo-file-system', () => ({
   documentDirectory: 'file:///tmp/',
@@ -113,5 +114,18 @@ describe('AccountScreen', () => {
     });
 
     expect(queryByText('Save Security PIN')).toBeNull();
+  });
+
+  it('filters malformed subscription history rows before rendering', () => {
+    expect(
+      sanitizeSubscriptionHistory([
+        null,
+        undefined,
+        false,
+        0,
+        'bad-row',
+        { id: 42, plan: 'premium_monthly' }
+      ])
+    ).toEqual([{ id: 42, plan: 'premium_monthly' }]);
   });
 });

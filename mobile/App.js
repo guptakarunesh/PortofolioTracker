@@ -52,6 +52,8 @@ import { FAQ_ITEMS } from './src/constants/faqs';
 import { ThemeContext, THEMES, normalizeThemeKey } from './src/theme';
 import { LanguageContext, translate } from './src/i18n';
 import { BRAND } from './src/brand';
+import { canRequestAiExplanation } from './src/utils/aiInsights';
+import { resolveSessionBootstrap } from './src/utils/sessionBootstrap';
 
 const ACCENT = BRAND.colors.accentBlue;
 const ACCENT_DARK = BRAND.colors.accentGreen;
@@ -588,6 +590,7 @@ export default function App() {
   const onboardingZoom = React.useRef(new Animated.Value(0)).current;
   const handledNotificationResponses = React.useRef(new Set());
   const lastAccessContextSyncAtRef = React.useRef(0);
+  const aiExplainRequestLockRef = React.useRef(false);
   const dismissedStoreUpdateVersionRef = React.useRef('');
   const premiumActive =
     subscriptionStatus?.status === 'active' &&
@@ -595,6 +598,7 @@ export default function App() {
   const subscriptionActive = subscriptionStatus?.status === 'active';
   const readOnly = !subscriptionActive || accessRole === 'read';
   const pageHeaderCopy = user ? getPageHeaderCopy(activeTab, t) : null;
+  const aiExplanationReady = Boolean(aiExplainPayload?.explanation);
   const onboardingSteps = React.useMemo(
     () => [
       {
@@ -664,7 +668,7 @@ export default function App() {
         items: [...items].sort((a, b) => t(a.q).localeCompare(t(b.q)))
       }))
       .sort((a, b) => t(a.section).localeCompare(t(b.section)));
-  }, [t]);
+  }, [handleLogout, t]);
   const currentAppVersion = React.useMemo(
     () => String(Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0').trim() || '1.0.0',
     []
@@ -789,8 +793,21 @@ export default function App() {
 
   const explainAiScore = async () => {
     setAiExplainError('');
-    if (!user || !premiumActive) return;
+    if (
+      !canRequestAiExplanation({
+        userPresent: Boolean(user),
+        premiumActive,
+        aiLoading,
+        aiExplainLoading,
+        hasScorePayload: Boolean(aiPayload),
+        hasExplanation: aiExplanationReady,
+        requestLocked: aiExplainRequestLockRef.current
+      })
+    ) {
+      return;
+    }
     try {
+      aiExplainRequestLockRef.current = true;
       setAiExplainLoading(true);
       const data = await api.explainAiHealthScore();
       setAiExplainPayload(data || null);
@@ -798,6 +815,7 @@ export default function App() {
       setAiExplainError(String(e?.message || e));
     } finally {
       setAiExplainLoading(false);
+      aiExplainRequestLockRef.current = false;
     }
   };
 
@@ -1279,17 +1297,32 @@ export default function App() {
         const savedToken = String(savedTokenRaw || '').trim();
         const savedIntroSeen = String(savedIntroSeenRaw || '').trim() === '1';
         const savedLastMobile = String(savedLastMobileRaw || '').trim();
+        const bootstrapMode = resolveSessionBootstrap(savedToken, isGuestPreviewActive());
         if (!cancelled) {
           setAuthIntroSeen(savedIntroSeen);
           setAuthInitialExposureActive(!savedIntroSeen);
           setLastKnownUserMobile(savedLastMobile);
         }
-        if (!savedToken) {
+        if (bootstrapMode.mode === 'signed_out') {
           setAuthToken(null);
           setGuestMode(false);
           return;
         }
-        setAuthToken(savedToken);
+        if (bootstrapMode.mode === 'guest') {
+          setAuthToken(null);
+          const profile = await api.me();
+          if (cancelled) return;
+          setGuestMode(true);
+          setUser(profile);
+          setAuthError('');
+          await Promise.allSettled([
+            refreshPrivacyConfig(),
+            refreshSubscription(),
+            refreshAccessContext()
+          ]);
+          return;
+        }
+        setAuthToken(bootstrapMode.token);
         const profile = await api.me();
         if (cancelled) return;
         setGuestMode(false);
@@ -1529,6 +1562,23 @@ export default function App() {
     clearNativePhoneOtp();
   };
 
+  const confirmHeaderLogout = React.useCallback(() => {
+    Alert.alert(
+      t('Logout'),
+      t('Are you sure you want to log out?'),
+      [
+        { text: t('Cancel'), style: 'cancel' },
+        {
+          text: t('Logout'),
+          style: 'destructive',
+          onPress: () => {
+            handleLogout().catch(() => {});
+          }
+        }
+      ]
+    );
+  }, [t]);
+
   const ensureBiometricReady = async () => {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
     if (!hasHardware) throw new Error(t('Biometric hardware not available on this device.'));
@@ -1725,6 +1775,7 @@ export default function App() {
       return;
     }
     setActiveTab(key);
+    if (key === 'account') return;
     syncAccessContext(false).catch(() => {});
   };
 
@@ -1888,12 +1939,12 @@ export default function App() {
     setPinSetupError('');
   };
   const roleLabel = isAccountOwner
-    ? t('Account Owner')
+    ? t('Primary Acc.')
     : String(accessRole || 'read').toLowerCase() === 'admin'
-      ? t('Family Admin')
+      ? t('Shared Admin')
       : String(accessRole || 'read').toLowerCase() === 'write'
-        ? t('Family Editor')
-        : t('Family Viewer');
+        ? t('Shared Edit')
+        : t('Shared View');
   const isFamilyMember = !isAccountOwner;
   const normalizedAdminInitials = React.useMemo(
     () =>
@@ -2198,7 +2249,7 @@ export default function App() {
                       borderColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : theme.border
                     }
                   ]}
-                  onPress={() => handleLogout().catch(() => {})}
+                  onPress={confirmHeaderLogout}
                   accessibilityRole="button"
                   accessibilityLabel={t('Logout')}
                   hitSlop={8}
@@ -2785,7 +2836,17 @@ export default function App() {
                       label={aiExplainLoading ? t('Explaining...') : t('Explain my score')}
                       kind="ghost"
                       onPress={() => explainAiScore().catch(() => {})}
-                      disabled={aiLoading || aiExplainLoading || !aiPayload}
+                      disabled={
+                        !canRequestAiExplanation({
+                          userPresent: Boolean(user),
+                          premiumActive,
+                          aiLoading,
+                          aiExplainLoading,
+                          hasScorePayload: Boolean(aiPayload),
+                          hasExplanation: aiExplanationReady,
+                          requestLocked: aiExplainRequestLockRef.current
+                        })
+                      }
                     />
                   ) : null}
                   <PillButton label={t('Close')} kind="ghost" onPress={closeAiInsights} />

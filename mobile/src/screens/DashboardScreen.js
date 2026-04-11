@@ -165,16 +165,16 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
     <View>
       <SectionCard title={t('Net Worth Summary')} titleStyle={styles.sectionTitle}>
         <BrandSummaryIntro theme={theme} isLight={isLight} t={t} />
-        <View style={styles.row}>
+        <View style={styles.summaryMetricStack}>
           <StatTile
             label={t('Net Worth')}
             value={displayAmount(data.netWorth, hideSensitive, currency, fxRates)}
             positive={data.netWorth >= 0}
           />
-          <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} positive />
-        </View>
-        <View style={styles.netWorthWrap}>
-          <StatTile label={t('Liabilities')} value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} positive={false} />
+          <View style={styles.row}>
+            <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} positive />
+            <StatTile label={t('Liabilities')} value={displayAmount(data.totalLiabilities, hideSensitive, currency, fxRates)} positive={false} />
+          </View>
         </View>
         <Text style={[styles.muted, { color: theme.muted }]}>{t('Last updated: {date}', { date: formatDate(data.lastUpdated) })}</Text>
 
@@ -451,8 +451,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10
   },
-  netWorthWrap: {
-    marginTop: 10
+  summaryMetricStack: {
+    gap: 10
   },
   segmentedControl: {
     flexDirection: 'row',

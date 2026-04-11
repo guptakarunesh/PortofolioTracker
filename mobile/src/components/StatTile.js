@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme';
 import { BRAND } from '../brand';
 
-export default function StatTile({ label, value, positive }) {
+export default function StatTile({ label, value, positive, valueStyle }) {
   const { theme } = useTheme();
   const isLight = theme.key === 'light';
   return (
@@ -20,6 +20,7 @@ export default function StatTile({ label, value, positive }) {
       <Text style={[styles.label, { color: theme.muted }]}>{label}</Text>
       <Text style={[
         styles.value,
+        valueStyle,
         { color: theme.text },
         positive === true && { color: theme.success },
         positive === false && { color: theme.danger }

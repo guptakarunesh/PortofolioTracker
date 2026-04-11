@@ -169,6 +169,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
             label={t('Net Worth')}
             value={displayAmount(data.netWorth, hideSensitive, currency, fxRates)}
             positive={data.netWorth >= 0}
+            valueStyle={styles.netWorthValue}
           />
           <View style={styles.row}>
             <StatTile label={t('Total Assets')} value={displayAmount(data.totalAssets, hideSensitive, currency, fxRates)} positive />
@@ -455,6 +456,9 @@ const styles = StyleSheet.create({
   },
   summaryMetricStack: {
     gap: 10
+  },
+  netWorthValue: {
+    fontSize: 22
   },
   segmentedControl: {
     flexDirection: 'row',

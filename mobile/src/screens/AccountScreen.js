@@ -938,9 +938,7 @@ export default function AccountScreen({
       <SectionCard title={t('Session')}>
         <PillButton label={t('Logout')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={onLogout} />
       </SectionCard>
-      {!!appVersionLabel ? (
-        <Text style={[styles.versionText, { color: theme.muted }]}>{t('App Version: {value}', { value: appVersionLabel })}</Text>
-      ) : null}
+      {!!appVersionLabel ? <Text style={[styles.versionText, { color: theme.muted }]}>{appVersionLabel}</Text> : null}
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>
   );

@@ -18,7 +18,8 @@ import {
   AppState,
   Linking,
   InteractionManager,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Keyboard
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -535,6 +536,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [user, setUser] = useState(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [guestMode, setGuestMode] = useState(isGuestPreviewActive());
   const [otpFlowProvider, setOtpFlowProvider] = useState(null);
   const [sessionRestoring, setSessionRestoring] = useState(true);
@@ -675,13 +677,7 @@ export default function App() {
     () => String(Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0').trim() || '1.0.0',
     []
   );
-  const appVersionLabel = React.useMemo(() => {
-    const build =
-      Platform.OS === 'ios'
-        ? String(Constants?.expoConfig?.ios?.buildNumber || '').trim()
-        : String(Constants?.expoConfig?.android?.versionCode || '').trim();
-    return build ? `${currentAppVersion} (${build})` : currentAppVersion;
-  }, [currentAppVersion]);
+  const appVersionLabel = currentAppVersion;
   const checkForStoreUpdate = React.useCallback(async () => {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
     try {
@@ -2059,6 +2055,17 @@ export default function App() {
   }, [supportChatMessages, supportVisible, supportChatMode]);
 
   useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     setSupportChatMessages([]);
     setSupportChatMode(false);
     setSupportChatInput('');
@@ -2143,7 +2150,7 @@ export default function App() {
           contentContainerStyle={[
             styles.authPageContent,
             isTabletLayout ? styles.authPageContentTablet : null,
-            { paddingTop: authHeroOffset }
+            { paddingTop: authHeroOffset, paddingBottom: keyboardVisible ? 28 : 84 }
           ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -2376,11 +2383,11 @@ export default function App() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
-          <ScrollView
-            ref={contentScrollRef}
-            style={styles.body}
-            contentContainerStyle={styles.bodyContent}
-            keyboardShouldPersistTaps="handled"
+        <ScrollView
+          ref={contentScrollRef}
+          style={styles.body}
+          contentContainerStyle={[styles.bodyContent, { paddingBottom: keyboardVisible ? 28 : 84 }]}
+          keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             contentInsetAdjustmentBehavior="automatic"
             showsVerticalScrollIndicator
@@ -2464,33 +2471,38 @@ export default function App() {
 
       <Modal visible={pinSetupVisible} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{t('Set Security PIN')}</Text>
-            <Text style={[styles.modalSub, { color: theme.muted }]}>
-              {t('Set a 4-digit PIN to unlock full sensitive details like identifiers and contact numbers.')}
-            </Text>
-            <TextInput
-              style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
-              value={pinSetupInput}
-              onChangeText={handleSecurityPinInput}
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={4}
-            />
-            {!!pinSetupError && <Text style={[styles.pinError, { color: theme.danger }]}>{pinSetupError}</Text>}
-            <View style={styles.modalActions}>
-              <Pressable
-                style={[styles.modalBtn, styles.modalBtnPrimary, { backgroundColor: theme.accent }]}
-                onPress={() => saveSecurityPin().catch((e) => setPinSetupError(String(e?.message || e)))}
-              >
-                <Text style={styles.modalBtnPrimaryText}>{t('Save PIN')}</Text>
-              </Pressable>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 18 : 0}
+          >
+            <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>{t('Set Security PIN')}</Text>
+              <Text style={[styles.modalSub, { color: theme.muted }]}>
+                {t('Set a 4-digit PIN to unlock full sensitive details like identifiers and contact numbers.')}
+              </Text>
+              <TextInput
+                style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
+                value={pinSetupInput}
+                onChangeText={handleSecurityPinInput}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={4}
+              />
+              {!!pinSetupError && <Text style={[styles.pinError, { color: theme.danger }]}>{pinSetupError}</Text>}
+              <View style={styles.modalActions}>
+                <Pressable
+                  style={[styles.modalBtn, styles.modalBtnPrimary, { backgroundColor: theme.accent }]}
+                  onPress={() => saveSecurityPin().catch((e) => setPinSetupError(String(e?.message || e)))}
+                >
+                  <Text style={styles.modalBtnPrimaryText}>{t('Save PIN')}</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
-      {activeTab !== 'subscription' ? (
+      {activeTab !== 'subscription' && !keyboardVisible ? (
         <View
           style={[
             styles.bottomNav,
@@ -2925,41 +2937,59 @@ export default function App() {
                 <View style={styles.supportPageSpacer} />
               </View>
 
-              <ScrollView
+              <KeyboardAvoidingView
                 style={styles.body}
-                contentContainerStyle={styles.supportPageContent}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                contentInsetAdjustmentBehavior="automatic"
-                showsVerticalScrollIndicator
-                alwaysBounceVertical
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
               >
-                <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>{t('Please review the FAQs below before reaching support.')}</Text>
-                {supportFaqSections.map((group) => (
-                  <View key={group.section} style={styles.supportFaqSection}>
-                    <Text style={[styles.supportFaqSectionTitle, { color: theme.muted }]}>{t(group.section)}</Text>
-                    {group.items.map((item) => (
-                      <View
-                        key={item.q}
-                        style={[styles.supportFaqCard, { borderColor: theme.border, backgroundColor: theme.card }]}
-                      >
-                        <Pressable style={styles.supportFaqHeader} onPress={() => toggleSupportFaq(item.q)}>
-                          <Text style={[styles.supportFaqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
-                          <Text style={[styles.supportFaqToggle, { color: theme.muted }]}>
-                            {openSupportFaqs[item.q] ? '−' : '+'}
-                          </Text>
-                        </Pressable>
-                        {openSupportFaqs[item.q] ? (
-                          <Text style={[styles.supportFaqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
-                        ) : null}
-                      </View>
-                    ))}
+                <ScrollView
+                  style={styles.body}
+                  contentContainerStyle={styles.supportPageContent}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                  contentInsetAdjustmentBehavior="automatic"
+                  showsVerticalScrollIndicator
+                  alwaysBounceVertical
+                >
+                  <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>{t('Please review the FAQs below before reaching support.')}</Text>
+                  {supportFaqSections.map((group) => (
+                    <View key={group.section} style={styles.supportFaqSection}>
+                      <Text style={[styles.supportFaqSectionTitle, { color: theme.muted }]}>{t(group.section)}</Text>
+                      {group.items.map((item) => (
+                        <View
+                          key={item.q}
+                          style={[styles.supportFaqCard, { borderColor: theme.border, backgroundColor: theme.card }]}
+                        >
+                          <Pressable style={styles.supportFaqHeader} onPress={() => toggleSupportFaq(item.q)}>
+                            <Text style={[styles.supportFaqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
+                            <Text style={[styles.supportFaqToggle, { color: theme.muted }]}>
+                              {openSupportFaqs[item.q] ? '−' : '+'}
+                            </Text>
+                          </Pressable>
+                          {openSupportFaqs[item.q] ? (
+                            <Text style={[styles.supportFaqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                  <View style={styles.supportEmailWrap}>
+                    <Text style={[styles.supportEmailText, { color: theme.muted }]}>
+                      {t('If you still need more help, contact support at')}
+                    </Text>
+                    <Pressable
+                      hitSlop={8}
+                      onPress={() => {
+                        Linking.openURL('mailto:worthio-support@nexralabs.tech').catch(() => {});
+                      }}
+                    >
+                      <Text selectable style={[styles.supportEmailLink, { color: theme.accent }]}>
+                        worthio-support@nexralabs.tech
+                      </Text>
+                    </Pressable>
                   </View>
-                ))}
-                <Text style={[styles.supportEmailText, { color: theme.muted }]}>
-                  {t('If you still need help, reach support at worthio-support@nexralabs.tech')}
-                </Text>
-              </ScrollView>
+                </ScrollView>
+              </KeyboardAvoidingView>
             </SafeAreaView>
           ) : null}
           <Modal visible={recentActivityVisible} transparent animationType="fade" onRequestClose={() => setRecentActivityVisible(false)}>
@@ -3762,9 +3792,23 @@ const styles = StyleSheet.create({
   },
   supportEmailText: {
     marginTop: 16,
+    textAlign: 'center',
+    alignSelf: 'center',
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '600'
+  },
+  supportEmailWrap: {
+    marginTop: 16,
+    alignItems: 'center'
+  },
+  supportEmailLink: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    textDecorationLine: 'underline'
   },
   supportChatLinkWrap: {
     marginTop: 12

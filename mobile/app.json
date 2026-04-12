@@ -3,7 +3,7 @@
     "name": "Worthio",
     "slug": "indian-portfolio-tracker",
     "scheme": "worthio",
-    "version": "1.0.15",
+    "version": "1.0.16",
     "icon": "./src/assets/app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -45,7 +45,7 @@
     },
     "android": {
       "package": "com.networthmanager.app",
-      "versionCode": 16,
+      "versionCode": 17,
       "googleServicesFile": "./google-services.json",
       "icon": "./src/assets/app-icon.png",
       "adaptiveIcon": {

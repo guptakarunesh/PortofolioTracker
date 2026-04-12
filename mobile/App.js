@@ -394,6 +394,7 @@ function ScreenRenderer({
   onThemeChange,
   themeKey,
   appVersionLabel,
+  pinSetupRequired,
   onRemindersChanged,
   onRequestScrollTo,
   onOpenSupport,
@@ -2362,6 +2363,7 @@ export default function App() {
             }}
             themeKey={normalizedThemeKey}
             appVersionLabel={appVersionLabel}
+            pinSetupRequired={pinSetupRequired}
             onRemindersChanged={triggerReminderSync}
             onRequestScrollTo={requestMainScroll}
             onOpenSupport={openSupport}
@@ -2449,6 +2451,7 @@ export default function App() {
                 }}
                 themeKey={normalizedThemeKey}
                 appVersionLabel={appVersionLabel}
+                pinSetupRequired={pinSetupRequired}
                 onRemindersChanged={triggerReminderSync}
                 onRequestScrollTo={requestMainScroll}
                 onOpenSupport={openSupport}

@@ -677,7 +677,7 @@ export default function App() {
     () => String(Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0').trim() || '1.0.0',
     []
   );
-  const appVersionLabel = currentAppVersion;
+  const appVersionLabel = `App Version ${currentAppVersion}`;
   const checkForStoreUpdate = React.useCallback(async () => {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
     try {

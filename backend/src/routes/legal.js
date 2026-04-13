@@ -44,6 +44,7 @@ router.get('/privacy', (_req, res) => {
     <li><strong>Account data:</strong> two-letter initials, mobile number, optional email, country, and consent records.</li>
     <li><strong>Authentication data:</strong> MPIN hash, login/session records, OTP request and verification records, and reset events.</li>
     <li><strong>Financial data you enter:</strong> assets, liabilities, reminders, institution details, masked identifiers, notes for family, and allocation/performance summaries.</li>
+    <li><strong>Subscription and billing data:</strong> selected plan, payment history, checkout session records, store subscription receipts, invoice/receipt metadata, provider transaction references, and refund/cancellation status updates.</li>
     <li><strong>Sensitive fields:</strong> identifiers, relationship/branch contact, and family notes entered in asset/liability forms.</li>
     <li><strong>Family sharing data:</strong> invite logs, role assignments (admin/write/read), and access/audit activity.</li>
     <li><strong>Security telemetry:</strong> device identifier, app/device metadata, timezone/locale, IP address, user agent, and (if available from app context) approximate location coordinates and accuracy.</li>
@@ -64,6 +65,7 @@ router.get('/privacy', (_req, res) => {
     <li>Show assets/liabilities and family-access workflow.</li>
     <li>Protect sensitive fields using PIN-gated reveal, masking, and audit trails.</li>
     <li>Send reminder and security notifications to the account owner and linked family users.</li>
+    <li>Manage subscriptions, verify purchases, generate receipts, and process billing-related status updates.</li>
     <li>Detect unauthorized access, bind trusted devices, and generate security incident reports.</li>
     <li>Generate AI Insights summaries using limited portfolio context.</li>
     <li>Meet legal, compliance, and fraud-prevention obligations.</li>
@@ -83,7 +85,7 @@ router.get('/privacy', (_req, res) => {
   <p>We do not sell personal data. We may share data only as needed for service operation:</p>
   <ul>
     <li>With family members you authorize under your family role settings.</li>
-    <li>With service providers that support OTP delivery, push notifications, hosting, and AI response generation.</li>
+    <li>With service providers that support OTP delivery, push notifications, hosting, payment processing, app-store billing validation, and AI response generation.</li>
     <li>With legal/regulatory authorities when required by law.</li>
   </ul>
 
@@ -104,7 +106,7 @@ router.get('/privacy', (_req, res) => {
     <li>Edit or delete assets/liabilities/reminders.</li>
     <li>Reset MPIN and Security PIN via OTP verification flows.</li>
     <li>View and revoke trusted devices.</li>
-    <li>Delete your account.</li>
+    <li>Delete your account directly from supported in-app account controls. If you lose access to your login, you may request deletion by email after ownership verification.</li>
   </ul>
   <p>For account deletion instructions, visit <a href="/legal/delete-account">Worthio Account Deletion</a>.</p>
 
@@ -179,7 +181,7 @@ router.get('/terms', (_req, res) => {
   <p>Certain features (including premium modules) may require an active paid subscription. Feature availability, plans, and pricing may change over time and will be shown in-app.</p>
 
   <h2>11. Suspension and Termination</h2>
-  <p>We may suspend, restrict, or terminate access for suspected abuse, legal violations, fraud risk, or security risk. You may delete your account at any time from supported account controls.</p>
+  <p>We may suspend, restrict, or terminate access for suspected abuse, legal violations, fraud risk, or security risk. You may delete your account at any time from supported in-app account controls. If you cannot access your account, you may request deletion by email after ownership verification.</p>
 
   <h2>12. Limitation of Liability</h2>
   <p>To the maximum extent permitted by law, we are not liable for indirect, incidental, special, or consequential damages, including financial loss arising from user decisions, incorrect data entry, delayed notifications, or third-party outages.</p>
@@ -201,10 +203,10 @@ router.get('/delete-account', (_req, res) => {
 
   <h2>1. How to Request Deletion</h2>
   <ol>
-    <li>Email <strong>grievance@networthmanager.app</strong> from your registered email address, or send the request from inside the app support flow using your registered mobile number.</li>
-    <li>Use the subject line <strong>Account Deletion Request - Worthio</strong>.</li>
+    <li>Open the app and use the in-app <strong>Delete My Account</strong> control from the account area if you still have access to your account.</li>
+    <li>If you have lost access to your login, email <strong>grievance@networthmanager.app</strong> and use the subject line <strong>Account Deletion Request - Worthio</strong>.</li>
     <li>Include your registered mobile number and, if available, the email address linked to the account.</li>
-    <li>We may ask you to complete a verification step to confirm that the request was made by the account owner.</li>
+    <li>For email-based deletion requests, we may ask you to complete a verification step to confirm that the request was made by the account owner.</li>
   </ol>
 
   <h2>2. What We Delete</h2>
@@ -225,7 +227,7 @@ router.get('/delete-account', (_req, res) => {
   <p>Where retention is required, the retained records are kept only for the minimum period reasonably necessary for security, billing, dispute handling, and legal compliance. Our current target retention window for such limited records is up to <strong>180 days</strong> after deletion request completion, unless a longer period is required by law or an active dispute, fraud review, or payment reconciliation is in progress.</p>
 
   <h2>5. Processing Timeline</h2>
-  <p>We target initial response within <strong>15 working days</strong>. Once ownership is verified, we aim to complete deletion of active account data within a reasonable operational period.</p>
+  <p>For in-app deletion, active account data is removed as part of the supported account flow. For email-based deletion requests, we target initial response within <strong>15 working days</strong> and aim to complete deletion within a reasonable operational period once ownership is verified.</p>
 
   <h2>6. Contact</h2>
   <p>Deletion requests and privacy questions: <strong>grievance@networthmanager.app</strong></p>`;

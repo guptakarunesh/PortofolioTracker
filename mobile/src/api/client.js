@@ -90,6 +90,12 @@ export function isGuestPreviewActive() {
   return isGuestSessionActive();
 }
 
+function assertSubscriptionPurchaseAllowed() {
+  if (isGuestSessionActive()) {
+    throw new Error('Guest preview cannot buy or manage a real subscription. Please log in to continue.');
+  }
+}
+
 export const buildApiUrl = (path) => `${API_BASE_URL}${path}`;
 export const buildLegalUrl = (path) => {
   const base =
@@ -340,23 +346,42 @@ export const api = {
   getSubscriptionHistory: guestAware('getSubscriptionHistory', () => apiRequest('/api/subscription/history')),
   getSubscriptionReceipt: guestAware('getSubscriptionReceipt', (id) => apiRequest(`/api/subscription/history/${encodeURIComponent(id)}/receipt`)),
   getGooglePlaySubscriptionConfig: () => apiRequest('/api/subscription/google-play/config'),
-  verifyGooglePlaySubscription: (payload) =>
-    apiRequest('/api/subscription/google-play/verify', { method: 'POST', body: JSON.stringify(payload) }),
-  syncGooglePlaySubscriptions: (payload = {}) =>
-    apiRequest('/api/subscription/google-play/sync', { method: 'POST', body: JSON.stringify(payload) }),
-  cancelGooglePlaySubscription: () => apiRequest('/api/subscription/google-play/cancel', { method: 'POST' }),
-  createCashfreeOrder: (payload) =>
-    apiRequest('/api/subscription/cashfree/order', { method: 'POST', body: JSON.stringify(payload) }),
-  verifyCashfreePayment: (payload) =>
-    apiRequest('/api/subscription/cashfree/verify', { method: 'POST', body: JSON.stringify(payload) }),
-  createRazorpayOrder: (payload) =>
-    apiRequest('/api/subscription/razorpay/order', { method: 'POST', body: JSON.stringify(payload) }),
-  verifyRazorpayPayment: (payload) =>
-    apiRequest('/api/subscription/razorpay/verify', { method: 'POST', body: JSON.stringify(payload) }),
-  createCheckout: (payload) =>
-    apiRequest('/api/subscription/checkout', { method: 'POST', body: JSON.stringify(payload) }),
-  purchaseSubscription: (plan) =>
-    apiRequest('/api/subscription/purchase', { method: 'POST', body: JSON.stringify({ plan }) }),
+  verifyGooglePlaySubscription: (payload) => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/google-play/verify', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  syncGooglePlaySubscriptions: (payload = {}) => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/google-play/sync', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  cancelGooglePlaySubscription: () => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/google-play/cancel', { method: 'POST' });
+  },
+  createCashfreeOrder: (payload) => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/cashfree/order', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  verifyCashfreePayment: (payload) => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/cashfree/verify', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  createRazorpayOrder: (payload) => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/razorpay/order', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  verifyRazorpayPayment: (payload) => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/razorpay/verify', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  createCheckout: (payload) => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/checkout', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  purchaseSubscription: (plan) => {
+    assertSubscriptionPurchaseAllowed();
+    return apiRequest('/api/subscription/purchase', { method: 'POST', body: JSON.stringify({ plan }) });
+  },
   chatSupportAgent: guestAware('chatSupportAgent', (payload) =>
     apiRequest('/api/auth/support-chat', { method: 'POST', body: JSON.stringify(payload || {}) })),
   getSupportChatHistory: guestAware('getSupportChatHistory', (limit = 500) =>

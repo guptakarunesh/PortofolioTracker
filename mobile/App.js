@@ -2104,6 +2104,7 @@ export default function App() {
       ? 'returning'
       : 'light-new';
   const authPreviewVariant = __DEV__ && !user ? 'returning' : authLayoutVariant;
+  const guestPreviewEntryVisible = authLayoutVariant === 'fresh';
   const authBackdropScale = Math.min(
     screenWidth / AUTH_LOGON_BACKGROUND_SIZE.width,
     screenHeight / AUTH_LOGON_BACKGROUND_SIZE.height
@@ -2170,7 +2171,7 @@ export default function App() {
                 onLoginWithBiometric={handleBiometricLogin}
                 onRequestOtp={handleOtpSend}
                 onVerifyOtp={handleOtpVerify}
-                onContinueAsGuest={handleGuestPreviewStart}
+                onContinueAsGuest={guestPreviewEntryVisible ? handleGuestPreviewStart : undefined}
                 biometricReady={biometricEnrolled || (__DEV__ && authPreviewVariant === 'returning')}
                 loading={authLoading}
                 externalMessage={authError}
@@ -2319,8 +2320,9 @@ export default function App() {
           style={[
             styles.guestPreviewBanner,
             {
-              backgroundColor: isDarkTheme ? 'rgba(36,178,214,0.12)' : '#EDF8FF',
-              borderColor: isDarkTheme ? 'rgba(36,178,214,0.26)' : '#C9E7FA'
+              backgroundColor: isDarkTheme ? 'rgba(46,211,247,0.18)' : '#E2F3FF',
+              borderColor: isDarkTheme ? 'rgba(46,211,247,0.42)' : '#9DCAE6',
+              shadowColor: isDarkTheme ? '#2ED3F7' : '#0B1F3A'
             }
           ]}
         >
@@ -3391,10 +3393,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 14,
     marginTop: 8,
     marginBottom: 2,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 11
+    paddingVertical: 11,
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4
   },
   guestPreviewBannerText: {
     fontSize: 12,

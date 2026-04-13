@@ -215,7 +215,7 @@ function createReceipt(paymentId = 1) {
       address: 'Bengaluru, India'
     },
     customer: {
-      initials: 'PV'
+      initials: 'GP'
     },
     line_item: {
       plan: 'premium_yearly',
@@ -254,7 +254,7 @@ function createGuestState() {
   };
   const user = {
     id: 'guest-preview-user',
-    full_name: 'Preview User',
+    full_name: 'Guest Preview',
     mobile: '9999999999',
     email: 'preview@worthio.app',
     country: 'India',

@@ -4,7 +4,7 @@ import { WebView } from 'react-native-webview';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
-import { api } from '../api/client';
+import { api, isGuestPreviewActive } from '../api/client';
 import { formatDate } from '../utils/format';
 import { startCheckout, verifyCheckout } from '../payments';
 import { deriveGooglePlayOfferToken, initGooglePlayBilling } from '../payments/googlePlay';
@@ -134,6 +134,7 @@ function PlanAccentBar({ premium = false }) {
 export default function SubscriptionScreen({ onClose, onPurchased, user }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const guestPreviewActive = isGuestPreviewActive() || String(user?.id || '') === 'guest-preview-user';
   const [status, setStatus] = useState(null);
   const [message, setMessage] = useState('');
   const [pendingOrder, setPendingOrder] = useState(null);
@@ -457,6 +458,9 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
   }, [checkoutVisible, pendingOrder?.orderId, pendingOrder?.plan, verifying]);
 
   const purchase = async (plan) => {
+    if (guestPreviewActive) {
+      throw new Error(t('Guest preview cannot buy or renew a real subscription. Login to use a real account.'));
+    }
     setMessage('');
     setPendingOrder(null);
     setReceipt(null);
@@ -844,15 +848,30 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 : t('Google Play Billing is required on Android for this subscription flow.')}
           </Text>
         ) : null}
+        {guestPreviewActive ? (
+          <Text style={[styles.subtle, { color: theme.warn }]}>
+            {t('Guest preview can view plans, but purchases and renewals are disabled until you log in with a real account.')}
+          </Text>
+        ) : null}
         <View style={styles.planGrid}>
-          <View style={[styles.planCard, { borderColor: theme.key === 'light' ? '#CCD9E8' : theme.border, backgroundColor: theme.key === 'light' ? '#FCFDFE' : theme.card, shadowColor: theme.key === 'light' ? '#0B1F3A' : '#000000' }]}>
+          <View
+            style={[
+              styles.planCard,
+              {
+                borderColor: theme.key === 'light' ? '#CCD9E8' : theme.silver,
+                backgroundColor: theme.key === 'light' ? '#FCFDFE' : 'rgba(143,162,191,0.05)',
+                shadowColor: theme.key === 'light' ? '#0B1F3A' : theme.silver,
+                borderWidth: theme.key === 'light' ? 1 : 1.5
+              }
+            ]}
+          >
             <PlanAccentBar />
             <View
               style={[
                 styles.planHeaderBlock,
                 {
-                  backgroundColor: theme.key === 'light' ? '#F7FAFC' : 'rgba(255,255,255,0.04)',
-                  borderColor: theme.key === 'light' ? '#D7E3F1' : theme.border
+                  backgroundColor: theme.key === 'light' ? '#F7FAFC' : 'rgba(143,162,191,0.08)',
+                  borderColor: theme.key === 'light' ? '#D7E3F1' : 'rgba(143,162,191,0.42)'
                 }
               ]}
             >
@@ -865,7 +884,15 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
               <Text style={[styles.planTitle, styles.planTitleLarge, { color: theme.text }]}>{t('Basic')}</Text>
               <Text style={[styles.planNote, styles.planNoteHeader, { color: theme.muted }]}>{t('Best for tracking essentials.')}</Text>
             </View>
-            <View style={[styles.planOptionCard, { backgroundColor: theme.key === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.03)', borderColor: theme.key === 'light' ? '#D7E3F1' : theme.border }]}>
+            <View
+              style={[
+                styles.planOptionCard,
+                {
+                  backgroundColor: theme.key === 'light' ? '#FFFFFF' : 'rgba(143,162,191,0.04)',
+                  borderColor: theme.key === 'light' ? '#D7E3F1' : 'rgba(143,162,191,0.34)'
+                }
+              ]}
+            >
               <View style={styles.planOptionCopy}>
                 <Text style={[styles.planOptionLabel, { color: theme.text }]}>{t('Monthly')}</Text>
                 <Text style={[styles.planPrice, { color: theme.accent }]}>{t(planDisplayPrice('basic_monthly'))}</Text>
@@ -876,11 +903,20 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 <PillButton
                   kind="ghost"
                   label={getActionLabel(basicVariant, 'Monthly', t('Buy Monthly'))}
+                  disabled={guestPreviewActive}
                   onPress={() => purchase('basic_monthly').catch((e) => setMessage(e.message))}
                 />
               )}
             </View>
-            <View style={[styles.planOptionCard, { backgroundColor: theme.key === 'light' ? '#FFFFFF' : 'rgba(255,255,255,0.03)', borderColor: theme.key === 'light' ? '#D7E3F1' : theme.border }]}>
+            <View
+              style={[
+                styles.planOptionCard,
+                {
+                  backgroundColor: theme.key === 'light' ? '#FFFFFF' : 'rgba(143,162,191,0.04)',
+                  borderColor: theme.key === 'light' ? '#D7E3F1' : 'rgba(143,162,191,0.34)'
+                }
+              ]}
+            >
               <View style={styles.planOptionCopy}>
                 <Text style={[styles.planOptionLabel, { color: theme.text }]}>{t('Yearly')}</Text>
                 <View style={styles.priceBadgeRow}>
@@ -896,6 +932,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 <PillButton
                   kind="ghost"
                   label={getActionLabel(basicVariant, 'Yearly', t('Buy Yearly'))}
+                  disabled={guestPreviewActive}
                   onPress={() => purchase('basic_yearly').catch((e) => setMessage(e.message))}
                 />
               )}
@@ -939,6 +976,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 <PillButton
                   kind="ghost"
                   label={getActionLabel(premiumVariant, 'Monthly', t('Buy Monthly'))}
+                  disabled={guestPreviewActive}
                   onPress={() => purchase('premium_monthly').catch((e) => setMessage(e.message))}
                 />
               )}
@@ -959,6 +997,7 @@ export default function SubscriptionScreen({ onClose, onPurchased, user }) {
                 <PillButton
                   kind="ghost"
                   label={getActionLabel(premiumVariant, 'Yearly', t('Buy Yearly'))}
+                  disabled={guestPreviewActive}
                   onPress={() => purchase('premium_yearly').catch((e) => setMessage(e.message))}
                 />
               )}

@@ -2320,14 +2320,26 @@ export default function App() {
           style={[
             styles.guestPreviewBanner,
             {
-              backgroundColor: isDarkTheme ? 'rgba(46,211,247,0.18)' : '#E2F3FF',
-              borderColor: isDarkTheme ? 'rgba(46,211,247,0.42)' : '#9DCAE6',
+              backgroundColor: isDarkTheme ? 'rgba(12,26,40,0.94)' : 'rgba(255,255,255,0.96)',
+              borderColor: isDarkTheme ? 'rgba(46,211,247,0.28)' : '#BDD6EC',
               shadowColor: isDarkTheme ? '#2ED3F7' : '#0B1F3A'
             }
           ]}
         >
-          <Text style={[styles.guestPreviewBannerText, { color: theme.text }]}>
-            {t('Guest preview mode is active. Changes stay only for this session and are not saved to your real account.')}
+          <View
+            style={[
+              styles.guestPreviewBadge,
+              {
+                backgroundColor: isDarkTheme ? 'rgba(46,211,247,0.16)' : '#DCEEFE'
+              }
+            ]}
+          >
+            <Text style={[styles.guestPreviewBadgeText, { color: isDarkTheme ? '#9EEFFF' : '#0B4C86' }]}>
+              {t('Guest Preview')}
+            </Text>
+          </View>
+          <Text style={[styles.guestPreviewBannerCopy, { color: theme.text }]}>
+            {t('Changes stay only in this session.')}
           </Text>
         </View>
       ) : null}
@@ -2982,11 +2994,11 @@ export default function App() {
                     <Pressable
                       hitSlop={8}
                       onPress={() => {
-                        Linking.openURL('mailto:worthio-support@nexralabs.tech').catch(() => {});
+                        Linking.openURL('mailto:worthio-support@nexralabs.in').catch(() => {});
                       }}
                     >
                       <Text selectable style={[styles.supportEmailLink, { color: theme.accent }]}>
-                        worthio-support@nexralabs.tech
+                        worthio-support@nexralabs.in
                       </Text>
                     </Pressable>
                   </View>
@@ -3393,19 +3405,36 @@ const styles = StyleSheet.create({
     marginHorizontal: 14,
     marginTop: 8,
     marginBottom: 2,
-    borderWidth: 1.5,
-    borderRadius: 18,
+    borderWidth: 1,
+    borderRadius: 24,
     paddingHorizontal: 14,
-    paddingVertical: 11,
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 4
   },
-  guestPreviewBannerText: {
+  guestPreviewBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexShrink: 0
+  },
+  guestPreviewBadgeText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase'
+  },
+  guestPreviewBannerCopy: {
     fontSize: 12,
     lineHeight: 18,
-    fontWeight: '700'
+    fontWeight: '700',
+    flex: 1
   },
   headerMainRow: {
     flexDirection: 'row',

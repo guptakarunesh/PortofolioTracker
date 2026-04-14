@@ -55,6 +55,7 @@ describe('AccountScreen', () => {
       />
     );
 
+    fireEvent.press(getByText('Family Access'));
     fireEvent.press(getByText('Manage Family'));
     expect(onOpenFamily).toHaveBeenCalled();
   });
@@ -83,6 +84,7 @@ describe('AccountScreen', () => {
       />
     );
 
+    fireEvent.press(getByText('Family Access'));
     fireEvent.press(getByText('Manage Family'));
     expect(onOpenSubscription).toHaveBeenCalled();
   });
@@ -172,6 +174,7 @@ describe('AccountScreen', () => {
       />
     );
 
+    fireEvent.press(getByText('Subscription'));
     await waitFor(() => {
       expect(getByText('Premium Yearly • INR 1499')).toBeTruthy();
     });

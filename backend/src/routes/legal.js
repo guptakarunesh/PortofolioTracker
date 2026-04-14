@@ -117,7 +117,7 @@ router.get('/privacy', (_req, res) => {
   <p>The app is not intended for children under 18.</p>
 
   <h2>12. Grievance Contact</h2>
-  <p>For privacy/security requests: <strong>grievance@networthmanager.app</strong>. We target response within 15 working days.</p>
+  <p>For privacy/security requests: <strong>worthio-escalation@nexralabs.in</strong>. We target response within 15 working days.</p>
 
   <h2>13. Updates to This Policy</h2>
   <p>We may revise this Privacy Policy as features or legal requirements evolve. Updated versions are published in-app, and continued use after update means acceptance of the revised policy.</p>`;
@@ -204,7 +204,7 @@ router.get('/delete-account', (_req, res) => {
   <h2>1. How to Request Deletion</h2>
   <ol>
     <li>Open the app and use the in-app <strong>Delete My Account</strong> control from the account area if you still have access to your account.</li>
-    <li>If you have lost access to your login, email <strong>grievance@networthmanager.app</strong> and use the subject line <strong>Account Deletion Request - Worthio</strong>.</li>
+    <li>If you have lost access to your login, email <strong>worthio-escalation@nexralabs.in</strong> and use the subject line <strong>Account Deletion Request - Worthio</strong>.</li>
     <li>Include your registered mobile number and, if available, the email address linked to the account.</li>
     <li>For email-based deletion requests, we may ask you to complete a verification step to confirm that the request was made by the account owner.</li>
   </ol>
@@ -230,7 +230,7 @@ router.get('/delete-account', (_req, res) => {
   <p>For in-app deletion, active account data is removed as part of the supported account flow. For email-based deletion requests, we target initial response within <strong>15 working days</strong> and aim to complete deletion within a reasonable operational period once ownership is verified.</p>
 
   <h2>6. Contact</h2>
-  <p>Deletion requests and privacy questions: <strong>grievance@networthmanager.app</strong></p>`;
+  <p>Deletion requests and privacy questions: <strong>worthio-escalation@nexralabs.in</strong></p>`;
 
   res.type('html').send(htmlPage('Worthio Account Deletion', body));
 });

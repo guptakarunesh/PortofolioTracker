@@ -457,7 +457,7 @@ export default function AuthScreen({
             },
             {
               heading: t('Grievance Contact'),
-              body: t('For privacy or security requests, contact grievance@networthmanager.app. We target response within 15 working days.')
+                body: t('For privacy or security requests, contact worthio-escalation@nexralabs.in. We target response within 15 working days.')
             },
             {
               heading: t('Updates to This Policy'),

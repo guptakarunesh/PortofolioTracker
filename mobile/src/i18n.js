@@ -318,6 +318,8 @@ const translations = {
     'Delete': 'हटाएँ',
     'No non-zero assets yet.': 'अभी कोई नॉन-ज़ीरो एसेट नहीं है।',
     'Upgrade to Premium': 'प्रीमियम में अपग्रेड करें',
+    'Guest Preview': 'गेस्ट प्रीव्यू',
+    'Changes stay only in this session.': 'परिवर्तन केवल इसी सत्र तक रहेंगे।',
     'Guest preview cannot buy or renew a real subscription. Login to use a real account.':
       'गेस्ट प्रीव्यू में वास्तविक सब्सक्रिप्शन खरीदा या रिन्यू नहीं किया जा सकता। वास्तविक अकाउंट इस्तेमाल करने के लिए लॉगिन करें।',
     'Guest preview can view plans, but purchases and renewals are disabled until you log in with a real account.':
@@ -1139,8 +1141,8 @@ const translations = {
     'Children': 'बच्चे',
     'The app is not intended for children under 18.': 'यह ऐप 18 वर्ष से कम आयु के बच्चों के लिए नहीं है।',
     'Grievance Contact': 'शिकायत संपर्क',
-    'For privacy or security requests, contact grievance@networthmanager.app. We target response within 15 working days.':
-      'प्राइवेसी या सुरक्षा संबंधी अनुरोधों के लिए grievance@networthmanager.app पर संपर्क करें। हम 15 कार्यदिवसों के भीतर उत्तर देने का लक्ष्य रखते हैं।',
+    'For privacy or security requests, contact worthio-escalation@nexralabs.in. We target response within 15 working days.':
+      'प्राइवेसी या सुरक्षा संबंधी अनुरोधों के लिए worthio-escalation@nexralabs.in पर संपर्क करें। हम 15 कार्यदिवसों के भीतर उत्तर देने का लक्ष्य रखते हैं।',
     'Updates to This Policy': 'इस नीति में अपडेट',
     'We may revise this Privacy Policy as features or legal requirements evolve. Updated versions are published in-app, and continued use after update means acceptance of the revised policy.':
       'फीचर्स या कानूनी आवश्यकताओं में बदलाव के साथ हम इस प्राइवेसी पॉलिसी को संशोधित कर सकते हैं। अपडेटेड संस्करण ऐप में प्रकाशित किए जाते हैं, और अपडेट के बाद निरंतर उपयोग का मतलब संशोधित नीति की स्वीकृति है।',

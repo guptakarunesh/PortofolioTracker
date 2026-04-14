@@ -13,7 +13,7 @@ import {
 } from '../firebase/nativePhoneAuth';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
-import { FAQ_ITEMS } from '../constants/faqs';
+import { sanitizeSubscriptionHistory } from '../utils/accountData';
 
 
 function toCamelCaseWords(value = '') {
@@ -368,18 +368,19 @@ export default function AccountScreen({
   premiumActive = false,
   preferredCurrency = 'INR',
   fxRates = { INR: 1 },
+  appVersionLabel = '',
   onRegisterOnboardingTarget,
   onMeasureOnboardingTarget,
   onGetOnboardingZoomStyle,
   onThemeChange,
   themeKey = 'worthio',
+  pinSetupRequired = false,
   onRequestScrollTo = () => {}
 }) {
   const { theme } = useTheme();
   const { language, setLanguage, t } = useI18n();
   const isDark = theme.key === 'worthio' || theme.key === 'dark';
   const [pin, setPin] = useState('');
-  const [openFaqs, setOpenFaqs] = useState({});
   const [message, setMessage] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [subscription, setSubscription] = useState(subscriptionStatus || null);
@@ -388,23 +389,30 @@ export default function AccountScreen({
   const [pinResetOtpCooldown, setPinResetOtpCooldown] = useState(0);
   const [pinResetOtp, setPinResetOtp] = useState('');
   const [pinResetNewPin, setPinResetNewPin] = useState('');
+  const [pinResetMessage, setPinResetMessage] = useState('');
+  const [pinResetMessageKind, setPinResetMessageKind] = useState('info');
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptError, setReceiptError] = useState('');
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const [expandedSections, setExpandedSections] = useState(() => ({
+    profile: true,
+    privacy: true,
+    theme: false,
+    language: false,
+    family: false,
+    subscription: false,
+    support: false,
+    tour: false,
+    legal: false,
+    rights: false
+  }));
   const fieldOffsetsRef = useRef({});
-  const hasSecurityPin = /^\d{4}$/.test(pin);
-
-  useEffect(() => {
-    api
-      .getSettings()
-      .then((settings) => {
-        setPin(String(settings?.privacy_pin || ''));
-        const storedLang = String(settings?.language || 'en').toLowerCase();
-        setLanguage(storedLang === 'hi' ? 'hi' : 'en');
-      })
-      .catch((e) => setMessage(e.message));
-  }, []);
+  const hasSecurityPin = !pinSetupRequired || /^\d{4}$/.test(pin);
+  const safeSubscriptionHistory = useMemo(
+    () => sanitizeSubscriptionHistory(subscriptionHistory),
+    [subscriptionHistory]
+  );
 
   useEffect(() => {
     setSubscription(subscriptionStatus || null);
@@ -419,14 +427,30 @@ export default function AccountScreen({
   }, [pinResetOtpCooldown]);
 
   useEffect(() => {
-    api
-      .getSubscriptionStatus()
-      .then((status) => setSubscription(status))
-      .catch(() => {});
+    if (!pinResetMessage || pinResetMessageKind !== 'success') return undefined;
+    const timer = setTimeout(() => {
+      setPinResetMessage('');
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [pinResetMessage, pinResetMessageKind]);
+
+  useEffect(() => {
+    let cancelled = false;
     api
       .getSubscriptionHistory()
-      .then((rows) => setSubscriptionHistory(Array.isArray(rows) ? rows : []))
-      .catch(() => {});
+      .then((rows) => {
+        if (!cancelled) {
+          setSubscriptionHistory(sanitizeSubscriptionHistory(rows));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSubscriptionHistory([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setFieldOffset = useCallback((key, layoutY) => {
@@ -461,21 +485,6 @@ export default function AccountScreen({
     ],
     [theme.accent, theme.text]
   );
-  const faqSections = useMemo(() => {
-    const grouped = FAQ_ITEMS.reduce((acc, item) => {
-      const section = String(item.section || 'faq_section_account');
-      if (!acc[section]) acc[section] = [];
-      acc[section].push(item);
-      return acc;
-    }, {});
-    return Object.entries(grouped)
-      .map(([section, items]) => ({
-        section,
-        items: [...items].sort((a, b) => t(a.q).localeCompare(t(b.q)))
-      }))
-      .sort((a, b) => t(a.section).localeCompare(t(b.section)));
-  }, [t]);
-
   const saveSecurityPin = async () => {
     if (!/^\d{4}$/.test(pin)) {
       setMessage(t('Enter a valid 4-digit PIN.'));
@@ -512,12 +521,14 @@ export default function AccountScreen({
       : await api.requestSecurityPinResetOtp({});
     setPinResetOtpRequested(true);
     setPinResetOtpCooldown(Number(response?.retry_after_seconds || 30));
-    setMessage(t('OTP sent to your mobile number.'));
+    setPinResetMessageKind('success');
+    setPinResetMessage(t('OTP sent to your mobile number.'));
   };
 
   const confirmSecurityPinReset = async () => {
     if (!pinResetOtp.trim() || !/^\d{4}$/.test(pinResetNewPin)) {
-      setMessage(t('OTP and new 4-digit PIN are required.'));
+      setPinResetMessageKind('error');
+      setPinResetMessage(t('OTP and new 4-digit PIN are required.'));
       return;
     }
     if (canUseNativePhoneAuth()) {
@@ -537,9 +548,42 @@ export default function AccountScreen({
     setPinResetOtpCooldown(0);
     setPinResetOtp('');
     setPinResetNewPin('');
-    setMessage(t('Security PIN reset successful.'));
+    setPinResetMessageKind('success');
+    setPinResetMessage(t('Security PIN reset successful.'));
     onPrivacyConfigChanged?.();
   };
+
+  const toggleSection = useCallback((key) => {
+    setExpandedSections((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  }, []);
+
+  const renderAccountSection = useCallback(
+    (key, title, children, options = {}) => {
+      const expanded = expandedSections[key];
+      return (
+        <SectionCard key={key} title={null}>
+          <Pressable
+            style={styles.sectionToggle}
+            onPress={() => toggleSection(key)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: Boolean(expanded) }}
+          >
+            <Text style={[styles.sectionToggleTitle, { color: theme.text }]}>{title}</Text>
+            <Text style={[styles.sectionToggleIcon, { color: theme.accent }]}>{expanded ? '−' : '+'}</Text>
+          </Pressable>
+          {expanded ? (
+            <View style={options.compactTop ? styles.sectionToggleBodyCompact : styles.sectionToggleBody}>
+              {children}
+            </View>
+          ) : null}
+        </SectionCard>
+      );
+    },
+    [expandedSections, theme.accent, theme.text, toggleSection]
+  );
 
   const exportData = async () => {
     const payload = await api.exportUserData();
@@ -560,16 +604,12 @@ export default function AccountScreen({
   const deleteAccount = async () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
-      setMessage(t('Tap Delete Account again to confirm permanent deletion.'));
+      setMessage(t('Tap Delete My Account again to confirm permanent deletion.'));
       return;
     }
     await api.deleteAccount('user_requested_from_mobile');
     setMessage(t('Account deleted.'));
     onLogout?.();
-  };
-
-  const toggleFaq = (question) => {
-    setOpenFaqs((prev) => ({ ...prev, [question]: !prev[question] }));
   };
 
   const viewReceipt = async (paymentId) => {
@@ -650,20 +690,33 @@ export default function AccountScreen({
           </View>
         </View>
       </Modal>
-      <SectionCard title={t('Profile')}>
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Name')}</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{toInitials(user?.full_name || '-')}</Text>
-        <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile')}</Text>
-        <Text style={[styles.value, { color: theme.text }]}>{maskMobile(user?.mobile || '')}</Text>
+      {renderAccountSection(
+        'profile',
+        t('Profile'),
+        <>
+        <View style={styles.profileInfoRow}>
+          <View style={styles.profileInfoCol}>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Name')}</Text>
+            <Text style={[styles.value, { color: theme.text }]}>{toInitials(user?.full_name || '-')}</Text>
+          </View>
+          <View style={styles.profileInfoCol}>
+            <Text style={[styles.label, { color: theme.muted }]}>{t('Mobile')}</Text>
+            <Text style={[styles.value, { color: theme.text }]}>{maskMobile(user?.mobile || '')}</Text>
+          </View>
+        </View>
         <PillButton
           label={t('Accounts Recent Activity')}
           kind="ghost"
           style={[styles.profileRecentActivityButton, isDark ? styles.accountGhostButtonDark : styles.accountGhostButtonLight]}
           onPress={() => Promise.resolve(onOpenRecentActivity?.()).catch(() => {})}
         />
-      </SectionCard>
+        </>
+      )}
 
-      <SectionCard title={t('Privacy & Security')}>
+      {renderAccountSection(
+        'privacy',
+        t('Privacy & Security'),
+        <>
         <Text style={[styles.helper, { color: theme.muted }]}>
           {t('Security PIN is required to reveal full identifiers, contacts, and family notes. Amount privacy toggle does not require PIN.')}
         </Text>
@@ -695,6 +748,16 @@ export default function AccountScreen({
         <Text style={[styles.helper, { color: theme.muted }]}>
           {t('Reset requires OTP verification and sends security alerts to family/admin users.')}
         </Text>
+        {!!pinResetMessage ? (
+          <Text
+            style={[
+              styles.inlineMessage,
+              { color: pinResetMessageKind === 'error' ? theme.danger : theme.success }
+            ]}
+          >
+            {pinResetMessage}
+          </Text>
+        ) : null}
         {pinResetOtpRequested ? (
           <>
             <Text style={[styles.label, { color: theme.muted }]}>{t('OTP (6 digits)')}</Text>
@@ -724,12 +787,22 @@ export default function AccountScreen({
                   kind="ghost"
                   style={isDark ? styles.accountGhostButtonDark : null}
                   disabled={pinResetOtpCooldown > 0}
-                  onPress={() => requestSecurityPinResetOtp().catch((e) => setMessage(e.message))}
+                  onPress={() =>
+                    requestSecurityPinResetOtp().catch((e) => {
+                      setPinResetMessageKind('error');
+                      setPinResetMessage(e.message);
+                    })
+                  }
                 />
                 <PillButton
                   style={isDark ? styles.accountPrimaryButtonDark : null}
                   label={t('Confirm Reset')}
-                  onPress={() => confirmSecurityPinReset().catch((e) => setMessage(e.message))}
+                  onPress={() =>
+                    confirmSecurityPinReset().catch((e) => {
+                      setPinResetMessageKind('error');
+                      setPinResetMessage(e.message);
+                    })
+                  }
                 />
             </View>
           </>
@@ -738,7 +811,12 @@ export default function AccountScreen({
             label={t('Reset Security PIN via OTP')}
             kind="ghost"
             style={isDark ? styles.accountGhostButtonDark : null}
-            onPress={() => requestSecurityPinResetOtp().catch((e) => setMessage(e.message))}
+            onPress={() =>
+              requestSecurityPinResetOtp().catch((e) => {
+                setPinResetMessageKind('error');
+                setPinResetMessage(e.message);
+              })
+            }
           />
         )}
 
@@ -770,11 +848,15 @@ export default function AccountScreen({
                 .then(() => setMessage(t('Biometric login enrolled for this device.')))
                 .catch((e) => setMessage(e.message))
             }
-          />
+            />
         )}
-      </SectionCard>
+        </>
+      )}
 
-      <SectionCard title={t('Theme')}>
+      {renderAccountSection(
+        'theme',
+        t('Theme'),
+        <>
         <Text style={[styles.helper, { color: theme.muted }]}>{t('Choose between the standard Worthio theme and a clean light theme.')}</Text>
         <View style={styles.row}>
           {[
@@ -791,9 +873,13 @@ export default function AccountScreen({
             />
           ))}
         </View>
-      </SectionCard>
+        </>
+      )}
 
-      <SectionCard title={t('Language')}>
+      {renderAccountSection(
+        'language',
+        t('Language'),
+        <>
         <Text style={[styles.helper, { color: theme.muted }]}>
           {t('Choose your preferred language. Hindi labels will appear where available.')}
         </Text>
@@ -813,7 +899,8 @@ export default function AccountScreen({
             onPress={() => saveLanguage('hi').catch((e) => setMessage(e.message))}
           />
         </View>
-      </SectionCard>
+        </>
+      )}
 
       <Animated.View
         ref={(node) => onRegisterOnboardingTarget?.('account_manage_family', node)}
@@ -821,7 +908,10 @@ export default function AccountScreen({
         onLayout={() => onMeasureOnboardingTarget?.('account_manage_family')}
         style={onGetOnboardingZoomStyle?.('account_manage_family')}
       >
-        <SectionCard title={t('Family Access')}>
+        {renderAccountSection(
+          'family',
+          t('Family Access'),
+          <>
           <Text style={[styles.helper, { color: theme.muted }]}>
             {t('Share access with family members and control read/write/admin permissions.')}
           </Text>
@@ -840,10 +930,14 @@ export default function AccountScreen({
               onPress={premiumActive ? onOpenFamily : onOpenSubscription}
             />
           </Animated.View>
-        </SectionCard>
+          </>
+        )}
       </Animated.View>
 
-      <SectionCard title={t('Subscription')}>
+      {renderAccountSection(
+        'subscription',
+        t('Subscription'),
+        <>
         <Text style={[styles.subText, { color: theme.muted }]}>
           {t('Plan: {value}', { value: t(formatPlanLabel(subscription?.plan)) })}
         </Text>
@@ -863,10 +957,10 @@ export default function AccountScreen({
           </Text>
         ) : null}
         <Text style={[styles.label, { color: theme.muted }]}>{t('Purchase History')}</Text>
-        {subscriptionHistory.length ? (
+        {safeSubscriptionHistory.length ? (
           <View style={styles.historyWrap}>
-            {subscriptionHistory.slice(0, 8).map((row) => (
-              <View key={row.id} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
+            {safeSubscriptionHistory.slice(0, 8).map((row, index) => (
+              <View key={String(row.id || `history-${index}`)} style={[styles.historyRow, { borderBottomColor: theme.border }]}>
                 <Text style={[styles.historyPrimary, { color: theme.text }]}>
                   {`${t(formatPlanLabel(row.plan))} • INR ${Number(row.amount_inr || 0)}`}
                 </Text>
@@ -874,7 +968,7 @@ export default function AccountScreen({
                   <Pressable
                     style={[styles.receiptIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
                     onPress={() => viewReceipt(row.id).catch((e) => setReceiptError(e.message))}
-                    disabled={receiptLoading}
+                    disabled={receiptLoading || !row.id}
                   >
                     <Text style={styles.receiptIcon}>🧾</Text>
                   </Pressable>
@@ -890,44 +984,35 @@ export default function AccountScreen({
         )}
         {!!receiptError ? <Text style={[styles.message, { color: theme.danger }]}>{receiptError}</Text> : null}
         <PillButton label={t('Buy Subscription')} kind="primary" style={isDark ? styles.accountPrimaryButtonDark : null} onPress={onOpenSubscription} />
-      </SectionCard>
+        </>
+      )}
 
-      <SectionCard title={t('Worthio Support')}>
+      {renderAccountSection(
+        'support',
+        t('Worthio Support'),
+        <>
         <Text style={[styles.helper, { color: theme.muted }]}>
-          {t('Open support for FAQs and AI-assisted help with login, subscription, family access, and setup.')}
+          {t('Open support to browse FAQs by category and see how to reach the support team if you still need help.')}
         </Text>
         <PillButton label={t('Worthio Support')} kind="primary" style={isDark ? styles.accountPrimaryButtonDark : null} onPress={onOpenSupport} />
-      </SectionCard>
+        </>
+      )}
 
-      <SectionCard title={t('FAQs')}>
-        {faqSections.map((group) => (
-          <View key={group.section} style={styles.faqSection}>
-            <Text style={[styles.faqSectionTitle, { color: theme.muted }]}>{t(group.section)}</Text>
-            {group.items.map((item) => (
-              <View key={item.q} style={styles.faqItem}>
-                <Pressable style={styles.faqHeader} onPress={() => toggleFaq(item.q)}>
-                  <Text style={[styles.faqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
-                  <Text style={[styles.faqChevron, { color: theme.muted }]}>
-                    {openFaqs[item.q] ? '−' : '+'}
-                  </Text>
-                </Pressable>
-                {openFaqs[item.q] ? (
-                  <Text style={[styles.faqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
-                ) : null}
-              </View>
-            ))}
-          </View>
-        ))}
-      </SectionCard>
-
-      <SectionCard title={t('Quick Tour')}>
+      {renderAccountSection(
+        'tour',
+        t('Quick Tour'),
+        <>
         <Text style={[styles.helper, { color: theme.muted }]}>
           {t('Take a quick walkthrough of main features and usage.')}
         </Text>
         <PillButton label={t('Start Tour')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={onOpenOnboarding} />
-      </SectionCard>
+        </>
+      )}
 
-      <SectionCard title={t('Legal')}>
+      {renderAccountSection(
+        'legal',
+        t('Legal'),
+        <>
         <View style={styles.row}>
           <PillButton
             label={t('Privacy Policy')}
@@ -945,12 +1030,16 @@ export default function AccountScreen({
             label={t('Contact Grievance Officer')}
             kind="ghost"
             style={isDark ? styles.accountGhostButtonDark : null}
-            onPress={() => Linking.openURL('mailto:grievance@[yourdomain].com').catch((e) => setMessage(e.message))}
+            onPress={() => Linking.openURL('mailto:worthio-escalation@nexralabs.in').catch((e) => setMessage(e.message))}
           />
         </View>
-      </SectionCard>
+        </>
+      )}
 
-      <SectionCard title={t('Data Rights')}>
+      {renderAccountSection(
+        'rights',
+        t('Data Rights'),
+        <>
         <View style={styles.inlineActionRow}>
           <PillButton
             label={t('Export My Data')}
@@ -959,23 +1048,29 @@ export default function AccountScreen({
             onPress={() => exportData().catch((e) => setMessage(e.message))}
           />
           <PillButton
-            label={confirmDelete ? t('Confirm Delete Account') : t('Delete Account')}
+            label={confirmDelete ? t('Confirm Delete My Account') : t('Delete My Account')}
             kind="danger"
             style={styles.halfWidthButton}
             onPress={() => deleteAccount().catch((e) => setMessage(e.message))}
           />
         </View>
-      </SectionCard>
-
-      <SectionCard title={t('Session')}>
-        <PillButton label={t('Logout')} kind="ghost" style={isDark ? styles.accountGhostButtonDark : null} onPress={onLogout} />
-      </SectionCard>
+        </>
+      )}
+      <PillButton label={t('Logout')} kind="ghost" style={[styles.fullWidthButton, isDark ? styles.accountGhostButtonDark : null]} onPress={onLogout} />
+      {!!appVersionLabel ? <Text style={[styles.versionText, { color: theme.muted }]}>{appVersionLabel}</Text> : null}
       {!!message && <Text style={[styles.message, { color: theme.text }]}>{message}</Text>}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  profileInfoRow: {
+    flexDirection: 'row',
+    gap: 16
+  },
+  profileInfoCol: {
+    flex: 1
+  },
   label: {
     color: '#4b647f',
     fontSize: 12,
@@ -1032,10 +1127,41 @@ const styles = StyleSheet.create({
   fullWidthButton: {
     width: '100%'
   },
+  sectionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  sectionToggleTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    flex: 1,
+    paddingRight: 12
+  },
+  sectionToggleIcon: {
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: '700'
+  },
+  sectionToggleBody: {
+    marginTop: 12
+  },
+  sectionToggleBodyCompact: {
+    marginTop: 8
+  },
   profileRecentActivityButton: {
     alignSelf: 'stretch',
     marginTop: 10,
     marginHorizontal: 4
+  },
+  versionText: {
+    marginTop: 4,
+    marginBottom: 12,
+    textAlign: 'center',
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '600'
   },
   inlineActionRow: {
     flexDirection: 'row',
@@ -1133,46 +1259,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 12
   },
-  faqItem: {
-    marginBottom: 10
-  },
-  faqSection: {
-    marginBottom: 10
-  },
-  faqSectionTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-    marginBottom: 8
-  },
-  faqHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10
-  },
-  faqQuestion: {
-    flex: 1,
-    fontWeight: '800',
-    fontSize: 13,
-    marginBottom: 4
-  },
-  faqChevron: {
-    width: 18,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: -2
-  },
-  faqAnswer: {
-    fontSize: 12,
-    lineHeight: 18
-  },
   message: {
     color: '#0f3557',
     marginBottom: 20,
     marginTop: 2,
     fontWeight: '600'
+  },
+  inlineMessage: {
+    marginBottom: 10,
+    fontWeight: '700',
+    lineHeight: 18
   }
 });

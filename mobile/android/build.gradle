@@ -21,5 +21,31 @@ allprojects {
   }
 }
 
+subprojects { subproject ->
+  subproject.plugins.withId("com.android.application") {
+    subproject.android {
+      compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+      }
+    }
+  }
+
+  subproject.plugins.withId("com.android.library") {
+    subproject.android {
+      compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+      }
+    }
+  }
+
+  subproject.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+      jvmTarget = "17"
+    }
+  }
+}
+
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"

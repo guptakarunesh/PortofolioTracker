@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../lib/db.js';
+import { bucketFromAssetCategory } from '../lib/financialHealth.js';
 
 const router = Router();
 
@@ -64,10 +65,15 @@ function parseRiskProfile(raw) {
 }
 
 function getAllocationForUser(userId) {
-  const byCategoryRows = db
-    .prepare(`SELECT category, SUM(current_value) AS value FROM assets WHERE user_id = ? GROUP BY category`)
+  const assetRows = db
+    .prepare(`SELECT category, current_value FROM assets WHERE user_id = ?`)
     .all(userId);
-  const byCategoryMap = new Map(byCategoryRows.map((r) => [r.category, Number(r.value || 0)]));
+  const byCategoryMap = new Map();
+  for (const row of assetRows) {
+    const normalizedCategory = bucketFromAssetCategory(row?.category || '');
+    const nextValue = Number(row?.current_value || 0);
+    byCategoryMap.set(normalizedCategory, Number(byCategoryMap.get(normalizedCategory) || 0) + nextValue);
+  }
   const allocation = categories.map((category) => ({
     category,
     currentValue: byCategoryMap.get(category) || 0

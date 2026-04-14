@@ -19,6 +19,7 @@ import subscriptionRoutes from './routes/subscription.js';
 import aiRoutes from './routes/ai.js';
 import internalRoutes from './routes/internal.js';
 import notificationRoutes from './routes/notifications.js';
+import appMetaRoutes from './routes/appMeta.js';
 import { supportApiRouter, supportConsoleRouter } from './routes/support.js';
 import requireAuth from './middleware/requireAuth.js';
 import { attachAccountContext } from './middleware/accountAccess.js';
@@ -60,6 +61,8 @@ app.use((req, res, next) => {
 app.get('/health', (_req, res) => {
   res.json({ ok: true, now: new Date().toISOString() });
 });
+
+app.use('/api/app', appMetaRoutes);
 
 app.get('/cashfree/checkout-page', (req, res) => {
   const sessionId = String(req.query?.session_id || '').trim();

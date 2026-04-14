@@ -5,7 +5,7 @@ import FeedbackBanner from '../components/FeedbackBanner';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { formatAmountFromInr } from '../utils/format';
-import { getCategoryDisplayLabel } from '../utils/categoryLabels';
+import { getCategoryDisplayParts } from '../utils/categoryLabels';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -46,8 +46,17 @@ const hasInfo = (value) => {
   return true;
 };
 
-function HelpLine({ text, theme }) {
-  return <Text style={[styles.helpText, { color: theme.muted }]}>ⓘ {text}</Text>;
+function FieldInfoLabel({ label, theme, infoText, onPress }) {
+  return (
+    <View style={styles.labelRow}>
+      <Text style={[styles.label, { color: theme.muted }]}>{label}</Text>
+      {infoText ? (
+        <Pressable onPress={onPress} hitSlop={8} style={[styles.infoIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}>
+          <Text style={[styles.infoIconText, { color: theme.accent }]}>i</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 const formatUpdatedTimestamp = (value) => {
@@ -87,6 +96,9 @@ export default function AssetsScreen({
   const [revealError, setRevealError] = useState('');
   const [revealLoading, setRevealLoading] = useState(false);
   const [expandedAssetId, setExpandedAssetId] = useState(null);
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [infoModalTitle, setInfoModalTitle] = useState('');
+  const [infoModalText, setInfoModalText] = useState('');
   const nameInputRef = useRef(null);
   const trackingUrlInputRef = useRef(null);
   const currentValueInputRef = useRef(null);
@@ -360,6 +372,18 @@ export default function AssetsScreen({
     setExpandedAssetId((current) => (current === id ? null : id));
   };
 
+  const openFieldInfo = (title, text) => {
+    setInfoModalTitle(String(title || ''));
+    setInfoModalText(String(text || ''));
+    setInfoModalVisible(true);
+  };
+
+  const closeFieldInfo = () => {
+    setInfoModalVisible(false);
+    setInfoModalTitle('');
+    setInfoModalText('');
+  };
+
   const toggleTypeSort = () => {
     setAssetSortType('type');
     setAssetSortDirection((current) => (assetSortType === 'type' && current === 'asc' ? 'desc' : 'asc'));
@@ -384,6 +408,7 @@ export default function AssetsScreen({
     });
   const maxAssets = subscriptionStatus?.limits?.maxAssets;
   const totalAssetValue = visibleItems.reduce((sum, item) => sum + Number(item.current_value || 0), 0);
+  const selectedCategory = getCategoryDisplayParts(form.category, t);
   const latestAssetUpdate = visibleItems.reduce((latest, item) => {
     const current = Date.parse(String(item?.updated_at || ''));
     if (!Number.isFinite(current)) return latest;
@@ -395,7 +420,7 @@ export default function AssetsScreen({
       {!readOnlyDueToFamilyRole ? (
         <SectionCard title={editingId ? t('Edit Asset') : t('Add Asset')}>
           {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{readOnlyBannerText}</Text> : null}
-          <Text style={[styles.label, { color: theme.muted }]}>{t('Category')}</Text>
+          <FieldInfoLabel label={t('Category')} theme={theme} />
           <Pressable
             style={[
               styles.dropdownTrigger,
@@ -404,14 +429,21 @@ export default function AssetsScreen({
             disabled={readOnly}
             onPress={() => setShowCategoryOptions((v) => !v)}
           >
-            <Text style={[styles.dropdownText, { color: theme.inputText }]}>
-              {form.category ? getCategoryDisplayLabel(form.category, t) : t('Select category')}
-            </Text>
+            <View style={styles.dropdownCopy}>
+              <Text style={[styles.dropdownText, { color: theme.inputText }]}>
+                {selectedCategory.title || t('Select category')}
+              </Text>
+              {selectedCategory.detail ? (
+                <Text style={[styles.dropdownDetail, { color: theme.muted }]}>{selectedCategory.detail}</Text>
+              ) : null}
+            </View>
             <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showCategoryOptions ? '▲' : '▼'}</Text>
           </Pressable>
           {showCategoryOptions ? (
             <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
-              {CATEGORY_OPTIONS.map((category) => (
+              {CATEGORY_OPTIONS.map((category) => {
+                const categoryParts = getCategoryDisplayParts(category, t);
+                return (
                 <Pressable
                   key={category}
                   style={[
@@ -424,17 +456,31 @@ export default function AssetsScreen({
                     setShowCategoryOptions(false);
                   }}
                 >
-                  <Text
-                    style={[
-                      styles.dropdownItemText,
-                      { color: theme.text },
-                      form.category === category && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
-                    ]}
-                  >
-                    {getCategoryDisplayLabel(category, t)}
-                  </Text>
+                  <View style={styles.dropdownCopy}>
+                    <Text
+                      style={[
+                        styles.dropdownItemText,
+                        { color: theme.text },
+                        form.category === category && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
+                      ]}
+                    >
+                      {categoryParts.title}
+                    </Text>
+                    {categoryParts.detail ? (
+                      <Text
+                        style={[
+                          styles.dropdownItemDetail,
+                          { color: theme.muted },
+                          form.category === category && { color: isLight ? theme.accent : 'rgba(255,255,255,0.86)' }
+                        ]}
+                      >
+                        {categoryParts.detail}
+                      </Text>
+                    ) : null}
+                  </View>
                 </Pressable>
-              ))}
+                );
+              })}
             </View>
           ) : null}
 
@@ -459,10 +505,16 @@ export default function AssetsScreen({
           />
           {!!fieldErrors.name ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.name}</Text> : null}
 
-          <Text style={[styles.label, { color: theme.muted }]}>{t('How to reach this institution')}</Text>
-          <HelpLine
+          <FieldInfoLabel
+            label={t('How to reach this institution')}
             theme={theme}
-            text={t('This tells your family the fastest next step to reach the institution.')}
+            infoText={t('This tells your family the fastest next step to reach the institution.')}
+            onPress={() =>
+              openFieldInfo(
+                t('How to reach this institution'),
+                t('This tells your family the fastest next step to reach the institution.')
+              )
+            }
           />
           <Pressable
             style={[
@@ -504,10 +556,16 @@ export default function AssetsScreen({
             </View>
           ) : null}
 
-          <Text style={[styles.label, { color: theme.muted }]}>{t('Asset Account / Unique Number')}</Text>
-          <HelpLine
+          <FieldInfoLabel
+            label={t('Asset Account / Unique Number')}
             theme={theme}
-            text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
+            infoText={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
+            onPress={() =>
+              openFieldInfo(
+                t('Asset Account / Unique Number'),
+                t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')
+              )
+            }
           />
           <TextInput
             style={[
@@ -523,10 +581,16 @@ export default function AssetsScreen({
             editable={!readOnly}
           />
 
-          <Text style={[styles.label, { color: theme.muted }]}>{t('Tracking Website URL')}</Text>
-          <HelpLine
+          <FieldInfoLabel
+            label={t('Tracking Website URL')}
             theme={theme}
-            text={t('Only domain is stored (for example, bankname.com) to keep details minimal and discreet.')}
+            infoText={t('Only domain is stored (for example, bankname.com) to keep details minimal and discreet.')}
+            onPress={() =>
+              openFieldInfo(
+                t('Tracking Website URL'),
+                t('Only domain is stored (for example, bankname.com) to keep details minimal and discreet.')
+              )
+            }
           />
           <TextInput
             ref={trackingUrlInputRef}
@@ -605,10 +669,16 @@ export default function AssetsScreen({
             <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.invested_amount}</Text>
           ) : null}
 
-          <Text style={[styles.label, { color: theme.muted }]}>{t('Notes for Family')}</Text>
-          <HelpLine
+          <FieldInfoLabel
+            label={t('Notes for Family')}
             theme={theme}
-            text={t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')}
+            infoText={t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')}
+            onPress={() =>
+              openFieldInfo(
+                t('Notes for Family'),
+                t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')
+              )
+            }
           />
           <TextInput
             onFocus={() => scrollToField('notes_for_family')}
@@ -751,7 +821,7 @@ export default function AssetsScreen({
                 <View style={styles.actionsRow}>
                   {readOnlyDueToFamilyRole ? null : (
                     <>
-                      <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
+                      <PillButton label={t('Full View')} kind="ghost" onPress={() => openReveal(item)} />
                       <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
                       <PillButton
                         label={t('Delete')}
@@ -811,6 +881,18 @@ export default function AssetsScreen({
         </View>
       </Modal>
 
+      <Modal visible={infoModalVisible} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>{infoModalTitle}</Text>
+            <Text style={[styles.modalSub, { color: theme.muted }]}>{infoModalText}</Text>
+            <View style={styles.modalActions}>
+              <PillButton label={t('Close')} kind="ghost" onPress={closeFieldInfo} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {limitReached ? (
         <View style={styles.limitCtaRow}>
           <PillButton label={t('Upgrade to Premium')} onPress={onOpenSubscription} />
@@ -822,6 +904,12 @@ export default function AssetsScreen({
 
 const styles = StyleSheet.create({
   label: { fontWeight: '700', marginBottom: 5 },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10
+  },
   helpText: {
     fontSize: 11,
     lineHeight: 16,
@@ -850,10 +938,21 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: 12
+  },
+  dropdownCopy: {
+    flex: 1
   },
   dropdownText: {
-    color: '#0B1F3A'
+    color: '#0B1F3A',
+    fontWeight: '700'
+  },
+  dropdownDetail: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600'
   },
   dropdownArrow: {
     color: '#64748B',
@@ -878,6 +977,12 @@ const styles = StyleSheet.create({
   },
   dropdownItemText: {
     color: '#0B1F3A'
+  },
+  dropdownItemDetail: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600'
   },
   dropdownItemTextActive: {
     color: '#0E8A72',
@@ -1059,6 +1164,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600'
+  },
+  infoIconBtn: {
+    width: 24,
+    height: 24,
+    borderWidth: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  infoIconText: {
+    fontSize: 13,
+    fontWeight: '900'
   },
   message: { color: '#0B1F3A', marginBottom: 20, fontWeight: '600' }
 });

@@ -321,7 +321,7 @@ export default function FamilyScreen({
           <>
             {owner ? (
               <View style={styles.ownerCard}>
-                <Text style={[styles.ownerLabel, { color: theme.muted }]}>{t('Owner')}</Text>
+                <Text style={[styles.ownerLabel, { color: theme.muted }]}>{t('Account Owner')}</Text>
                 <Text style={[styles.ownerName, { color: theme.text }]}>{toInitials(owner.full_name)}</Text>
                 <Text style={[styles.ownerMeta, { color: theme.muted }]}>{maskMobile(owner.mobile)}</Text>
               </View>

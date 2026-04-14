@@ -212,6 +212,7 @@ export default function AuthScreen({
   onLoginWithBiometric,
   onRequestOtp,
   onVerifyOtp,
+  onContinueAsGuest,
   loading = false,
   externalMessage = '',
   onClearExternalMessage = NOOP,
@@ -412,31 +413,55 @@ export default function AuthScreen({
           sections: [
             {
               heading: t('Scope'),
-              body: t('Worthio handles your account, portfolio, security, reminder, and family-sharing data to operate the app securely and lawfully.')
+              body: t('This Privacy Policy explains how Worthio handles personal data when you use the app and connected services, in line with applicable law.')
             },
             {
               heading: t('Data We Collect'),
-              body: t('We collect two-letter initials, your mobile number, consent records, portfolio data you enter, selected security telemetry, and notification data needed to run the service.')
+              body: t('We collect two-letter initials, your mobile number, consent records, portfolio data you enter, selected security telemetry, notification data, and subscription/payment records needed to run the service.')
             },
             {
-              heading: t('What We Do Not Collect'),
+              heading: t('Data We Do Not Collect'),
               body: t('We do not collect bank passwords, internet banking credentials, card CVV, SMS inbox content, or fingerprint and Face ID templates.')
             },
             {
               heading: t('Why We Process Data'),
-              body: t('We use data to create and secure your account, show your assets and liabilities, power reminders, protect sensitive fields, and support limited AI insights.')
+              body: t('We use data to create and secure your account, show your assets and liabilities, power reminders, protect sensitive fields, manage subscriptions and receipts, and support limited AI insights.')
             },
             {
-              heading: t('Security and Storage'),
-              body: t('Data is protected in transit, selected sensitive fields are encrypted at rest, and full reveal of sensitive details requires your Security PIN.')
+              heading: t('Security and Storage Controls'),
+              body: t('Data is protected in transit using TLS, selected sensitive fields are encrypted at rest, and full reveal of sensitive details requires your Security PIN.')
             },
             {
-              heading: t('Sharing'),
-              body: t('We do not sell personal data. Data is shared only with authorized family members, required service providers, or authorities when legally required.')
+              heading: t('Sharing of Data'),
+              body: t('We do not sell personal data. Data is shared only with authorized family members, required service providers for OTP, hosting, billing, notifications, or authorities when legally required.')
             },
             {
-              heading: t('Your Controls'),
-              body: t('You can export your data, edit or delete records, reset PINs via OTP, manage device trust, and delete your account.')
+              heading: t('AI Insights Data Use'),
+              body: t('For AI Insights, we send limited portfolio context such as country code, preferred currency, totals, and allocation percentages. We do not intentionally send full identifiers, contact numbers, or raw sensitive notes for this feature.')
+            },
+            {
+              heading: t('Retention'),
+              body: t('Primary account and portfolio data is retained while your account is active. After deletion, certain minimized operational or security records may be retained where required or permitted by law.')
+            },
+            {
+              heading: t('Your Controls and Rights'),
+              body: t('You can export your data, edit or delete records, reset PINs via OTP, manage device trust, and delete your account from supported in-app controls. If you lose access to your login, you may request deletion by email after ownership verification.')
+            },
+            {
+              heading: t('Cross-Border Processing'),
+              body: t('Some service providers used for notifications, billing, analytics/security, or AI processing may operate from multiple regions, subject to applicable law and safeguards.')
+            },
+            {
+              heading: t('Children'),
+              body: t('The app is not intended for children under 18.')
+            },
+            {
+              heading: t('Grievance Contact'),
+                body: t('For privacy or security requests, contact worthio-escalation@nexralabs.in. We target response within 15 working days.')
+            },
+            {
+              heading: t('Updates to This Policy'),
+              body: t('We may revise this Privacy Policy as features or legal requirements evolve. Updated versions are published in-app, and continued use after update means acceptance of the revised policy.')
             }
           ]
         }
@@ -454,24 +479,52 @@ export default function AuthScreen({
                 body: t('The app does not provide investment, tax, legal, or insurance advice and does not guarantee returns, safety, or suitability of decisions.')
               },
               {
-                heading: t('Account Responsibilities'),
+                heading: t('Eligibility and Account Use'),
                 body: t('You must provide accurate registration details and remain responsible for activity under your account and linked family access.')
               },
               {
-                heading: t('Security Obligations'),
+                heading: t('Security Features and Your Obligations'),
                 body: t('Login may require OTP or trusted-device checks, and sensitive fields remain masked until unlocked with your Security PIN.')
               },
               {
-                heading: t('Family Sharing'),
+                heading: t('Family Sharing Terms'),
                 body: t('Family access is permission-based. You are responsible for inviting trusted people and keeping roles appropriate.')
               },
               {
-                heading: t('Notifications and AI'),
-                body: t('Reminder alerts are best-effort, and AI insights are informational only. You must independently verify important information before acting.')
+                heading: t('Reminders and Notifications'),
+                body: t('Reminder alerts and security notifications are best-effort and may be delayed or unavailable due to device, OS, network, or third-party provider limitations.')
               },
               {
-                heading: t('Subscription and Liability'),
-                body: t('Some features require an active subscription. To the extent permitted by law, we are not liable for indirect loss arising from user decisions, incorrect entries, or third-party outages.')
+                heading: t('AI Insights Terms'),
+                body: t('AI Insights are automated summaries for awareness only. They may contain errors, omissions, stale data, or source limitations. You must independently verify facts before taking action.')
+              },
+              {
+                heading: t('Data Entry Responsibility'),
+                body: t('You are responsible for the correctness, completeness, and lawful use of all data entered by you or your invited family users.')
+              },
+              {
+                heading: t('Acceptable Use'),
+                body: t('You agree not to misuse the service, attempt unauthorized access, reverse engineer security controls, abuse OTP or notification channels, or use the app for unlawful purposes.')
+              },
+              {
+                heading: t('Subscription and Features'),
+                body: t('Certain features may require an active subscription. Feature availability, plans, and pricing may change over time and will be shown in-app.')
+              },
+              {
+                heading: t('Suspension and Termination'),
+                body: t('We may suspend, restrict, or terminate access for suspected abuse, legal violations, fraud risk, or security risk. You may delete your account at any time from supported in-app account controls. If you cannot access your account, you may request deletion by email after ownership verification.')
+              },
+              {
+                heading: t('Limitation of Liability'),
+                body: t('To the maximum extent permitted by law, we are not liable for indirect, incidental, special, or consequential damages, including financial loss arising from user decisions, incorrect data entry, delayed notifications, or third-party outages.')
+              },
+              {
+                heading: t('Governing Law'),
+                body: t('These Terms are governed by the laws of India. Courts with competent jurisdiction in India will have jurisdiction over disputes, subject to applicable law.')
+              },
+              {
+                heading: t('Changes to Terms'),
+                body: t('We may update these Terms as the product and legal requirements evolve. Continued use after publication of updated Terms constitutes acceptance.')
               }
             ]
           }
@@ -686,6 +739,24 @@ export default function AuthScreen({
             disabled={loading || otpCooldown > 0}
             onPress={() => requestOtp().catch((e) => setMessage(e.message))}
           />
+        ) : null}
+
+        {typeof onContinueAsGuest === 'function' ? (
+          <>
+            <PillButton
+              label={t('Continue as Guest Preview')}
+              kind="ghost"
+              style={[styles.primaryActionButton, styles.secondaryActionButton]}
+              disabled={loading}
+              onPress={() => {
+                clearAttemptMessages();
+                onContinueAsGuest().catch((e) => setMessage(String(e?.message || e)));
+              }}
+            />
+            <Text style={[styles.previewNote, { color: authTheme.subtle }]}>
+              {t('Preview mode is valid only for this session. Changes are not saved to your real account.')}
+            </Text>
+          </>
         ) : null}
 
         {!!effectiveMessage && (
@@ -935,6 +1006,13 @@ const styles = StyleSheet.create({
   },
   secondaryActionButton: {
     marginTop: 12
+  },
+  previewNote: {
+    marginTop: 10,
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600'
   },
   label: { fontWeight: '700', marginBottom: 5 },
   input: {

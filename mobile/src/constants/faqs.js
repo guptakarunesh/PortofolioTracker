@@ -1,10 +1,5 @@
 export const FAQ_ITEMS = [
   {
-    section: 'faq_section_portfolio',
-    q: 'faq_add_assets_q',
-    a: 'faq_add_assets_a'
-  },
-  {
     section: 'faq_section_auth',
     q: 'faq_privacy_pin_q',
     a: 'faq_privacy_pin_a'
@@ -35,24 +30,9 @@ export const FAQ_ITEMS = [
     a: 'faq_reminders_a'
   },
   {
-    section: 'faq_section_portfolio',
-    q: 'faq_trend_q',
-    a: 'faq_trend_a'
-  },
-  {
     section: 'faq_section_subscription',
     q: 'faq_trial_q',
     a: 'faq_trial_a'
-  },
-  {
-    section: 'faq_section_auth',
-    q: 'faq_otp_q',
-    a: 'faq_otp_a'
-  },
-  {
-    section: 'faq_section_auth',
-    q: 'faq_biometric_q',
-    a: 'faq_biometric_a'
   },
   {
     section: 'faq_section_subscription',

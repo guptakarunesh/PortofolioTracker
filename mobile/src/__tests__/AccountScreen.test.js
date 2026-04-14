@@ -2,6 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import AccountScreen from '../screens/AccountScreen';
 import { api } from '../api/client';
+import { sanitizeSubscriptionHistory } from '../utils/accountData';
 
 jest.mock('expo-file-system', () => ({
   documentDirectory: 'file:///tmp/',
@@ -54,6 +55,7 @@ describe('AccountScreen', () => {
       />
     );
 
+    fireEvent.press(getByText('Family Access'));
     fireEvent.press(getByText('Manage Family'));
     expect(onOpenFamily).toHaveBeenCalled();
   });
@@ -82,6 +84,7 @@ describe('AccountScreen', () => {
       />
     );
 
+    fireEvent.press(getByText('Family Access'));
     fireEvent.press(getByText('Manage Family'));
     expect(onOpenSubscription).toHaveBeenCalled();
   });
@@ -113,5 +116,67 @@ describe('AccountScreen', () => {
     });
 
     expect(queryByText('Save Security PIN')).toBeNull();
+  });
+
+  it('filters malformed subscription history rows before rendering', () => {
+    expect(
+      sanitizeSubscriptionHistory([
+        null,
+        undefined,
+        false,
+        0,
+        'bad-row',
+        { id: 42, plan: 'premium_monthly' }
+      ])
+    ).toEqual([
+      {
+        id: '42',
+        plan: 'premium_monthly',
+        amount_inr: 0,
+        status: '',
+        provider: '',
+        purchased_at: '',
+        valid_until: '',
+        period: '',
+        provider_txn_id: ''
+      }
+    ]);
+  });
+
+  it('renders subscription history rows without crashing when history is present', async () => {
+    api.getSubscriptionHistory.mockResolvedValue([
+      {
+        id: 7,
+        plan: 'premium_yearly',
+        amount_inr: 1499,
+        status: 'paid',
+        provider: 'preview',
+        purchased_at: '2026-04-11T00:00:00.000Z'
+      }
+    ]);
+
+    const { getByText } = render(
+      <AccountScreen
+        user={{ full_name: 'User' }}
+        onLogout={() => {}}
+        onPrivacyConfigChanged={() => {}}
+        onCurrencyChanged={() => {}}
+        biometricEnrolled={false}
+        onEnrollBiometric={() => {}}
+        onDisableBiometric={() => {}}
+        subscriptionStatus={{ status: 'active', plan: 'premium_yearly' }}
+        onOpenSubscription={() => {}}
+        onOpenFamily={() => {}}
+        premiumActive
+        preferredCurrency="INR"
+        onThemeChange={() => {}}
+        themeKey="teal"
+      />
+    );
+
+    fireEvent.press(getByText('Subscription'));
+    await waitFor(() => {
+      expect(getByText('Premium Yearly • INR 1499')).toBeTruthy();
+    });
   });
 });

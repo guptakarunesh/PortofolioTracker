@@ -43,8 +43,17 @@ const hasInfo = (value) => {
   return true;
 };
 
-function HelpLine({ text, theme }) {
-  return <Text style={[styles.helpText, { color: theme.muted }]}>ⓘ {text}</Text>;
+function FieldInfoLabel({ label, theme, infoText, onPress }) {
+  return (
+    <View style={styles.labelRow}>
+      <Text style={[styles.label, { color: theme.muted }]}>{label}</Text>
+      {infoText ? (
+        <Pressable onPress={onPress} hitSlop={8} style={[styles.infoIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}>
+          <Text style={[styles.infoIconText, { color: theme.accent }]}>i</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 const formatUpdatedTimestamp = (value) => {
@@ -85,6 +94,9 @@ export default function LiabilitiesScreen({
   const [revealError, setRevealError] = useState('');
   const [revealLoading, setRevealLoading] = useState(false);
   const [expandedLiabilityId, setExpandedLiabilityId] = useState(null);
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [infoModalTitle, setInfoModalTitle] = useState('');
+  const [infoModalText, setInfoModalText] = useState('');
   const lenderInputRef = useRef(null);
   const outstandingAmountInputRef = useRef(null);
   const fieldOffsetsRef = useRef({});
@@ -365,6 +377,18 @@ export default function LiabilitiesScreen({
     setExpandedLiabilityId((current) => (current === id ? null : id));
   };
 
+  const openFieldInfo = (title, text) => {
+    setInfoModalTitle(String(title || ''));
+    setInfoModalText(String(text || ''));
+    setInfoModalVisible(true);
+  };
+
+  const closeFieldInfo = () => {
+    setInfoModalVisible(false);
+    setInfoModalTitle('');
+    setInfoModalText('');
+  };
+
   const toggleTypeSort = () => {
     setLiabilitySortType('type');
     setLiabilitySortDirection((current) => (liabilitySortType === 'type' && current === 'asc' ? 'desc' : 'asc'));
@@ -503,10 +527,16 @@ export default function LiabilitiesScreen({
             </View>
           ) : null}
 
-          <Text style={[styles.label, { color: theme.muted }]}>{t('How to reach this institution')}</Text>
-          <HelpLine
+          <FieldInfoLabel
+            label={t('How to reach this institution')}
             theme={theme}
-            text={t('This tells your family the fastest next step to reach the institution.')}
+            infoText={t('This tells your family the fastest next step to reach the institution.')}
+            onPress={() =>
+              openFieldInfo(
+                t('How to reach this institution'),
+                t('This tells your family the fastest next step to reach the institution.')
+              )
+            }
           />
           <Pressable
             style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
@@ -545,10 +575,16 @@ export default function LiabilitiesScreen({
             </View>
           ) : null}
 
-          <Text style={[styles.label, { color: theme.muted }]}>{t('Liability Account / Unique Number')}</Text>
-          <HelpLine
+          <FieldInfoLabel
+            label={t('Liability Account / Unique Number')}
             theme={theme}
-            text={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
+            infoText={t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')}
+            onPress={() =>
+              openFieldInfo(
+                t('Liability Account / Unique Number'),
+                t('Sensitive field. Stored in non-human-readable form; full value can be seen only using your security PIN.')
+              )
+            }
           />
           <TextInput
             onFocus={() => scrollToField('account_ref')}
@@ -592,10 +628,16 @@ export default function LiabilitiesScreen({
             <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.outstanding_amount}</Text>
           ) : null}
 
-          <Text style={[styles.label, { color: theme.muted }]}>{t('Notes for Family')}</Text>
-          <HelpLine
+          <FieldInfoLabel
+            label={t('Notes for Family')}
             theme={theme}
-            text={t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')}
+            infoText={t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')}
+            onPress={() =>
+              openFieldInfo(
+                t('Notes for Family'),
+                t('Use this to guide family on what to do next. Stored encrypted and unlocked only with security PIN.')
+              )
+            }
           />
           <TextInput
             onFocus={() => scrollToField('notes_for_family')}
@@ -738,7 +780,7 @@ export default function LiabilitiesScreen({
                 <View style={styles.actionsRow}>
                   {readOnlyDueToFamilyRole ? null : (
                     <>
-                      <PillButton label={t('View Full')} kind="ghost" onPress={() => openReveal(item)} />
+                      <PillButton label={t('Full View')} kind="ghost" onPress={() => openReveal(item)} />
                       <PillButton label={t('Edit')} kind="ghost" onPress={() => startEdit(item)} disabled={readOnly} />
                       <PillButton
                         label={t('Delete')}
@@ -795,12 +837,30 @@ export default function LiabilitiesScreen({
           </View>
         </View>
       </Modal>
+
+      <Modal visible={infoModalVisible} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>{infoModalTitle}</Text>
+            <Text style={[styles.modalSub, { color: theme.muted }]}>{infoModalText}</Text>
+            <View style={styles.modalActions}>
+              <PillButton label={t('Close')} kind="ghost" onPress={closeFieldInfo} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   label: { fontWeight: '700', marginBottom: 5 },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10
+  },
   planUsageText: {
     marginBottom: 10,
     fontSize: 12,
@@ -1048,5 +1108,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600'
+  },
+  infoIconBtn: {
+    width: 24,
+    height: 24,
+    borderWidth: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  infoIconText: {
+    fontSize: 13,
+    fontWeight: '900'
   }
 });

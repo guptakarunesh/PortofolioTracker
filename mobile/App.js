@@ -16,8 +16,10 @@ import {
   Alert,
   Platform,
   AppState,
+  Linking,
   InteractionManager,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Keyboard
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -38,7 +40,7 @@ import FamilyScreen from './src/screens/FamilyScreen';
 import WorthioSplash from './src/screens/LaunchScreen';
 import OnboardingModal from './src/components/OnboardingModal';
 import PillButton from './src/components/PillButton';
-import { api, setAuthToken } from './src/api/client';
+import { api, beginGuestSession, endGuestSession, isGuestPreviewActive, setAuthToken } from './src/api/client';
 import {
   canUseNativePhoneAuth,
   clearNativePhoneOtp,
@@ -51,6 +53,8 @@ import { FAQ_ITEMS } from './src/constants/faqs';
 import { ThemeContext, THEMES, normalizeThemeKey } from './src/theme';
 import { LanguageContext, translate } from './src/i18n';
 import { BRAND } from './src/brand';
+import { canRequestAiExplanation } from './src/utils/aiInsights';
+import { resolveSessionBootstrap } from './src/utils/sessionBootstrap';
 
 const ACCENT = BRAND.colors.accentBlue;
 const ACCENT_DARK = BRAND.colors.accentGreen;
@@ -390,6 +394,8 @@ function ScreenRenderer({
   onGetOnboardingZoomStyle,
   onThemeChange,
   themeKey,
+  appVersionLabel,
+  pinSetupRequired,
   onRemindersChanged,
   onRequestScrollTo,
   onOpenSupport,
@@ -485,8 +491,10 @@ function ScreenRenderer({
           premiumActive={premiumActive}
           preferredCurrency={preferredCurrency}
           fxRates={fxRates}
+          appVersionLabel={appVersionLabel}
           onThemeChange={onThemeChange}
           themeKey={themeKey}
+          pinSetupRequired={pinSetupRequired}
           onRequestScrollTo={onRequestScrollTo}
         />
       );
@@ -528,6 +536,8 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [user, setUser] = useState(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [guestMode, setGuestMode] = useState(isGuestPreviewActive());
   const [otpFlowProvider, setOtpFlowProvider] = useState(null);
   const [sessionRestoring, setSessionRestoring] = useState(true);
   const [launchSplashVisible, setLaunchSplashVisible] = useState(true);
@@ -575,18 +585,24 @@ export default function App() {
   const [reminderSyncVersion, setReminderSyncVersion] = useState(0);
   const [pendingReminderPrompt, setPendingReminderPrompt] = useState(null);
   const [remotePushReady, setRemotePushReady] = useState(false);
+  const [openSupportFaqs, setOpenSupportFaqs] = useState({});
+  const [storeUpdateInfo, setStoreUpdateInfo] = useState(null);
+  const [storeUpdateVisible, setStoreUpdateVisible] = useState(false);
   const contentScrollRef = React.useRef(null);
   const supportChatScrollRef = React.useRef(null);
   const onboardingTargetRefs = React.useRef({});
   const onboardingZoom = React.useRef(new Animated.Value(0)).current;
   const handledNotificationResponses = React.useRef(new Set());
   const lastAccessContextSyncAtRef = React.useRef(0);
+  const aiExplainRequestLockRef = React.useRef(false);
+  const dismissedStoreUpdateVersionRef = React.useRef('');
   const premiumActive =
     subscriptionStatus?.status === 'active' &&
     ['trial_premium', 'premium_monthly', 'premium_yearly'].includes(subscriptionStatus?.plan);
   const subscriptionActive = subscriptionStatus?.status === 'active';
   const readOnly = !subscriptionActive || accessRole === 'read';
   const pageHeaderCopy = user ? getPageHeaderCopy(activeTab, t) : null;
+  const aiExplanationReady = Boolean(aiExplainPayload?.explanation);
   const onboardingSteps = React.useMemo(
     () => [
       {
@@ -643,7 +659,52 @@ export default function App() {
     ],
     [t]
   );
-  const supportFaqs = React.useMemo(() => FAQ_ITEMS.map((item) => ({ ...item })), []);
+  const supportFaqSections = React.useMemo(() => {
+    const grouped = FAQ_ITEMS.reduce((acc, item) => {
+      const section = String(item.section || 'faq_section_account');
+      if (!acc[section]) acc[section] = [];
+      acc[section].push(item);
+      return acc;
+    }, {});
+    return Object.entries(grouped)
+      .map(([section, items]) => ({
+        section,
+        items: [...items].sort((a, b) => t(a.q).localeCompare(t(b.q)))
+      }))
+      .sort((a, b) => t(a.section).localeCompare(t(b.section)));
+  }, [handleLogout, t]);
+  const currentAppVersion = React.useMemo(
+    () => String(Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0').trim() || '1.0.0',
+    []
+  );
+  const appVersionLabel = `App Version ${currentAppVersion}`;
+  const checkForStoreUpdate = React.useCallback(async () => {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+    try {
+      const payload = await api.getAppVersionStatus(Platform.OS, currentAppVersion);
+      const latestVersion = String(payload?.latest_version || '').trim();
+      const storeUrl = String(payload?.store_url || '').trim();
+      const updateAvailable = Boolean(payload?.update_available && latestVersion);
+      if (!updateAvailable) {
+        setStoreUpdateInfo(null);
+        setStoreUpdateVisible(false);
+        return;
+      }
+      const nextInfo = {
+        platform: String(payload?.platform || Platform.OS),
+        currentVersion: String(payload?.current_version || currentAppVersion),
+        latestVersion,
+        storeUrl,
+        source: String(payload?.source || '')
+      };
+      setStoreUpdateInfo(nextInfo);
+      if (dismissedStoreUpdateVersionRef.current !== latestVersion) {
+        setStoreUpdateVisible(true);
+      }
+    } catch (_e) {
+      // Ignore update check failures and continue using the app normally.
+    }
+  }, [currentAppVersion]);
   const premiumPromptContent = React.useMemo(() => {
     const targetsStep = onboardingSteps.find((step) => step.targetKey === 'tab_settings');
     const remindersStep = onboardingSteps.find((step) => step.targetKey === 'tab_reminders');
@@ -730,8 +791,21 @@ export default function App() {
 
   const explainAiScore = async () => {
     setAiExplainError('');
-    if (!user || !premiumActive) return;
+    if (
+      !canRequestAiExplanation({
+        userPresent: Boolean(user),
+        premiumActive,
+        aiLoading,
+        aiExplainLoading,
+        hasScorePayload: Boolean(aiPayload),
+        hasExplanation: aiExplanationReady,
+        requestLocked: aiExplainRequestLockRef.current
+      })
+    ) {
+      return;
+    }
     try {
+      aiExplainRequestLockRef.current = true;
       setAiExplainLoading(true);
       const data = await api.explainAiHealthScore();
       setAiExplainPayload(data || null);
@@ -739,6 +813,7 @@ export default function App() {
       setAiExplainError(String(e?.message || e));
     } finally {
       setAiExplainLoading(false);
+      aiExplainRequestLockRef.current = false;
     }
   };
 
@@ -754,6 +829,7 @@ export default function App() {
     closeAiInsights();
     setSupportVisible(true);
     setSupportChatMode(false);
+    setOpenSupportFaqs({});
   }, [closeAiInsights]);
 
   const closeSupport = React.useCallback(() => {
@@ -762,6 +838,10 @@ export default function App() {
     setSupportChatInput('');
     setSupportChatLoading(false);
     setSupportHistoryLoading(false);
+  }, []);
+
+  const toggleSupportFaq = React.useCallback((questionKey) => {
+    setOpenSupportFaqs((prev) => ({ ...prev, [questionKey]: !prev[questionKey] }));
   }, []);
 
   const openSupportChat = React.useCallback(async () => {
@@ -882,7 +962,7 @@ export default function App() {
   }, []);
 
   const registerRemotePushToken = React.useCallback(async () => {
-    if (!user) {
+    if (!user || guestMode) {
       setRemotePushReady(false);
       return false;
     }
@@ -916,7 +996,7 @@ export default function App() {
     await api.registerPushToken({ token, platform: Platform.OS }).catch(() => null);
     setRemotePushReady(true);
     return true;
-  }, [ensureNotificationPermission, user]);
+  }, [ensureNotificationPermission, guestMode, user]);
 
   const clearLocalReminderNotifications = React.useCallback(async () => {
     const existingIds = await loadReminderNotificationIds();
@@ -1194,6 +1274,16 @@ export default function App() {
   }, [user, syncAccessContext]);
 
   useEffect(() => {
+    checkForStoreUpdate().catch(() => {});
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        checkForStoreUpdate().catch(() => {});
+      }
+    });
+    return () => appStateSub.remove();
+  }, [checkForStoreUpdate]);
+
+  useEffect(() => {
     let cancelled = false;
     const bootstrapSession = async () => {
       try {
@@ -1205,18 +1295,35 @@ export default function App() {
         const savedToken = String(savedTokenRaw || '').trim();
         const savedIntroSeen = String(savedIntroSeenRaw || '').trim() === '1';
         const savedLastMobile = String(savedLastMobileRaw || '').trim();
+        const bootstrapMode = resolveSessionBootstrap(savedToken, isGuestPreviewActive());
         if (!cancelled) {
           setAuthIntroSeen(savedIntroSeen);
           setAuthInitialExposureActive(!savedIntroSeen);
           setLastKnownUserMobile(savedLastMobile);
         }
-        if (!savedToken) {
+        if (bootstrapMode.mode === 'signed_out') {
           setAuthToken(null);
+          setGuestMode(false);
           return;
         }
-        setAuthToken(savedToken);
+        if (bootstrapMode.mode === 'guest') {
+          setAuthToken(null);
+          const profile = await api.me();
+          if (cancelled) return;
+          setGuestMode(true);
+          setUser(profile);
+          setAuthError('');
+          await Promise.allSettled([
+            refreshPrivacyConfig(),
+            refreshSubscription(),
+            refreshAccessContext()
+          ]);
+          return;
+        }
+        setAuthToken(bootstrapMode.token);
         const profile = await api.me();
         if (cancelled) return;
+        setGuestMode(false);
         setUser(profile);
         setAuthError('');
         setActiveTab('dashboard');
@@ -1228,6 +1335,7 @@ export default function App() {
         ]);
       } catch (_e) {
         setAuthToken(null);
+        setGuestMode(false);
         if (!cancelled) {
           setUser(null);
           setAuthError('');
@@ -1274,6 +1382,8 @@ export default function App() {
   };
 
   const handleAuthSuccess = async (payload, options = {}) => {
+    endGuestSession();
+    setGuestMode(false);
     setAuthToken(payload.token);
     await SecureStore.setItemAsync(AUTH_SESSION_TOKEN_KEY, String(payload?.token || '')).catch(() => {});
     const resolvedMobile = String(payload?.user?.mobile || '').trim();
@@ -1298,6 +1408,40 @@ export default function App() {
         openOnboardingAfterLogin().catch(() => {});
       }, 180);
     });
+  };
+
+  const handleGuestPreviewStart = async () => {
+    try {
+      setAuthLoading(true);
+      setAuthError('');
+      clearNativePhoneOtp();
+      beginGuestSession();
+      setGuestMode(true);
+      setAuthToken(null);
+      const profile = await api.me();
+      setUser(profile);
+      setActiveTab('dashboard');
+      setPrevTab(null);
+      setPinSetupVisible(false);
+      setPinSetupInput('');
+      setPinSetupError('');
+      setPendingReminderPrompt(null);
+      setRemotePushReady(false);
+      setOnboardingVisible(false);
+      setOnboardingIndex(0);
+      setRecentActivityVisible(false);
+      setSupportVisible(false);
+      setAuthInitialExposureActive(false);
+      await Promise.allSettled([refreshPrivacyConfig(), refreshSubscription(), refreshAccessContext()]);
+    } catch (e) {
+      endGuestSession();
+      setGuestMode(false);
+      setUser(null);
+      setAuthError(String(e?.message || e));
+    } finally {
+      setAuthLoading(false);
+      setSessionRestoring(false);
+    }
   };
 
   const handleRegister = async (payload) => {
@@ -1389,6 +1533,8 @@ export default function App() {
       // Ignore logout failure and clear local auth anyway.
     }
     setAuthToken(null);
+    endGuestSession();
+    setGuestMode(false);
     await SecureStore.deleteItemAsync(AUTH_SESSION_TOKEN_KEY).catch(() => {});
     setUser(null);
     setActiveTab('dashboard');
@@ -1413,6 +1559,23 @@ export default function App() {
     await SecureStore.setItemAsync(AUTH_INTRO_SEEN_KEY, '1').catch(() => {});
     clearNativePhoneOtp();
   };
+
+  const confirmHeaderLogout = React.useCallback(() => {
+    Alert.alert(
+      t('Logout'),
+      t('Are you sure you want to log out?'),
+      [
+        { text: t('Cancel'), style: 'cancel' },
+        {
+          text: t('Logout'),
+          style: 'destructive',
+          onPress: () => {
+            handleLogout().catch(() => {});
+          }
+        }
+      ]
+    );
+  }, [t]);
 
   const ensureBiometricReady = async () => {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -1500,14 +1663,14 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || guestMode) {
       setRemotePushReady(false);
       return;
     }
     registerRemotePushToken().catch(() => {
       setRemotePushReady(false);
     });
-  }, [registerRemotePushToken, user]);
+  }, [guestMode, registerRemotePushToken, user]);
 
   useEffect(() => {
     if (!remotePushReady) return;
@@ -1610,6 +1773,7 @@ export default function App() {
       return;
     }
     setActiveTab(key);
+    if (key === 'account') return;
     syncAccessContext(false).catch(() => {});
   };
 
@@ -1773,12 +1937,12 @@ export default function App() {
     setPinSetupError('');
   };
   const roleLabel = isAccountOwner
-    ? t('Owner')
+    ? t('Primary Acc.')
     : String(accessRole || 'read').toLowerCase() === 'admin'
-      ? t('Family Admin')
+      ? t('Shared Admin')
       : String(accessRole || 'read').toLowerCase() === 'write'
-        ? t('Family Editor')
-        : t('Family Viewer');
+        ? t('Shared Edit')
+        : t('Shared View');
   const isFamilyMember = !isAccountOwner;
   const normalizedAdminInitials = React.useMemo(
     () =>
@@ -1891,6 +2055,17 @@ export default function App() {
   }, [supportChatMessages, supportVisible, supportChatMode]);
 
   useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     setSupportChatMessages([]);
     setSupportChatMode(false);
     setSupportChatInput('');
@@ -1929,6 +2104,7 @@ export default function App() {
       ? 'returning'
       : 'light-new';
   const authPreviewVariant = __DEV__ && !user ? 'returning' : authLayoutVariant;
+  const guestPreviewEntryVisible = authLayoutVariant === 'fresh';
   const authBackdropScale = Math.min(
     screenWidth / AUTH_LOGON_BACKGROUND_SIZE.width,
     screenHeight / AUTH_LOGON_BACKGROUND_SIZE.height
@@ -1975,7 +2151,7 @@ export default function App() {
           contentContainerStyle={[
             styles.authPageContent,
             isTabletLayout ? styles.authPageContentTablet : null,
-            { paddingTop: authHeroOffset }
+            { paddingTop: authHeroOffset, paddingBottom: keyboardVisible ? 28 : 84 }
           ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -1995,6 +2171,7 @@ export default function App() {
                 onLoginWithBiometric={handleBiometricLogin}
                 onRequestOtp={handleOtpSend}
                 onVerifyOtp={handleOtpVerify}
+                onContinueAsGuest={guestPreviewEntryVisible ? handleGuestPreviewStart : undefined}
                 biometricReady={biometricEnrolled || (__DEV__ && authPreviewVariant === 'returning')}
                 loading={authLoading}
                 externalMessage={authError}
@@ -2082,7 +2259,7 @@ export default function App() {
                       borderColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : theme.border
                     }
                   ]}
-                  onPress={() => handleLogout().catch(() => {})}
+                  onPress={confirmHeaderLogout}
                   accessibilityRole="button"
                   accessibilityLabel={t('Logout')}
                   hitSlop={8}
@@ -2138,6 +2315,35 @@ export default function App() {
         </View>
       ) : null}
 
+      {guestMode ? (
+        <View
+          style={[
+            styles.guestPreviewBanner,
+            {
+              backgroundColor: isDarkTheme ? 'rgba(12,26,40,0.94)' : 'rgba(255,255,255,0.96)',
+              borderColor: isDarkTheme ? 'rgba(46,211,247,0.28)' : '#BDD6EC',
+              shadowColor: isDarkTheme ? '#2ED3F7' : '#0B1F3A'
+            }
+          ]}
+        >
+          <View
+            style={[
+              styles.guestPreviewBadge,
+              {
+                backgroundColor: isDarkTheme ? 'rgba(46,211,247,0.16)' : '#DCEEFE'
+              }
+            ]}
+          >
+            <Text style={[styles.guestPreviewBadgeText, { color: isDarkTheme ? '#9EEFFF' : '#0B4C86' }]}>
+              {t('Guest Preview')}
+            </Text>
+          </View>
+          <Text style={[styles.guestPreviewBannerCopy, { color: theme.text }]}>
+            {t('Changes stay only in this session.')}
+          </Text>
+        </View>
+      ) : null}
+
       {activeTab === 'subscription' ? (
         <View
           style={styles.subscriptionBody}
@@ -2177,6 +2383,8 @@ export default function App() {
               api.upsertSettings({ ui_theme: mappedKey }).catch(() => {});
             }}
             themeKey={normalizedThemeKey}
+            appVersionLabel={appVersionLabel}
+            pinSetupRequired={pinSetupRequired}
             onRemindersChanged={triggerReminderSync}
             onRequestScrollTo={requestMainScroll}
             onOpenSupport={openSupport}
@@ -2189,11 +2397,11 @@ export default function App() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
-          <ScrollView
-            ref={contentScrollRef}
-            style={styles.body}
-            contentContainerStyle={styles.bodyContent}
-            keyboardShouldPersistTaps="handled"
+        <ScrollView
+          ref={contentScrollRef}
+          style={styles.body}
+          contentContainerStyle={[styles.bodyContent, { paddingBottom: keyboardVisible ? 28 : 84 }]}
+          keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             contentInsetAdjustmentBehavior="automatic"
             showsVerticalScrollIndicator
@@ -2263,6 +2471,8 @@ export default function App() {
                   api.upsertSettings({ ui_theme: mappedKey }).catch(() => {});
                 }}
                 themeKey={normalizedThemeKey}
+                appVersionLabel={appVersionLabel}
+                pinSetupRequired={pinSetupRequired}
                 onRemindersChanged={triggerReminderSync}
                 onRequestScrollTo={requestMainScroll}
                 onOpenSupport={openSupport}
@@ -2275,33 +2485,38 @@ export default function App() {
 
       <Modal visible={pinSetupVisible} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{t('Set Security PIN')}</Text>
-            <Text style={[styles.modalSub, { color: theme.muted }]}>
-              {t('Set a 4-digit PIN to unlock full sensitive details like identifiers and contact numbers.')}
-            </Text>
-            <TextInput
-              style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
-              value={pinSetupInput}
-              onChangeText={handleSecurityPinInput}
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={4}
-            />
-            {!!pinSetupError && <Text style={[styles.pinError, { color: theme.danger }]}>{pinSetupError}</Text>}
-            <View style={styles.modalActions}>
-              <Pressable
-                style={[styles.modalBtn, styles.modalBtnPrimary, { backgroundColor: theme.accent }]}
-                onPress={() => saveSecurityPin().catch((e) => setPinSetupError(String(e?.message || e)))}
-              >
-                <Text style={styles.modalBtnPrimaryText}>{t('Save PIN')}</Text>
-              </Pressable>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 18 : 0}
+          >
+            <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>{t('Set Security PIN')}</Text>
+              <Text style={[styles.modalSub, { color: theme.muted }]}>
+                {t('Set a 4-digit PIN to unlock full sensitive details like identifiers and contact numbers.')}
+              </Text>
+              <TextInput
+                style={[styles.modalInput, { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }]}
+                value={pinSetupInput}
+                onChangeText={handleSecurityPinInput}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={4}
+              />
+              {!!pinSetupError && <Text style={[styles.pinError, { color: theme.danger }]}>{pinSetupError}</Text>}
+              <View style={styles.modalActions}>
+                <Pressable
+                  style={[styles.modalBtn, styles.modalBtnPrimary, { backgroundColor: theme.accent }]}
+                  onPress={() => saveSecurityPin().catch((e) => setPinSetupError(String(e?.message || e)))}
+                >
+                  <Text style={styles.modalBtnPrimaryText}>{t('Save PIN')}</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
-      {activeTab !== 'subscription' ? (
+      {activeTab !== 'subscription' && !keyboardVisible ? (
         <View
           style={[
             styles.bottomNav,
@@ -2396,6 +2611,56 @@ export default function App() {
                 }}
               />
             ) : null}
+          <Modal
+            visible={storeUpdateVisible && !launchSplashVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => {
+              if (storeUpdateInfo?.latestVersion) {
+                dismissedStoreUpdateVersionRef.current = storeUpdateInfo.latestVersion;
+              }
+              setStoreUpdateVisible(false);
+            }}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{t('Update Available')}</Text>
+                <Text style={[styles.modalSub, { color: theme.muted }]}>
+                  {t('A newer app version is available on the store. Update to continue with the latest fixes and improvements.')}
+                </Text>
+                <Text style={[styles.modalInfoText, { color: theme.info }]}>
+                  {t('Current: {current}  Latest: {latest}', {
+                    current: String(storeUpdateInfo?.currentVersion || currentAppVersion),
+                    latest: String(storeUpdateInfo?.latestVersion || '-')
+                  })}
+                </Text>
+                <View style={styles.modalActions}>
+                  <PillButton
+                    label={t('Later')}
+                    kind="ghost"
+                    onPress={() => {
+                      if (storeUpdateInfo?.latestVersion) {
+                        dismissedStoreUpdateVersionRef.current = storeUpdateInfo.latestVersion;
+                      }
+                      setStoreUpdateVisible(false);
+                    }}
+                  />
+                  {storeUpdateInfo?.storeUrl ? (
+                    <PillButton
+                      label={t('Update Now')}
+                      onPress={() => {
+                        if (storeUpdateInfo?.latestVersion) {
+                          dismissedStoreUpdateVersionRef.current = storeUpdateInfo.latestVersion;
+                        }
+                        setStoreUpdateVisible(false);
+                        Linking.openURL(storeUpdateInfo.storeUrl).catch(() => {});
+                      }}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            </View>
+          </Modal>
           <Modal visible={aiVisible} transparent animationType="fade">
           <View style={styles.modalBackdrop}>
             <Pressable style={StyleSheet.absoluteFillObject} onPress={closeAiInsights} />
@@ -2601,7 +2866,17 @@ export default function App() {
                       label={aiExplainLoading ? t('Explaining...') : t('Explain my score')}
                       kind="ghost"
                       onPress={() => explainAiScore().catch(() => {})}
-                      disabled={aiLoading || aiExplainLoading || !aiPayload}
+                      disabled={
+                        !canRequestAiExplanation({
+                          userPresent: Boolean(user),
+                          premiumActive,
+                          aiLoading,
+                          aiExplainLoading,
+                          hasScorePayload: Boolean(aiPayload),
+                          hasExplanation: aiExplanationReady,
+                          requestLocked: aiExplainRequestLockRef.current
+                        })
+                      }
                     />
                   ) : null}
                   <PillButton label={t('Close')} kind="ghost" onPress={closeAiInsights} />
@@ -2672,13 +2947,15 @@ export default function App() {
                 >
                   <Text style={[styles.supportPageBackText, { color: theme.text }]}>← {t('Back')}</Text>
                 </Pressable>
-                <Text style={[styles.supportPageTitle, { color: theme.text }]}>
-                  {supportChatMode ? t('Support AI Chat') : t('Support')}
-                </Text>
+                <Text style={[styles.supportPageTitle, { color: theme.text }]}>{t('Worthio Support')}</Text>
                 <View style={styles.supportPageSpacer} />
               </View>
 
-              {!supportChatMode ? (
+              <KeyboardAvoidingView
+                style={styles.body}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+              >
                 <ScrollView
                   style={styles.body}
                   contentContainerStyle={styles.supportPageContent}
@@ -2688,81 +2965,45 @@ export default function App() {
                   showsVerticalScrollIndicator
                   alwaysBounceVertical
                 >
-                  <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>{t('Please review these FAQs first.')}</Text>
-                  {supportFaqs.map((item) => (
-                    <View
-                      key={item.q}
-                      style={[styles.supportFaqCard, { borderColor: theme.border, backgroundColor: theme.card }]}
-                    >
-                      <Text style={[styles.supportFaqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
-                      <Text style={[styles.supportFaqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
+                  <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>{t('Please review the FAQs below before reaching support.')}</Text>
+                  {supportFaqSections.map((group) => (
+                    <View key={group.section} style={styles.supportFaqSection}>
+                      <Text style={[styles.supportFaqSectionTitle, { color: theme.muted }]}>{t(group.section)}</Text>
+                      {group.items.map((item) => (
+                        <View
+                          key={item.q}
+                          style={[styles.supportFaqCard, { borderColor: theme.border, backgroundColor: theme.card }]}
+                        >
+                          <Pressable style={styles.supportFaqHeader} onPress={() => toggleSupportFaq(item.q)}>
+                            <Text style={[styles.supportFaqQuestion, { color: theme.text }]}>{t(item.q)}</Text>
+                            <Text style={[styles.supportFaqToggle, { color: theme.muted }]}>
+                              {openSupportFaqs[item.q] ? '−' : '+'}
+                            </Text>
+                          </Pressable>
+                          {openSupportFaqs[item.q] ? (
+                            <Text style={[styles.supportFaqAnswer, { color: theme.muted }]}>{t(item.a)}</Text>
+                          ) : null}
+                        </View>
+                      ))}
                     </View>
                   ))}
-                  <Pressable onPress={() => openSupportChat().catch(() => {})} hitSlop={8} style={styles.supportChatLinkWrap}>
-                    <Text style={[styles.supportChatLink, { color: theme.accent }]}>
-                      {t('Still need help? Chat with AI Support')}
+                  <View style={styles.supportEmailWrap}>
+                    <Text style={[styles.supportEmailText, { color: theme.muted }]}>
+                      {t('If you still need more help, contact support at')}
                     </Text>
-                  </Pressable>
-                </ScrollView>
-              ) : (
-                <View style={styles.supportPageChatArea}>
-                  <Text style={[styles.aiDisclaimer, { color: theme.muted }]}>
-                    {t('Share your issue. I can help with OTP login, biometric login, subscription, privacy PIN, and common app setup steps.')}
-                  </Text>
-                  <ScrollView
-                    ref={supportChatScrollRef}
-                    style={[styles.supportChatScroll, { borderColor: theme.border, backgroundColor: theme.card }]}
-                    contentContainerStyle={styles.supportChatScrollContent}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                    contentInsetAdjustmentBehavior="automatic"
-                    showsVerticalScrollIndicator
-                  >
-                    {supportHistoryLoading ? (
-                      <Text style={[styles.supportTyping, { color: theme.muted }]}>{t('Loading previous chats...')}</Text>
-                    ) : null}
-                    {supportChatMessages.map((item, idx) => (
-                      <View
-                        key={`${item.role}-${idx}`}
-                        style={[
-                          styles.supportBubble,
-                          item.role === 'user'
-                            ? { alignSelf: 'flex-end', backgroundColor: theme.accentSoft, borderColor: theme.accent }
-                            : { alignSelf: 'flex-start', backgroundColor: theme.background, borderColor: theme.border }
-                        ]}
-                      >
-                        <Text style={[styles.supportBubbleText, { color: theme.text }]}>{item.text}</Text>
-                      </View>
-                    ))}
-                    {supportChatLoading ? (
-                      <Text style={[styles.supportTyping, { color: theme.muted }]}>{t('Support is typing...')}</Text>
-                    ) : null}
-                  </ScrollView>
-                  <View style={styles.supportChatInputRow}>
-                    <TextInput
-                      style={[
-                        styles.supportChatInput,
-                        { borderColor: theme.border, backgroundColor: theme.inputBg, color: theme.inputText }
-                      ]}
-                      placeholder={t('Describe your issue')}
-                      placeholderTextColor={theme.muted}
-                      value={supportChatInput}
-                      onChangeText={setSupportChatInput}
-                      multiline
-                      maxLength={500}
-                    />
-                    <View style={styles.rowTight}>
-                      <PillButton label={t('Back to FAQs')} kind="ghost" onPress={() => setSupportChatMode(false)} />
-                      <PillButton
-                        label={t('Send')}
-                        kind="ghost"
-                        onPress={() => sendSupportMessage().catch(() => {})}
-                        disabled={!String(supportChatInput || '').trim() || supportChatLoading || supportHistoryLoading}
-                      />
-                    </View>
+                    <Pressable
+                      hitSlop={8}
+                      onPress={() => {
+                        Linking.openURL('mailto:worthio-support@nexralabs.in').catch(() => {});
+                      }}
+                    >
+                      <Text selectable style={[styles.supportEmailLink, { color: theme.accent }]}>
+                        worthio-support@nexralabs.in
+                      </Text>
+                    </Pressable>
                   </View>
-                </View>
-              )}
+                </ScrollView>
+              </KeyboardAvoidingView>
             </SafeAreaView>
           ) : null}
           <Modal visible={recentActivityVisible} transparent animationType="fade" onRequestClose={() => setRecentActivityVisible(false)}>
@@ -3160,6 +3401,41 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: '600'
   },
+  guestPreviewBanner: {
+    marginHorizontal: 14,
+    marginTop: 8,
+    marginBottom: 2,
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4
+  },
+  guestPreviewBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexShrink: 0
+  },
+  guestPreviewBadgeText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase'
+  },
+  guestPreviewBannerCopy: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    flex: 1
+  },
   headerMainRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3515,15 +3791,59 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12
   },
-  supportFaqQuestion: {
-    fontSize: 14,
+  supportFaqSection: {
+    marginTop: 6
+  },
+  supportFaqSectionTitle: {
+    marginTop: 12,
+    fontSize: 12,
     fontWeight: '800',
-    marginBottom: 8
+    letterSpacing: 0.3,
+    textTransform: 'uppercase'
+  },
+  supportFaqHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  supportFaqQuestion: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  supportFaqToggle: {
+    width: 18,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: -2
   },
   supportFaqAnswer: {
+    marginTop: 8,
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600'
+  },
+  supportEmailText: {
+    marginTop: 16,
+    textAlign: 'center',
+    alignSelf: 'center',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600'
+  },
+  supportEmailWrap: {
+    marginTop: 16,
+    alignItems: 'center'
+  },
+  supportEmailLink: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    textDecorationLine: 'underline'
   },
   supportChatLinkWrap: {
     marginTop: 12

@@ -18,19 +18,19 @@ const translations = {
       'Yes. In Family Access, you can invite members and set permissions. It is a premium feature limited to up to 2 members.',
     'faq_premium_q': 'Which premium features do I get?',
     'faq_premium_a':
-      'Premium unlocks targets, recurring reminders, AI Insights, role-based Family Access, and higher asset and liability limits. Net Worth Trend remains available across plans.',
+      'Premium unlocks targets, recurring reminders, the Financial Health Score with explanation, role-based Family Access, and higher asset and liability limits. Net Worth Trend remains available across plans.',
     'faq_buy_premium_q': 'How do I buy or renew premium?',
     'faq_buy_premium_a':
-      'Open Manage Plan from Account, choose a plan, and complete the purchase. On Android production builds, subscriptions are handled through Google Play.',
-    'faq_ai_q': 'How do AI Insights work?',
+      'Open Account, go to Subscription, choose a plan, and complete the purchase. Android subscriptions are handled through Google Play in production builds.',
+    'faq_ai_q': 'How does the Financial Health Score work?',
     'faq_ai_a':
-      'AI Insights is available for premium users. Open Insights from the app header to view a personal summary and market context.',
+      'Premium users can open the score card from the dashboard header to view a 0 to 100 Financial Health Score, the main drivers behind it, and an explanation of what may improve it over time.',
     'faq_reminders_q': 'Can reminders repeat automatically?',
     'faq_reminders_a':
       'Yes. In Reminders, you can set One Time, Daily, Weekly, Every X Days, Monthly, or Yearly repeats. Recurring reminders stay active and move to the next upcoming date when completed.',
     'faq_trend_q': 'Is Net Worth Trend a premium feature?',
     'faq_trend_a':
-      'No. Net Worth Trend is available in the app without premium. Premium covers targets, reminders, AI Insights, family access, and higher limits.',
+      'No. Net Worth Trend is available in the app without premium. Premium covers targets, reminders, the Financial Health Score, family access, and higher limits.',
     'faq_trial_q': 'Do I get a first-month free premium trial?',
     'faq_trial_a':
       'Yes. New standalone users start with a 30-day Premium trial. During the trial you get premium access. After it ends, premium-only features lock or move to view-only until you buy a paid plan.',
@@ -115,6 +115,8 @@ const translations = {
     'Snapshot PDF Report': 'स्नैपशॉट पीडीएफ रिपोर्ट',
     'Download asset and liability snapshot for a selected date.':
       'चुनी गई तारीख के लिए एसेट और देयता स्नैपशॉट डाउनलोड करें।',
+    'This snapshot is as on {date}. Download your asset and liability summary PDF.':
+      'यह स्नैपशॉट {date} की स्थिति के अनुसार है। अपनी एसेट और देयता सारांश पीडीएफ डाउनलोड करें।',
     'Download Snapshot PDF': 'स्नैपशॉट पीडीएफ डाउनलोड करें',
     'Session expired. Please login again.': 'सेशन समाप्त हो गया है। कृपया फिर से लॉगिन करें।',
     'Pick Snapshot Day': 'स्नैपशॉट दिन चुनें',
@@ -316,6 +318,12 @@ const translations = {
     'Delete': 'हटाएँ',
     'No non-zero assets yet.': 'अभी कोई नॉन-ज़ीरो एसेट नहीं है।',
     'Upgrade to Premium': 'प्रीमियम में अपग्रेड करें',
+    'Guest Preview': 'गेस्ट प्रीव्यू',
+    'Changes stay only in this session.': 'परिवर्तन केवल इसी सत्र तक रहेंगे।',
+    'Guest preview cannot buy or renew a real subscription. Login to use a real account.':
+      'गेस्ट प्रीव्यू में वास्तविक सब्सक्रिप्शन खरीदा या रिन्यू नहीं किया जा सकता। वास्तविक अकाउंट इस्तेमाल करने के लिए लॉगिन करें।',
+    'Guest preview can view plans, but purchases and renewals are disabled until you log in with a real account.':
+      'गेस्ट प्रीव्यू में प्लान देखे जा सकते हैं, लेकिन जब तक आप वास्तविक अकाउंट से लॉगिन नहीं करते, खरीद और रिन्यूअल बंद रहेंगे।',
     'Loan type and lender are required.': 'लोन टाइप और लेंडर आवश्यक हैं।',
     'Liability updated.': 'देयता अपडेट हो गई।',
     'Liability added.': 'देयता जोड़ दी गई।',
@@ -492,6 +500,7 @@ const translations = {
     'Admin access required to manage family members.':
       'परिवार सदस्यों को मैनेज करने के लिए एडमिन एक्सेस आवश्यक है।',
     'Owner': 'मालिक',
+    'Account Owner': 'अकाउंट ओनर',
     '{used}/{total} used · {left} left': '{used}/{total} उपयोग · {left} बचे',
     'Limit reached': 'सीमा पूरी',
     '10-digit mobile number': '10-अंकों का मोबाइल नंबर',
@@ -811,6 +820,7 @@ const translations = {
     'Valid till: {date}': 'मान्य तिथि: {date}',
     'Verify Payment': 'भुगतान सत्यापित करें',
     'Verifying...': 'सत्यापित किया जा रहा है...',
+    'Full View': 'पूरा देखें',
     'View Full': 'पूरा देखें',
     'faq_add_assets_q': 'मैं अपने एसेट्स या देयताएँ कैसे जोड़ूं?',
     'faq_add_assets_a': 'Assets या Liabilities में जाएं, Add दबाएँ, विवरण भरें और सेव करें। आप सूची से एडिट/डिलीट कर सकते हैं।',
@@ -819,15 +829,15 @@ const translations = {
     'faq_family_q': 'क्या मैं परिवार के साथ एक्सेस साझा कर सकता हूँ?',
     'faq_family_a': 'हाँ, Family Access से आप सदस्यों को आमंत्रित कर सकते हैं और परमिशन सेट कर सकते हैं। यह 2 सदस्यों तक सीमित प्रीमियम फीचर है।',
     'faq_premium_q': 'मुझे कौन-कौन से प्रीमियम फीचर मिलते हैं?',
-    'faq_premium_a': 'प्रीमियम से लक्ष्य, आवर्ती रिमाइंडर्स, AI Insights, रोल-आधारित Family Access और एसेट/देयता की अधिक सीमाएँ अनलॉक होती हैं। Net Worth Trend सभी प्लान में उपलब्ध रहता है।',
+    'faq_premium_a': 'प्रीमियम से लक्ष्य, आवर्ती रिमाइंडर्स, Financial Health Score और उसकी explanation, रोल-आधारित Family Access और एसेट/देयता की अधिक सीमाएँ अनलॉक होती हैं। Net Worth Trend सभी प्लान में उपलब्ध रहता है।',
     'faq_buy_premium_q': 'मैं प्रीमियम कैसे खरीदूं या रिन्यू करूं?',
-    'faq_buy_premium_a': 'Account से Manage Plan खोलें, प्लान चुनें और खरीदारी पूरी करें। Android प्रोडक्शन बिल्ड्स में सब्सक्रिप्शन Google Play के माध्यम से संभाले जाते हैं।',
-    'faq_ai_q': 'AI Insights कैसे काम करता है?',
-    'faq_ai_a': 'AI Insights प्रीमियम उपयोगकर्ताओं के लिए उपलब्ध है। पर्सनल समरी और मार्केट संदर्भ देखने के लिए हेडर से Insights खोलें।',
+    'faq_buy_premium_a': 'Account में Subscription खोलें, प्लान चुनें और खरीदारी पूरी करें। Android प्रोडक्शन बिल्ड्स में सब्सक्रिप्शन Google Play के माध्यम से संभाले जाते हैं।',
+    'faq_ai_q': 'Financial Health Score कैसे काम करता है?',
+    'faq_ai_a': 'प्रीमियम उपयोगकर्ता डैशबोर्ड हेडर से score card खोलकर 0 से 100 का Financial Health Score, उसके मुख्य drivers और उसे बेहतर करने वाली explanation देख सकते हैं।',
     'faq_reminders_q': 'क्या रिमाइंडर्स अपने आप दोहर सकते हैं?',
     'faq_reminders_a': 'हाँ। Reminders में आप One Time, Daily, Weekly, Every X Days, Monthly या Yearly दोहराव सेट कर सकते हैं। आवर्ती रिमाइंडर्स पूरे होने पर अगली आगामी तारीख पर आगे बढ़ जाते हैं।',
     'faq_trend_q': 'क्या Net Worth Trend प्रीमियम फीचर है?',
-    'faq_trend_a': 'नहीं। Net Worth Trend प्रीमियम के बिना भी उपलब्ध है। प्रीमियम में लक्ष्य, रिमाइंडर्स, AI Insights, फैमिली एक्सेस और अधिक सीमाएँ शामिल हैं।',
+    'faq_trend_a': 'नहीं। Net Worth Trend प्रीमियम के बिना भी उपलब्ध है। प्रीमियम में लक्ष्य, रिमाइंडर्स, Financial Health Score, फैमिली एक्सेस और अधिक सीमाएँ शामिल हैं।',
     'faq_trial_q': 'क्या मुझे पहले महीने का फ्री प्रीमियम ट्रायल मिलता है?',
     'faq_trial_a': 'हाँ। नए standalone उपयोगकर्ताओं को 30 दिन का प्रीमियम ट्रायल मिलता है। ट्रायल के दौरान प्रीमियम एक्सेस उपलब्ध रहता है। ट्रायल समाप्त होने पर प्रीमियम फीचर लॉक हो जाते हैं या व्यू-ओनली मोड में चले जाते हैं, जब तक आप पेड प्लान न खरीद लें।',
     'faq_otp_q': 'मैं OTP से लॉगिन कैसे करूं?',
@@ -864,6 +874,10 @@ const translations = {
     'Premium Monthly': 'प्रीमियम मासिक',
     'Premium Yearly': 'प्रीमियम वार्षिक',
     'Owner Account': 'ओनर अकाउंट',
+    'Primary Acc.': 'प्राइमरी अकाउंट',
+    'Shared Admin': 'शेयर्ड एडमिन',
+    'Shared Edit': 'शेयर्ड एडिट',
+    'Shared View': 'शेयर्ड व्यू',
     'Family Admin': 'फैमिली एडमिन',
     'Family Editor': 'फैमिली एडिटर',
     'Family Viewer': 'फैमिली व्यूअर',
@@ -935,8 +949,249 @@ const translations = {
     'Withdrawal': 'निकासी',
     'Dividend': 'डिविडेंड',
     'Interest': 'ब्याज',
-    'Transfer': 'ट्रांसफर'
-    ,
+    'Transfer': 'ट्रांसफर',
+    'A newer app version is available on the store. Update to continue with the latest fixes and improvements.':
+      'स्टोर पर ऐप का नया संस्करण उपलब्ध है। नवीनतम सुधारों और अपडेट्स के लिए अभी अपडेट करें।',
+    'Access is protected using OTP verification, device biometrics, and your Privacy PIN when sensitive information needs to be viewed.':
+      'जब संवेदनशील जानकारी देखनी हो, तब एक्सेस OTP सत्यापन, डिवाइस बायोमेट्रिक्स और आपके Privacy PIN से सुरक्षित रहता है।',
+    'Account Ref': 'अकाउंट रेफरेंस',
+    'Account Responsibilities': 'अकाउंट जिम्मेदारियाँ',
+    'Account Summary': 'अकाउंट सारांश',
+    'Active {value}': 'सक्रिय {value}',
+    'Add investments, deposits, property, and cash here. Keep values updated so your totals stay accurate.':
+      'यहाँ निवेश, जमा, प्रॉपर्टी और नकद जोड़ें। अपने कुल को सही रखने के लिए वैल्यू अपडेट रखें।',
+    'Are you sure you want to log out?': 'क्या आप वाकई लॉग आउट करना चाहते हैं?',
+    'Asset Diversity: A measure of how spread out your assets are across different types such as cash, stocks, retirement funds, and real estate. Better spread improves the score.':
+      'एसेट विविधता: यह मापता है कि आपके एसेट्स नकद, स्टॉक्स, रिटायरमेंट फंड्स और रियल एस्टेट जैसी विभिन्न श्रेणियों में कितने फैले हुए हैं। बेहतर विविधता स्कोर को सुधारती है।',
+    'Assets: {assets} • Liabilities: {liabilities}': 'एसेट्स: {assets} • देयताएँ: {liabilities}',
+    'Basic plan allows up to {count} liabilities. Upgrade to Premium for unlimited liabilities.':
+      'बेसिक प्लान में अधिकतम {count} देयताएँ जोड़ सकते हैं। अनलिमिटेड देयताओं के लिए प्रीमियम लें।',
+    'Biometric login could not be completed right now. Try again.':
+      'अभी बायोमेट्रिक लॉगिन पूरा नहीं हो सका। कृपया फिर कोशिश करें।',
+    'Biometric login needs one OTP refresh after 3 days. Login with OTP once to continue.':
+      'बायोमेट्रिक लॉगिन के लिए 3 दिनों बाद एक OTP रीफ्रेश ज़रूरी है। जारी रखने के लिए एक बार OTP से लॉगिन करें।',
+    'Confirm Delete My Account': 'मेरा अकाउंट हटाने की पुष्टि करें',
+    'Connection issue. Please try again in a few seconds.': 'कनेक्शन में समस्या है। कृपया कुछ सेकंड बाद फिर कोशिश करें।',
+    'Consented At': 'सहमति दी गई',
+    'Consents': 'सहमतियाँ',
+    'Continue as Guest Preview': 'गेस्ट प्रीव्यू जारी रखें',
+    'Create Your Account': 'अपना अकाउंट बनाएं',
+    'Created': 'बनाया गया',
+    'Current: {current}  Latest: {latest}': 'वर्तमान: {current}  नवीनतम: {latest}',
+    'Data We Collect': 'हम कौन-सा डेटा एकत्र करते हैं',
+    'Data is protected in transit, selected sensitive fields are encrypted at rest, and full reveal of sensitive details requires your Security PIN.':
+      'डेटा ट्रांजिट में सुरक्षित है, चुने हुए संवेदनशील फ़ील्ड्स स्टोरेज में एन्क्रिप्टेड रहते हैं, और पूरी जानकारी देखने के लिए आपका Security PIN आवश्यक है।',
+    'Debt-to-Asset Ratio: Total liabilities divided by total assets. Lower debt compared to assets improves the score.':
+      'ऋण-से-एसेट अनुपात: कुल देयताएँ कुल एसेट्स से विभाजित। एसेट्स की तुलना में कम ऋण स्कोर को बेहतर बनाता है।',
+    'Delete My Account': 'मेरा अकाउंट हटाएँ',
+    'Delete {name}? This action cannot be undone.': '{name} हटाएँ? यह कार्रवाई वापस नहीं की जा सकती।',
+    'Due Date': 'नियत तिथि',
+    'Due date cannot be in the past.': 'नियत तिथि पिछली नहीं हो सकती।',
+    'Email': 'ईमेल',
+    'Encrypted & Protected': 'एन्क्रिप्टेड और सुरक्षित',
+    'Enter a valid 10-digit Indian mobile number.': 'मान्य 10-अंकों का भारतीय मोबाइल नंबर दर्ज करें।',
+    'Enter your security PIN to view full identifier and notes.':
+      'पूरा पहचान विवरण और नोट्स देखने के लिए अपना सिक्योरिटी पिन दर्ज करें।',
+    'Explain My Score': 'मेरा स्कोर समझाएँ',
+    'Explain my score': 'मेरा स्कोर समझाएँ',
+    'Explaining...': 'समझाया जा रहा है...',
+    'Family access is permission-based. You are responsible for inviting trusted people and keeping roles appropriate.':
+      'फैमिली एक्सेस अनुमति-आधारित है। विश्वसनीय लोगों को ही आमंत्रित करें और भूमिकाएँ उचित रखें।',
+    'Financial Health Score': 'वित्तीय स्वास्थ्य स्कोर',
+    'Financial Health Score: Your overall score from 0 to 100 based on your current balance sheet. Higher is better.':
+      'वित्तीय स्वास्थ्य स्कोर: आपकी वर्तमान बैलेंस शीट के आधार पर 0 से 100 तक का कुल स्कोर। जितना अधिक, उतना बेहतर।',
+    'Generated: {date}': 'तैयार किया गया: {date}',
+    'Go Premium': 'प्रीमियम लें',
+    'Go to Subscription': 'सब्सक्रिप्शन पर जाएँ',
+    'Google Play Billing is required on Android for subscriptions in this build.':
+      'इस बिल्ड में सब्सक्रिप्शन के लिए Android पर Google Play Billing आवश्यक है।',
+    'Google Play Billing is unavailable here. Falling back to test checkout.':
+      'यहाँ Google Play Billing उपलब्ध नहीं है। टेस्ट चेकआउट पर वापस जा रहे हैं।',
+    'Guest preview mode is active. Changes stay only for this session and are not saved to your real account.':
+      'गेस्ट प्रीव्यू मोड सक्रिय है। बदलाव सिर्फ इस सत्र तक रहेंगे और आपके वास्तविक अकाउंट में सेव नहीं होंगे।',
+    'Hi! I am your support assistant. Ask me about OTP login, biometric login, reminders, family access, subscription, or account setup.':
+      'नमस्ते! मैं आपका सपोर्ट असिस्टेंट हूँ। मुझसे OTP लॉगिन, बायोमेट्रिक लॉगिन, रिमाइंडर्स, फैमिली एक्सेस, सब्सक्रिप्शन या अकाउंट सेटअप के बारे में पूछें।',
+    'How This Score Works': 'यह स्कोर कैसे काम करता है',
+    'How Your Privacy Works': 'आपकी प्राइवेसी कैसे काम करती है',
+    'If you still need more help, contact support at': 'अगर आपको अभी भी और मदद चाहिए, तो संपर्क करें',
+    'Institution': 'संस्थान',
+    'Interest Rate': 'ब्याज दर',
+    'It is an internal educational score from 0 to 100, not a credit score or an official financial standard.':
+      'यह 0 से 100 तक का आंतरिक शैक्षिक स्कोर है, क्रेडिट स्कोर या आधिकारिक वित्तीय मानक नहीं।',
+    'Know how your privacy works?': 'जानना चाहते हैं आपकी प्राइवेसी कैसे काम करती है?',
+    'Last Login': 'पिछला लॉगिन',
+    'Later': 'बाद में',
+    'Liquidity Coverage: Liquid assets divided by short-term liabilities. Higher coverage means you are better placed to handle near-term obligations.':
+      'लिक्विडिटी कवरेज: लिक्विड एसेट्स अल्पकालिक देयताओं से विभाजित। अधिक कवरेज का मतलब है कि आप निकट अवधि की जिम्मेदारियों को बेहतर संभाल सकते हैं।',
+    'Login may require OTP or trusted-device checks, and sensitive fields remain masked until unlocked with your Security PIN.':
+      'लॉगिन के लिए OTP या ट्रस्टेड-डिवाइस जांच की आवश्यकता हो सकती है, और संवेदनशील फ़ील्ड्स आपके Security PIN से अनलॉक होने तक छिपे रहते हैं।',
+    'Login to view your financial health score and an on-demand explanation.':
+      'अपना वित्तीय स्वास्थ्य स्कोर और मांग पर विवरण देखने के लिए लॉगिन करें।',
+    'Manage in Play Store': 'Play Store में प्रबंधित करें',
+    'Net Worth: Total assets minus total liabilities.': 'नेट वर्थ: कुल एसेट्स माइनस कुल देयताएँ।',
+    'Net worth: {value}': 'नेट वर्थ: {value}',
+    'No Bank Linking Required': 'बैंक लिंक करना आवश्यक नहीं',
+    'Not set': 'सेट नहीं',
+    'Notifications and AI': 'नोटिफिकेशन्स और AI',
+    'OTP (6 digits) is required.': 'OTP (6 अंक) आवश्यक है।',
+    'Only You Can Unlock It': 'इसे केवल आप ही अनलॉक कर सकते हैं',
+    'Open Account to manage biometrics, privacy, language, theme, and subscription. You can review family access, support options, and security settings here. Use this area whenever you need control changes instead of portfolio updates.':
+      'Account खोलकर बायोमेट्रिक्स, प्राइवेसी, भाषा, थीम और सब्सक्रिप्शन मैनेज करें। यहाँ आप फैमिली एक्सेस, सपोर्ट विकल्प और सुरक्षा सेटिंग्स देख सकते हैं। पोर्टफोलियो अपडेट्स के बजाय नियंत्रण संबंधी बदलावों के लिए इसी क्षेत्र का उपयोग करें।',
+    'Open support to browse FAQs by category and see how to reach the support team if you still need help.':
+      'यदि अभी भी मदद चाहिए, तो श्रेणीवार FAQs देखने और सपोर्ट टीम तक पहुँचने का तरीका जानने के लिए सपोर्ट खोलें।',
+    'Outstanding': 'बकाया',
+    'Payment was cancelled. You can try again.': 'भुगतान रद्द कर दिया गया। आप फिर कोशिश कर सकते हैं।',
+    'Please review the FAQs below before reaching support.': 'सपोर्ट से संपर्क करने से पहले नीचे दिए गए FAQs देख लें।',
+    'Premium Feature': 'प्रीमियम फीचर',
+    'Prepared for secure offline review and sharing from Worthio.':
+      'Worthio से सुरक्षित ऑफलाइन समीक्षा और शेयरिंग के लिए तैयार किया गया।',
+    'Preview mode is valid only for this session. Changes are not saved to your real account.':
+      'प्रीव्यू मोड केवल इस सत्र के लिए मान्य है। बदलाव आपके वास्तविक अकाउंट में सेव नहीं होते।',
+    'Private by Design': 'डिज़ाइन से ही निजी',
+    'Record loans, cards, and dues in one place. This keeps your net worth realistic and current.':
+      'यहाँ लोन, कार्ड और बकाया एक ही जगह दर्ज करें। इससे आपका नेट वर्थ वास्तविक और अपडेटेड रहता है।',
+    'Refresh Play Status': 'Play स्थिति रिफ्रेश करें',
+    'Refreshing...': 'रिफ्रेश किया जा रहा है...',
+    'Reminder alerts are best-effort, and AI insights are informational only. You must independently verify important information before acting.':
+      'रिमाइंडर अलर्ट सर्वोत्तम प्रयास के आधार पर हैं, और AI इनसाइट्स केवल जानकारी हेतु हैं। कोई कदम उठाने से पहले महत्वपूर्ण जानकारी स्वयं सत्यापित करें।',
+    'Restoring your secure session...': 'आपका सुरक्षित सत्र पुनर्स्थापित किया जा रहा है...',
+    'Scope': 'दायरा',
+    'Security Obligations': 'सुरक्षा दायित्व',
+    'Security and Storage': 'सुरक्षा और संग्रहण',
+    'See net worth, assets, and liabilities together. Use this page first for a quick financial check.':
+      'नेट वर्थ, एसेट्स और देयताएँ साथ में देखें। त्वरित वित्तीय जाँच के लिए पहले यही पेज उपयोग करें।',
+    'Sensitive details are unlocked only temporarily when you choose to view them, and personal or financial information remains inaccessible to our developers, staff, and anyone without authorization.':
+      'संवेदनशील विवरण केवल आपकी इच्छा पर अस्थायी रूप से अनलॉक होते हैं, और व्यक्तिगत या वित्तीय जानकारी हमारे डेवलपर्स, स्टाफ या बिना अनुमति किसी भी व्यक्ति के लिए उपलब्ध नहीं रहती।',
+    'Service Description': 'सेवा विवरण',
+    'Settings': 'सेटिंग्स',
+    'Sharing': 'साझा करना',
+    'Sign In Securely': 'सुरक्षित रूप से साइन इन करें',
+    'Snapshot PDF download is available after signup.': 'स्नैपशॉट PDF डाउनलोड साइनअप के बाद उपलब्ध है।',
+    'Some features require an active subscription. To the extent permitted by law, we are not liable for indirect loss arising from user decisions, incorrect entries, or third-party outages.':
+      'कुछ फीचर्स के लिए सक्रिय सब्सक्रिप्शन आवश्यक है। कानून द्वारा अनुमत सीमा तक, हम उपयोगकर्ता के निर्णयों, गलत प्रविष्टियों या तृतीय-पक्ष आउटेज से होने वाले अप्रत्यक्ष नुकसान के लिए उत्तरदायी नहीं हैं।',
+    'Source': 'स्रोत',
+    'Store status: {value}': 'स्टोर स्थिति: {value}',
+    'Subscription and Liability': 'सब्सक्रिप्शन और देयता',
+    'Subscription expired. Renew to edit reminders.': 'रिमाइंडर्स एडिट करने के लिए सब्सक्रिप्शन रिन्यू करें।',
+    'Tap Delete My Account again to confirm permanent deletion.':
+      'स्थायी हटाने की पुष्टि के लिए Delete My Account पर फिर टैप करें।',
+    'Target': 'लक्ष्य',
+    'The OTP you entered is incorrect. Please try again.': 'आपने जो OTP दर्ज किया है वह गलत है। कृपया फिर कोशिश करें।',
+    'The app does not provide investment, tax, legal, or insurance advice and does not guarantee returns, safety, or suitability of decisions.':
+      'यह ऐप निवेश, टैक्स, कानूनी या बीमा सलाह नहीं देता और न ही रिटर्न, सुरक्षा या निर्णयों की उपयुक्तता की गारंटी देता है।',
+    'This OTP has expired. Please request a new one.': 'यह OTP समाप्त हो चुका है। कृपया नया OTP माँगें।',
+    'This feature is available with Premium.': 'यह फीचर प्रीमियम के साथ उपलब्ध है।',
+    'This score uses your latest assets and liabilities to assess debt level, liquidity coverage, and diversification.':
+      'यह स्कोर आपके नवीनतम एसेट्स और देयताओं का उपयोग कर ऋण स्तर, लिक्विडिटी कवरेज और विविधता का आकलन करता है।',
+    'Too many attempts. Please wait a little and try again.': 'बहुत अधिक प्रयास हुए। कृपया थोड़ा इंतज़ार करें और फिर कोशिश करें।',
+    'Unable to send OTP right now. Please wait a few seconds and try again.':
+      'अभी OTP भेजा नहीं जा सका। कृपया कुछ सेकंड बाद फिर कोशिश करें।',
+    'Unable to verify OTP right now. Please wait a few seconds and try again.':
+      'अभी OTP सत्यापित नहीं हो सका। कृपया कुछ सेकंड बाद फिर कोशिश करें।',
+    'Update Available': 'अपडेट उपलब्ध है',
+    'Update Now': 'अभी अपडेट करें',
+    'Updated: {date}': 'अपडेट: {date}',
+    'Value': 'मूल्य',
+    'Version {version}': 'संस्करण {version}',
+    'Visible Only When You Choose': 'केवल आपकी पसंद पर दिखेगा',
+    'We collect only your mobile number as personal information, and nothing more, to keep your experience discreet and secure.':
+      'हम आपकी गोपनीय और सुरक्षित अनुभव के लिए केवल आपका मोबाइल नंबर व्यक्तिगत जानकारी के रूप में लेते हैं, और कुछ नहीं।',
+    'We collect two-letter initials, your mobile number, consent records, portfolio data you enter, selected security telemetry, and notification data needed to run the service.':
+      'हम दो-अक्षरों वाले initials, आपका मोबाइल नंबर, सहमति रिकॉर्ड, आपके द्वारा दर्ज पोर्टफोलियो डेटा, चुना हुआ सुरक्षा टेलीमेट्री और सेवा चलाने के लिए आवश्यक नोटिफिकेशन डेटा एकत्र करते हैं।',
+    'We collect two-letter initials, your mobile number, consent records, portfolio data you enter, selected security telemetry, notification data, and subscription/payment records needed to run the service.':
+      'हम दो-अक्षरों वाले initials, आपका मोबाइल नंबर, सहमति रिकॉर्ड, आपके द्वारा दर्ज पोर्टफोलियो डेटा, चुना हुआ सुरक्षा टेलीमेट्री, नोटिफिकेशन डेटा और सेवा चलाने के लिए आवश्यक सब्सक्रिप्शन/पेमेंट रिकॉर्ड्स एकत्र करते हैं।',
+    'We do not collect bank passwords, internet banking credentials, card CVV, SMS inbox content, or fingerprint and Face ID templates.':
+      'हम बैंक पासवर्ड, इंटरनेट बैंकिंग क्रेडेंशियल्स, कार्ड CVV, SMS inbox सामग्री, या फिंगरप्रिंट और Face ID टेम्प्लेट्स एकत्र नहीं करते।',
+    'We do not sell personal data. Data is shared only with authorized family members, required service providers, or authorities when legally required.':
+      'हम व्यक्तिगत डेटा नहीं बेचते। डेटा केवल अधिकृत परिवार सदस्यों, आवश्यक सेवा प्रदाताओं या कानूनी आवश्यकता होने पर संबंधित अधिकारियों के साथ साझा किया जाता है।',
+    'We do not sell personal data. Data is shared only with authorized family members, required service providers for OTP, hosting, billing, notifications, or authorities when legally required.':
+      'हम व्यक्तिगत डेटा नहीं बेचते। डेटा केवल अधिकृत परिवार सदस्यों, OTP, होस्टिंग, बिलिंग, नोटिफिकेशन्स के लिए आवश्यक सेवा प्रदाताओं या कानूनी आवश्यकता होने पर संबंधित अधिकारियों के साथ साझा किया जाता है।',
+    'We use data to create and secure your account, show your assets and liabilities, power reminders, protect sensitive fields, and support limited AI insights.':
+      'हम आपके अकाउंट को बनाने और सुरक्षित रखने, आपके एसेट्स और देयताएँ दिखाने, रिमाइंडर्स चलाने, संवेदनशील फ़ील्ड्स की सुरक्षा करने और सीमित AI इनसाइट्स देने के लिए डेटा का उपयोग करते हैं।',
+    'We use data to create and secure your account, show your assets and liabilities, power reminders, protect sensitive fields, manage subscriptions and receipts, and support limited AI insights.':
+      'हम आपके अकाउंट को बनाने और सुरक्षित रखने, आपके एसेट्स और देयताएँ दिखाने, रिमाइंडर्स चलाने, संवेदनशील फ़ील्ड्स की सुरक्षा करने, सब्सक्रिप्शन और रसीदें मैनेज करने और सीमित AI इनसाइट्स देने के लिए डेटा का उपयोग करते हैं।',
+    'Welcome Back': 'फिर से स्वागत है',
+    'What Is Driving Your Score': 'आपके स्कोर को क्या प्रभावित कर रहा है',
+    'What May Improve It': 'इसे क्या बेहतर कर सकता है',
+    'What We Do Not Collect': 'हम क्या एकत्र नहीं करते',
+    'What the Service Is Not': 'यह सेवा क्या नहीं है',
+    'Why We Process Data': 'हम डेटा क्यों प्रोसेस करते हैं',
+    'Worthio Data Export': 'Worthio डेटा एक्सपोर्ट',
+    'Worthio does not require you to connect bank accounts or allow automatic data pulling. You decide what to track, what to reveal, and how your records are maintained.':
+      'Worthio आपको बैंक अकाउंट जोड़ने या ऑटोमेटिक डेटा खींचने की अनुमति देने के लिए बाध्य नहीं करता। क्या ट्रैक करना है, क्या दिखाना है और आपके रिकॉर्ड कैसे रखे जाएँ, यह आप तय करते हैं।',
+    'Worthio handles your account, portfolio, security, reminder, and family-sharing data to operate the app securely and lawfully.':
+      'Worthio ऐप को सुरक्षित और विधिसम्मत तरीके से चलाने के लिए आपके अकाउंट, पोर्टफोलियो, सुरक्षा, रिमाइंडर और फैमिली-शेयरिंग डेटा को संभालता है।',
+    'This Privacy Policy explains how Worthio handles personal data when you use the app and connected services, in line with applicable law.':
+      'यह प्राइवेसी पॉलिसी बताती है कि ऐप और उससे जुड़ी सेवाओं का उपयोग करते समय Worthio आपकी व्यक्तिगत जानकारी को लागू कानून के अनुसार कैसे संभालता है।',
+    'Data We Do Not Collect': 'हम कौन-सा डेटा एकत्र नहीं करते',
+    'Security and Storage Controls': 'सुरक्षा और संग्रहण नियंत्रण',
+    'Data is protected in transit using TLS, selected sensitive fields are encrypted at rest, and full reveal of sensitive details requires your Security PIN.':
+      'डेटा ट्रांजिट में TLS द्वारा सुरक्षित रहता है, चुने हुए संवेदनशील फ़ील्ड्स स्टोरेज में एन्क्रिप्टेड रहते हैं, और पूरी जानकारी देखने के लिए आपका Security PIN आवश्यक है।',
+    'Sharing of Data': 'डेटा साझा करना',
+    'AI Insights Data Use': 'AI इनसाइट्स में डेटा उपयोग',
+    'For AI Insights, we send limited portfolio context such as country code, preferred currency, totals, and allocation percentages. We do not intentionally send full identifiers, contact numbers, or raw sensitive notes for this feature.':
+      'AI Insights के लिए हम सीमित पोर्टफोलियो संदर्भ जैसे country code, पसंदीदा करेंसी, totals और allocation percentages भेजते हैं। इस फीचर के लिए हम जानबूझकर पूरे identifiers, contact numbers या raw sensitive notes नहीं भेजते।',
+    'Retention': 'डेटा संरक्षण अवधि',
+    'Primary account and portfolio data is retained while your account is active. After deletion, certain minimized operational or security records may be retained where required or permitted by law.':
+      'जब तक आपका अकाउंट सक्रिय है, प्राथमिक अकाउंट और पोर्टफोलियो डेटा रखा जाता है। अकाउंट हटाने के बाद भी कुछ सीमित operational या security records कानूनन आवश्यकता या अनुमति होने पर रखे जा सकते हैं।',
+    'Your Controls and Rights': 'आपके नियंत्रण और अधिकार',
+    'Cross-Border Processing': 'सीमापार प्रोसेसिंग',
+    'Some service providers used for notifications, billing, analytics/security, or AI processing may operate from multiple regions, subject to applicable law and safeguards.':
+      'नोटिफिकेशन्स, बिलिंग, analytics/security या AI processing के लिए उपयोग किए जाने वाले कुछ सेवा प्रदाता कई क्षेत्रों से काम कर सकते हैं, जो लागू कानून और सुरक्षा उपायों के अधीन है।',
+    'Children': 'बच्चे',
+    'The app is not intended for children under 18.': 'यह ऐप 18 वर्ष से कम आयु के बच्चों के लिए नहीं है।',
+    'Grievance Contact': 'शिकायत संपर्क',
+    'For privacy or security requests, contact worthio-escalation@nexralabs.in. We target response within 15 working days.':
+      'प्राइवेसी या सुरक्षा संबंधी अनुरोधों के लिए worthio-escalation@nexralabs.in पर संपर्क करें। हम 15 कार्यदिवसों के भीतर उत्तर देने का लक्ष्य रखते हैं।',
+    'Updates to This Policy': 'इस नीति में अपडेट',
+    'We may revise this Privacy Policy as features or legal requirements evolve. Updated versions are published in-app, and continued use after update means acceptance of the revised policy.':
+      'फीचर्स या कानूनी आवश्यकताओं में बदलाव के साथ हम इस प्राइवेसी पॉलिसी को संशोधित कर सकते हैं। अपडेटेड संस्करण ऐप में प्रकाशित किए जाते हैं, और अपडेट के बाद निरंतर उपयोग का मतलब संशोधित नीति की स्वीकृति है।',
+    'Eligibility and Account Use': 'पात्रता और अकाउंट उपयोग',
+    'Security Features and Your Obligations': 'सुरक्षा फीचर्स और आपकी जिम्मेदारियाँ',
+    'Family Sharing Terms': 'फैमिली शेयरिंग की शर्तें',
+    'Reminders and Notifications': 'रिमाइंडर्स और नोटिफिकेशन्स',
+    'Reminder alerts and security notifications are best-effort and may be delayed or unavailable due to device, OS, network, or third-party provider limitations.':
+      'रिमाइंडर अलर्ट और सुरक्षा नोटिफिकेशन्स best-effort आधार पर होते हैं और डिवाइस, OS, नेटवर्क या third-party provider सीमाओं के कारण देरी से आ सकते हैं या उपलब्ध नहीं हो सकते।',
+    'AI Insights Terms': 'AI इनसाइट्स की शर्तें',
+    'AI Insights are automated summaries for awareness only. They may contain errors, omissions, stale data, or source limitations. You must independently verify facts before taking action.':
+      'AI इनसाइट्स केवल जागरूकता के लिए स्वचालित summaries हैं। इनमें त्रुटियाँ, छूट, पुराना डेटा या source limitations हो सकती हैं। कोई कार्रवाई करने से पहले तथ्यों को स्वतंत्र रूप से सत्यापित करें।',
+    'Data Entry Responsibility': 'डेटा एंट्री की जिम्मेदारी',
+    'You are responsible for the correctness, completeness, and lawful use of all data entered by you or your invited family users.':
+      'आप या आपके आमंत्रित फैमिली उपयोगकर्ताओं द्वारा दर्ज किए गए सभी डेटा की शुद्धता, पूर्णता और वैध उपयोग के लिए आप जिम्मेदार हैं।',
+    'Acceptable Use': 'स्वीकार्य उपयोग',
+    'You agree not to misuse the service, attempt unauthorized access, reverse engineer security controls, abuse OTP or notification channels, or use the app for unlawful purposes.':
+      'आप सहमत हैं कि सेवा का दुरुपयोग नहीं करेंगे, अनधिकृत एक्सेस का प्रयास नहीं करेंगे, सुरक्षा नियंत्रणों को reverse engineer नहीं करेंगे, OTP या notification चैनलों का दुरुपयोग नहीं करेंगे, और ऐप का अवैध उद्देश्यों के लिए उपयोग नहीं करेंगे।',
+    'Subscription and Features': 'सब्सक्रिप्शन और फीचर्स',
+    'Certain features may require an active subscription. Feature availability, plans, and pricing may change over time and will be shown in-app.':
+      'कुछ फीचर्स के लिए सक्रिय सब्सक्रिप्शन आवश्यक हो सकता है। फीचर उपलब्धता, प्लान और प्राइसिंग समय के साथ बदल सकते हैं और ऐप में दिखाए जाएँगे।',
+    'Suspension and Termination': 'निलंबन और समाप्ति',
+    'We may suspend, restrict, or terminate access for suspected abuse, legal violations, fraud risk, or security risk. You may delete your account at any time from supported account controls.':
+      'दुरुपयोग, कानूनी उल्लंघन, धोखाधड़ी जोखिम या सुरक्षा जोखिम के संदेह पर हम एक्सेस को निलंबित, सीमित या समाप्त कर सकते हैं। आप समर्थित अकाउंट नियंत्रणों से किसी भी समय अपना अकाउंट हटा सकते हैं।',
+    'You can export your data, edit or delete records, reset PINs via OTP, manage device trust, and delete your account from supported in-app controls. If you lose access to your login, you may request deletion by email after ownership verification.':
+      'आप अपना डेटा एक्सपोर्ट कर सकते हैं, रिकॉर्ड एडिट या डिलीट कर सकते हैं, OTP से PIN रीसेट कर सकते हैं, डिवाइस ट्रस्ट मैनेज कर सकते हैं और समर्थित in-app controls से अपना अकाउंट हटा सकते हैं। यदि आप अपने लॉगिन तक पहुँच खो देते हैं, तो ownership verification के बाद ईमेल द्वारा deletion request कर सकते हैं।',
+    'We may suspend, restrict, or terminate access for suspected abuse, legal violations, fraud risk, or security risk. You may delete your account at any time from supported in-app account controls. If you cannot access your account, you may request deletion by email after ownership verification.':
+      'दुरुपयोग, कानूनी उल्लंघन, धोखाधड़ी जोखिम या सुरक्षा जोखिम के संदेह पर हम एक्सेस को निलंबित, सीमित या समाप्त कर सकते हैं। आप समर्थित in-app account controls से किसी भी समय अपना अकाउंट हटा सकते हैं। यदि आप अपने अकाउंट तक पहुँच नहीं बना पा रहे हैं, तो ownership verification के बाद ईमेल द्वारा deletion request कर सकते हैं।',
+    'Limitation of Liability': 'जिम्मेदारी की सीमा',
+    'To the maximum extent permitted by law, we are not liable for indirect, incidental, special, or consequential damages, including financial loss arising from user decisions, incorrect data entry, delayed notifications, or third-party outages.':
+      'कानून द्वारा अनुमत अधिकतम सीमा तक, हम अप्रत्यक्ष, आकस्मिक, विशेष या परिणामी नुकसान के लिए जिम्मेदार नहीं हैं, जिनमें उपयोगकर्ता के निर्णयों, गलत डेटा एंट्री, देरी से आए नोटिफिकेशन्स या third-party outages से होने वाला वित्तीय नुकसान शामिल है।',
+    'Governing Law': 'प्रभावी कानून',
+    'These Terms are governed by the laws of India. Courts with competent jurisdiction in India will have jurisdiction over disputes, subject to applicable law.':
+      'ये शर्तें भारत के कानूनों द्वारा संचालित होंगी। लागू कानून के अधीन, भारत में सक्षम अधिकार क्षेत्र वाली अदालतों को विवादों पर अधिकार होगा।',
+    'Changes to Terms': 'शर्तों में बदलाव',
+    'We may update these Terms as the product and legal requirements evolve. Continued use after publication of updated Terms constitutes acceptance.':
+      'उत्पाद और कानूनी आवश्यकताओं के विकसित होने पर हम इन शर्तों को अपडेट कर सकते हैं। अपडेटेड शर्तों के प्रकाशित होने के बाद निरंतर उपयोग उनकी स्वीकृति माना जाएगा।',
+    'Worthio is a personal finance record-keeping and planning app for assets, liabilities, reminders, family sharing, and AI-generated informational insights.':
+      'Worthio एसेट्स, देयताएँ, रिमाइंडर्स, फैमिली शेयरिंग और AI-जनरेटेड जानकारीपूर्ण इनसाइट्स के लिए व्यक्तिगत वित्त रिकॉर्ड-कीपिंग और प्लानिंग ऐप है।',
+    'You can export your data, edit or delete records, reset PINs via OTP, manage device trust, and delete your account.':
+      'आप अपना डेटा एक्सपोर्ट कर सकते हैं, रिकॉर्ड एडिट या डिलीट कर सकते हैं, OTP से PIN रीसेट कर सकते हैं, डिवाइस ट्रस्ट मैनेज कर सकते हैं और अपना अकाउंट हटा सकते हैं।',
+    'You must provide accurate registration details and remain responsible for activity under your account and linked family access.':
+      'आपको सही रजिस्ट्रेशन विवरण देना होगा और अपने अकाउंट तथा जुड़े हुए फैमिली एक्सेस के अंतर्गत होने वाली गतिविधियों के लिए जिम्मेदार रहना होगा।',
+    'Your Controls': 'आपके नियंत्रण',
+    'Your Initials (2 letters)': 'आपके initials (2 अक्षर)',
+    'Your sensitive wealth data is encrypted before it is stored so it stays protected and unreadable to others.':
+      'आपका संवेदनशील धन संबंधी डेटा स्टोर होने से पहले एन्क्रिप्ट किया जाता है ताकि वह सुरक्षित और दूसरों के लिए अपठनीय रहे।',
+    'this asset': 'यह एसेट',
+    'this liability': 'यह देयता',
     'None': 'कोई नहीं'
   }
 };

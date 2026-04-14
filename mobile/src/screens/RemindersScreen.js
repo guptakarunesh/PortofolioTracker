@@ -38,8 +38,29 @@ const repeatLabel = (repeatType, repeatEveryDays, t) => {
 const displayAmount = (value, hideSensitive, currency, fxRates) =>
   hideSensitive ? '••••••' : formatAmountFromInr(value, currency, fxRates);
 
+const startOfToday = () => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const toIsoDate = (date) => {
+  const value = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(value.getTime())) return '';
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const tomorrowIsoDate = () => {
+  const date = startOfToday();
+  date.setDate(date.getDate() + 1);
+  return toIsoDate(date);
+};
+
 const createEmptyReminderForm = () => ({
-  due_date: '2026-04-01',
+  due_date: tomorrowIsoDate(),
   category: REMINDER_CATEGORY_OPTIONS[0],
   description: '',
   amount: '',
@@ -75,6 +96,7 @@ export default function RemindersScreen({
   const amountInputRef = useRef(null);
   const repeatEveryDaysInputRef = useRef(null);
   const fieldOffsetsRef = useRef({});
+  const minimumReminderDate = startOfToday();
   const readOnlyDueToFamilyRole = readOnly && String(accessRole || '').toLowerCase() === 'read' && subscriptionActive;
   const readOnlyBannerText = readOnlyDueToFamilyRole
     ? t('Read-only family access. Ask an admin to change your role to Write or Admin to edit.')
@@ -127,6 +149,11 @@ export default function RemindersScreen({
     }
     if (!form.due_date || !form.category || !form.description) {
       setMessage(t('Due date, category and description are required.'));
+      setMessageKind('error');
+      return;
+    }
+    if (String(form.due_date) < toIsoDate(minimumReminderDate)) {
+      setMessage(t('Due date cannot be in the past.'));
       setMessageKind('error');
       return;
     }
@@ -252,6 +279,7 @@ export default function RemindersScreen({
           onChange={(v) => setForm((f) => ({ ...f, due_date: v }))}
           theme={theme}
           placeholder="YYYY-MM-DD"
+          minimumDate={minimumReminderDate}
         />
         <Text style={[styles.label, { color: theme.muted }]}>{t('Category')}</Text>
         <Pressable

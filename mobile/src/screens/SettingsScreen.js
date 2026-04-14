@@ -28,7 +28,39 @@ const targetSettingKey = (category) =>
 const sanitizeTargetDigits = (value = '') => String(value || '').replace(/\D/g, '');
 const TARGETS_LAST_UPDATED_KEY = 'targets_last_updated_at';
 
+const toIsoDate = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseIsoDate = (value = '') => {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const date = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const todayIsoDate = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return toIsoDate(today);
+};
+
 const currentCalendarYearEndDate = () => `${new Date().getFullYear()}-12-31`;
+
+const clampTargetDate = (value = '') => {
+  const today = parseIsoDate(todayIsoDate());
+  const parsed = parseIsoDate(value);
+  if (!parsed) return currentCalendarYearEndDate();
+  if (today && parsed < today) return todayIsoDate();
+  return toIsoDate(parsed);
+};
 
 const formatTargetDigits = (value = '', currency = 'INR') => {
   const digits = sanitizeTargetDigits(value);
@@ -60,6 +92,7 @@ const normalizeSettingsForm = (data = {}) => {
   if (!String(normalized.target_date || '').trim()) {
     normalized.target_date = currentCalendarYearEndDate();
   }
+  normalized.target_date = clampTargetDate(normalized.target_date);
   ASSET_TARGET_CATEGORIES.forEach((category) => {
     const key = targetSettingKey(category);
     normalized[key] = sanitizeTargetDigits(normalized[key]);
@@ -91,6 +124,7 @@ export default function SettingsScreen({
   const [targetsLastUpdatedAt, setTargetsLastUpdatedAt] = useState('');
   const fieldOffsetsRef = useRef({});
   const defaultTargetDate = currentCalendarYearEndDate();
+  const minimumTargetDate = useRef(parseIsoDate(todayIsoDate()) || new Date()).current;
 
   useEffect(() => {
     api.getSettings()
@@ -119,7 +153,8 @@ export default function SettingsScreen({
   );
 
   const save = async () => {
-    const saved = await api.upsertSettings(stripSettingsMetadata(form));
+    const nextForm = normalizeSettingsForm(form);
+    const saved = await api.upsertSettings(stripSettingsMetadata(nextForm));
     setTargetsLastUpdatedAt(String(saved?.[TARGETS_LAST_UPDATED_KEY] || ''));
     setForm(normalizeSettingsForm(saved));
     setMessageKind('success');
@@ -175,6 +210,7 @@ export default function SettingsScreen({
               onChange={(v) => setForm((prev) => ({ ...prev, target_date: v }))}
               theme={theme}
               placeholder={defaultTargetDate}
+              minimumDate={minimumTargetDate}
             />
 
             {ASSET_TARGET_CATEGORIES.map((category) => {

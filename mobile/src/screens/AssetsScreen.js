@@ -24,8 +24,8 @@ const CATEGORY_OPTIONS = [
 
 const REACH_OPTIONS = ['Branch', 'RM', 'Customer Care', 'Portal'];
 const blankForm = {
-  category: CATEGORY_OPTIONS[0],
-  reach_via: REACH_OPTIONS[0],
+  category: '',
+  reach_via: '',
   name: '',
   account_ref: '',
   tracking_url: '',
@@ -180,8 +180,8 @@ export default function AssetsScreen({
     }
     setEditingId(item.id);
     setForm({
-      category: item.category || CATEGORY_OPTIONS[0],
-      reach_via: item.reach_via || REACH_OPTIONS[0],
+      category: item.category || '',
+      reach_via: item.reach_via || '',
       name: item.institution || item.name || '',
       account_ref: '',
       tracking_url: item.tracking_url || '',
@@ -245,8 +245,14 @@ export default function AssetsScreen({
       if (!firstInvalidField) firstInvalidField = key;
     };
 
+    if (!String(form.category || '').trim()) {
+      registerError('category', t('Category is required.'));
+    }
     if (!form.name.trim()) {
       registerError('name', t('Institution Name is required.'));
+    }
+    if (!String(form.reach_via || '').trim()) {
+      registerError('reach_via', t('How to reach this institution is required.'));
     }
 
     const trackingUrl = String(form.tracking_url || '').trim();
@@ -257,15 +263,20 @@ export default function AssetsScreen({
       }
     }
 
-    const parseAmount = (raw, key, label) => {
+    const parseAmount = (raw, key, label, { required = false } = {}) => {
       const cleaned = String(raw || '').trim().replace(/,/g, '');
-      if (!cleaned) return;
+      if (!cleaned) {
+        if (required) {
+          registerError(key, t('{field} is required.', { field: t(label) }));
+        }
+        return;
+      }
       const n = Number(cleaned);
       if (!Number.isFinite(n) || n < 0) {
         registerError(key, t('{field} must be a valid non-negative number.', { field: t(label) }));
       }
     };
-    parseAmount(form.current_value, 'current_value', 'Current Value');
+    parseAmount(form.current_value, 'current_value', 'Current Value', { required: true });
     parseAmount(form.invested_amount, 'invested_amount', 'Invested Amount');
 
     if (Object.keys(errors).length) {
@@ -422,15 +433,19 @@ export default function AssetsScreen({
           {readOnly ? <Text style={[styles.readOnlyText, { color: theme.warn }]}>{readOnlyBannerText}</Text> : null}
           <FieldInfoLabel label={t('Category')} theme={theme} />
           <Pressable
+            onLayout={(event) => setFieldOffset('category', event.nativeEvent.layout.y)}
             style={[
               styles.dropdownTrigger,
-              { borderColor: theme.border, backgroundColor: theme.inputBg }
+              {
+                borderColor: fieldErrors.category ? theme.danger : theme.border,
+                backgroundColor: theme.inputBg
+              }
             ]}
             disabled={readOnly}
             onPress={() => setShowCategoryOptions((v) => !v)}
           >
             <View style={styles.dropdownCopy}>
-              <Text style={[styles.dropdownText, { color: theme.inputText }]}>
+              <Text style={[styles.dropdownText, { color: form.category ? theme.inputText : theme.subtle }]}>
                 {selectedCategory.title || t('Select category')}
               </Text>
               {selectedCategory.detail ? (
@@ -452,6 +467,7 @@ export default function AssetsScreen({
                     form.category === category && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                   ]}
                   onPress={() => {
+                    clearFieldError('category');
                     setForm((f) => ({ ...f, category }));
                     setShowCategoryOptions(false);
                   }}
@@ -483,6 +499,7 @@ export default function AssetsScreen({
               })}
             </View>
           ) : null}
+          {!!fieldErrors.category ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.category}</Text> : null}
 
           <Text style={[styles.label, { color: theme.muted }]}>{t('Institution Name')}</Text>
           <TextInput
@@ -499,8 +516,8 @@ export default function AssetsScreen({
               clearFieldError('name');
               setForm((f) => ({ ...f, name: v }));
             }}
-            placeholder={t('HDFC Bank / SBI')}
-            placeholderTextColor={theme.muted}
+            placeholder={t('Enter institution name')}
+            placeholderTextColor={theme.subtle}
             editable={!readOnly}
           />
           {!!fieldErrors.name ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.name}</Text> : null}
@@ -517,14 +534,20 @@ export default function AssetsScreen({
             }
           />
           <Pressable
+            onLayout={(event) => setFieldOffset('reach_via', event.nativeEvent.layout.y)}
             style={[
               styles.dropdownTrigger,
-              { borderColor: theme.border, backgroundColor: theme.inputBg }
+              {
+                borderColor: fieldErrors.reach_via ? theme.danger : theme.border,
+                backgroundColor: theme.inputBg
+              }
             ]}
             disabled={readOnly}
             onPress={() => setShowReachOptions((v) => !v)}
           >
-            <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.reach_via || 'Branch')}</Text>
+            <Text style={[styles.dropdownText, { color: form.reach_via ? theme.inputText : theme.subtle }]}>
+              {t(form.reach_via || 'Select reach option')}
+            </Text>
             <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showReachOptions ? '▲' : '▼'}</Text>
           </Pressable>
           {showReachOptions ? (
@@ -538,6 +561,7 @@ export default function AssetsScreen({
                     form.reach_via === reachVia && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                   ]}
                   onPress={() => {
+                    clearFieldError('reach_via');
                     setForm((f) => ({ ...f, reach_via: reachVia }));
                     setShowReachOptions(false);
                   }}
@@ -555,6 +579,7 @@ export default function AssetsScreen({
               ))}
             </View>
           ) : null}
+          {!!fieldErrors.reach_via ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.reach_via}</Text> : null}
 
           <FieldInfoLabel
             label={t('Asset Account / Unique Number')}

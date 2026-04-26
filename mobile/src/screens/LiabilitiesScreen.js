@@ -22,10 +22,10 @@ const LOAN_TYPE_OPTIONS = [
 const HOLDER_OPTIONS = ['Self', 'Joint', 'Either or Survivor', 'Nominee Tagged'];
 const REACH_OPTIONS = ['Branch', 'RM', 'Customer Care', 'Portal'];
 const blankForm = {
-  loan_type: LOAN_TYPE_OPTIONS[0],
+  loan_type: '',
   lender: '',
-  holder_type: HOLDER_OPTIONS[0],
-  reach_via: REACH_OPTIONS[0],
+  holder_type: '',
+  reach_via: '',
   account_ref: '',
   outstanding_amount: '',
   notes_for_family: ''
@@ -175,10 +175,10 @@ export default function LiabilitiesScreen({
     }
     setEditingId(item.id);
     setForm({
-      loan_type: item.loan_type || 'Home Loan',
+      loan_type: item.loan_type || '',
       lender: item.lender || '',
-      holder_type: item.holder_type || HOLDER_OPTIONS[0],
-      reach_via: item.reach_via || REACH_OPTIONS[0],
+      holder_type: item.holder_type || '',
+      reach_via: item.reach_via || '',
       account_ref: '',
       outstanding_amount: String(item.outstanding_amount ?? ''),
       notes_for_family: ''
@@ -246,9 +246,14 @@ export default function LiabilitiesScreen({
     if (!form.lender.trim()) {
       registerError('lender', t('Institution Name is required.'));
     }
+    if (!String(form.holder_type || '').trim()) {
+      registerError('holder_type', t('Holder Type is required.'));
+    }
 
     const cleanedOutstanding = String(form.outstanding_amount || '').trim().replace(/,/g, '');
-    if (cleanedOutstanding) {
+    if (!cleanedOutstanding) {
+      registerError('outstanding_amount', t('Outstanding Amount is required.'));
+    } else {
       const n = Number(cleanedOutstanding);
       if (!Number.isFinite(n) || n < 0) {
         registerError('outstanding_amount', t('Outstanding Amount must be a valid non-negative number.'));
@@ -432,11 +437,19 @@ export default function LiabilitiesScreen({
           <Text style={[styles.label, { color: theme.muted }]}>{t('Type')}</Text>
           <Pressable
             onLayout={(event) => setFieldOffset('loan_type', event.nativeEvent.layout.y)}
-            style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
+            style={[
+              styles.dropdownTrigger,
+              {
+                borderColor: fieldErrors.loan_type ? theme.danger : theme.border,
+                backgroundColor: theme.inputBg
+              }
+            ]}
             disabled={readOnly}
             onPress={() => setShowLoanTypeOptions((v) => !v)}
           >
-            <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.loan_type || 'Select type')}</Text>
+            <Text style={[styles.dropdownText, { color: form.loan_type ? theme.inputText : theme.subtle }]}>
+              {t(form.loan_type || 'Select loan type')}
+            </Text>
             <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showLoanTypeOptions ? '▲' : '▼'}</Text>
           </Pressable>
           {showLoanTypeOptions ? (
@@ -450,6 +463,7 @@ export default function LiabilitiesScreen({
                     form.loan_type === type && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                   ]}
                   onPress={() => {
+                    clearFieldError('loan_type');
                     setForm((f) => ({ ...f, loan_type: type }));
                     setShowLoanTypeOptions(false);
                   }}
@@ -467,6 +481,7 @@ export default function LiabilitiesScreen({
               ))}
             </View>
           ) : null}
+          {!!fieldErrors.loan_type ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.loan_type}</Text> : null}
 
           <Text style={[styles.label, { color: theme.muted }]}>{t('Institution Name')}</Text>
           <TextInput
@@ -483,19 +498,28 @@ export default function LiabilitiesScreen({
               clearFieldError('lender');
               setForm((f) => ({ ...f, lender: v }));
             }}
-            placeholder={t('HDFC Bank / SBI')}
-            placeholderTextColor={theme.muted}
+            placeholder={t('Enter institution name')}
+            placeholderTextColor={theme.subtle}
             editable={!readOnly}
           />
           {!!fieldErrors.lender ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.lender}</Text> : null}
 
           <Text style={[styles.label, { color: theme.muted }]}>{t('Holder Type')}</Text>
           <Pressable
-            style={[styles.dropdownTrigger, { borderColor: theme.border, backgroundColor: theme.inputBg }]}
+            onLayout={(event) => setFieldOffset('holder_type', event.nativeEvent.layout.y)}
+            style={[
+              styles.dropdownTrigger,
+              {
+                borderColor: fieldErrors.holder_type ? theme.danger : theme.border,
+                backgroundColor: theme.inputBg
+              }
+            ]}
             disabled={readOnly}
             onPress={() => setShowHolderOptions((v) => !v)}
           >
-            <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.holder_type || 'Holder Type')}</Text>
+            <Text style={[styles.dropdownText, { color: form.holder_type ? theme.inputText : theme.subtle }]}>
+              {t(form.holder_type || 'Select holder type')}
+            </Text>
             <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showHolderOptions ? '▲' : '▼'}</Text>
           </Pressable>
           {showHolderOptions ? (
@@ -509,6 +533,7 @@ export default function LiabilitiesScreen({
                     form.holder_type === holderType && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
                   ]}
                   onPress={() => {
+                    clearFieldError('holder_type');
                     setForm((f) => ({ ...f, holder_type: holderType }));
                     setShowHolderOptions(false);
                   }}
@@ -526,6 +551,7 @@ export default function LiabilitiesScreen({
               ))}
             </View>
           ) : null}
+          {!!fieldErrors.holder_type ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.holder_type}</Text> : null}
 
           <FieldInfoLabel
             label={t('How to reach this institution')}
@@ -543,7 +569,9 @@ export default function LiabilitiesScreen({
             disabled={readOnly}
             onPress={() => setShowReachOptions((v) => !v)}
           >
-            <Text style={[styles.dropdownText, { color: theme.inputText }]}>{t(form.reach_via || 'Branch')}</Text>
+            <Text style={[styles.dropdownText, { color: form.reach_via ? theme.inputText : theme.subtle }]}>
+              {t(form.reach_via || 'Select reach option')}
+            </Text>
             <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showReachOptions ? '▲' : '▼'}</Text>
           </Pressable>
           {showReachOptions ? (

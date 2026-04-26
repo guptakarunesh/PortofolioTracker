@@ -17,6 +17,7 @@ jest.mock('../payments/googlePlay', () => ({
 }));
 
 jest.mock('../api/client', () => ({
+  isGuestPreviewActive: jest.fn(() => false),
   api: {
     getSubscriptionStatus: jest.fn(async () => ({
       plan: 'basic_monthly',

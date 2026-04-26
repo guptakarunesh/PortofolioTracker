@@ -14,6 +14,34 @@ import {
 
 const router = Router();
 
+function parseNonNegativeNumber(value) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return { ok: false, missing: true };
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return { ok: false, missing: false };
+  return { ok: true, missing: false };
+}
+
+function validateLiabilityPayload({ loan_type, lender, holder_type, outstanding_amount }) {
+  if (!String(loan_type || '').trim()) {
+    return { error: 'loan_type_required', message: 'Loan type is required.' };
+  }
+  if (!String(lender || '').trim()) {
+    return { error: 'lender_required', message: 'Lender is required.' };
+  }
+  if (!String(holder_type || '').trim()) {
+    return { error: 'holder_type_required', message: 'Holder type is required.' };
+  }
+  const outstandingAmountCheck = parseNonNegativeNumber(outstanding_amount);
+  if (outstandingAmountCheck.missing) {
+    return { error: 'outstanding_amount_required', message: 'Outstanding amount is required.' };
+  }
+  if (!outstandingAmountCheck.ok) {
+    return { error: 'outstanding_amount_invalid', message: 'Outstanding amount must be a valid non-negative number.' };
+  }
+  return null;
+}
+
 function initialsFromName(name = '') {
   const compact = String(name || '').replace(/\s+/g, '').toUpperCase();
   if (/^[A-Z]{1,2}$/.test(compact)) return compact;
@@ -153,8 +181,14 @@ router.post('/', (req, res) => {
     notes_for_family = ''
   } = req.body;
 
-  if (!loan_type || !lender) {
-    return res.status(400).json({ error: 'loan_type and lender are required' });
+  const validationError = validateLiabilityPayload({
+    loan_type: req.body?.loan_type,
+    lender: req.body?.lender,
+    holder_type: req.body?.holder_type,
+    outstanding_amount: req.body?.outstanding_amount
+  });
+  if (validationError) {
+    return res.status(400).json(validationError);
   }
 
   const subscription = fetchSubscription(userId);
@@ -232,6 +266,15 @@ router.put('/:id', (req, res) => {
     id,
     user_id: req.accountUserId
   };
+  const validationError = validateLiabilityPayload({
+    loan_type: req.body?.loan_type != null ? req.body.loan_type : existing.loan_type,
+    lender: req.body?.lender != null ? req.body.lender : decryptString(existing.lender),
+    holder_type: req.body?.holder_type != null ? req.body.holder_type : existing.holder_type,
+    outstanding_amount: req.body?.outstanding_amount != null ? req.body.outstanding_amount : existing.outstanding_amount
+  });
+  if (validationError) {
+    return res.status(400).json(validationError);
+  }
   db.prepare(`
     UPDATE liabilities SET
       loan_type=@loan_type,

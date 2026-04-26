@@ -37,6 +37,7 @@ test('ai insights include metals coverage when portfolio has precious metals exp
     body: {
       category: 'Precious Metals',
       name: 'Gold Coins',
+      reach_via: 'Branch',
       current_value: 180000,
       invested_amount: 150000,
       account_ref: 'GOLD-1'

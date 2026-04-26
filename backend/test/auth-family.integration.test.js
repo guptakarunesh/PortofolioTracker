@@ -54,6 +54,7 @@ test('auth + family sharing + access roles', async (t) => {
       sub_category: 'Savings',
       name: 'Test Bank',
       institution: 'Unit Test',
+      reach_via: 'Branch',
       account_ref: 'XXXX1111',
       quantity: 1,
       invested_amount: 1000,
@@ -120,7 +121,9 @@ test('auth + family sharing + access roles', async (t) => {
     token: memberToken,
     body: {
       category: 'Market Investments',
-      name: 'Read Role Asset'
+      name: 'Read Role Asset',
+      reach_via: 'Branch',
+      current_value: 500
     }
   });
   assert.equal(memberAssetCreate.status, 403);
@@ -146,7 +149,9 @@ test('auth + family sharing + access roles', async (t) => {
     token: memberToken,
     body: {
       category: 'Market Investments',
-      name: 'Write Role Asset'
+      name: 'Write Role Asset',
+      reach_via: 'Branch',
+      current_value: 500
     }
   });
   assert.equal(memberAssetCreate2.status, 201);

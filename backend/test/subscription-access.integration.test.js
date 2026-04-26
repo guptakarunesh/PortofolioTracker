@@ -103,6 +103,7 @@ test('basic subscription exposes limits, blocks 6th liability, and allows net wo
       body: {
         loan_type: 'Personal Loan',
         lender: `Lender ${index + 1}`,
+        holder_type: 'Self',
         outstanding_amount: 1000 + index
       }
     });
@@ -116,6 +117,7 @@ test('basic subscription exposes limits, blocks 6th liability, and allows net wo
     body: {
       loan_type: 'Personal Loan',
       lender: 'Lender 6',
+      holder_type: 'Self',
       outstanding_amount: 2000
     }
   });

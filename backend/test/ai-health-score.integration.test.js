@@ -34,9 +34,9 @@ test('financial health score endpoint returns a deterministic score snapshot', a
   const token = await registerTestUser(app, '31');
 
   const assetPayloads = [
-    { category: 'Cash & Bank Accounts', name: 'Emergency Fund', current_value: 250000, invested_amount: 250000 },
-    { category: 'Market Stocks & RSUs', name: 'Index Fund', current_value: 450000, invested_amount: 400000 },
-    { category: 'Real Estate', name: 'Apartment', current_value: 1800000, invested_amount: 1500000 }
+    { category: 'Cash & Bank Accounts', name: 'Emergency Fund', reach_via: 'Branch', current_value: 250000, invested_amount: 250000 },
+    { category: 'Market Stocks & RSUs', name: 'Index Fund', reach_via: 'Branch', current_value: 450000, invested_amount: 400000 },
+    { category: 'Real Estate', name: 'Apartment', reach_via: 'Branch', current_value: 1800000, invested_amount: 1500000 }
   ];
   for (const body of assetPayloads) {
     const response = await appRequest(app, { method: 'POST', path: '/api/assets', token, body });
@@ -44,8 +44,8 @@ test('financial health score endpoint returns a deterministic score snapshot', a
   }
 
   const liabilityPayloads = [
-    { loan_type: 'Home Loan', lender: 'Sample Bank', outstanding_amount: 900000, tenure_remaining: '180' },
-    { loan_type: 'Credit Card', lender: 'Card Issuer', outstanding_amount: 30000, tenure_remaining: '1' }
+    { loan_type: 'Home Loan', lender: 'Sample Bank', holder_type: 'Self', outstanding_amount: 900000, tenure_remaining: '180' },
+    { loan_type: 'Credit Card', lender: 'Card Issuer', holder_type: 'Self', outstanding_amount: 30000, tenure_remaining: '1' }
   ];
   for (const body of liabilityPayloads) {
     const response = await appRequest(app, { method: 'POST', path: '/api/liabilities', token, body });
@@ -87,6 +87,7 @@ test('financial health explanation falls back safely when OpenAI is unavailable'
     body: {
       category: 'Cash & Bank Accounts',
       name: 'Savings',
+      reach_via: 'Branch',
       current_value: 100000,
       invested_amount: 100000
     }

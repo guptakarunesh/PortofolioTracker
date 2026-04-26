@@ -71,6 +71,7 @@ test('snapshot report download uses worthio filename and returns a PDF payload',
     body: {
       loan_type: 'Home Loan',
       lender: 'HDFC Bank',
+      holder_type: 'Self',
       outstanding_amount: 1500000,
       relationship_mobile: '9999999999',
       account_ref: 'HL-9876'

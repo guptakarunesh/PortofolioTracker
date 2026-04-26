@@ -15,6 +15,34 @@ import {
 
 const router = Router();
 
+function parseNonNegativeNumber(value) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return { ok: false, missing: true };
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return { ok: false, missing: false };
+  return { ok: true, missing: false };
+}
+
+function validateAssetPayload({ category, name, reach_via, current_value }) {
+  if (!String(category || '').trim()) {
+    return { error: 'category_required', message: 'Category is required.' };
+  }
+  if (!String(name || '').trim()) {
+    return { error: 'name_required', message: 'Institution name is required.' };
+  }
+  if (!String(reach_via || '').trim()) {
+    return { error: 'reach_via_required', message: 'Reach via is required.' };
+  }
+  const currentValueCheck = parseNonNegativeNumber(current_value);
+  if (currentValueCheck.missing) {
+    return { error: 'current_value_required', message: 'Current value is required.' };
+  }
+  if (!currentValueCheck.ok) {
+    return { error: 'current_value_invalid', message: 'Current value must be a valid non-negative number.' };
+  }
+  return null;
+}
+
 function initialsFromName(name = '') {
   const compact = String(name || '').replace(/\s+/g, '').toUpperCase();
   if (/^[A-Z]{1,2}$/.test(compact)) return compact;
@@ -157,8 +185,14 @@ router.post('/', (req, res) => {
     tracking_url = ''
   } = req.body;
 
-  if (!category || !name) {
-    return res.status(400).json({ error: 'category and name are required' });
+  const validationError = validateAssetPayload({
+    category: req.body?.category,
+    name: req.body?.name,
+    reach_via: req.body?.reach_via,
+    current_value: req.body?.current_value
+  });
+  if (validationError) {
+    return res.status(400).json(validationError);
   }
 
   const subscription = fetchSubscription(userId);
@@ -233,6 +267,15 @@ router.put('/:id', (req, res) => {
     tracking_url: req.body?.tracking_url != null ? sanitizeTrackingUrl(req.body.tracking_url) : existing.tracking_url,
     updated_at: nowIso()
   };
+  const validationError = validateAssetPayload({
+    category: req.body?.category != null ? req.body.category : existing.category,
+    name: req.body?.name != null ? req.body.name : decryptString(existing.name),
+    reach_via: req.body?.reach_via != null ? req.body.reach_via : existing.reach_via,
+    current_value: req.body?.current_value != null ? req.body.current_value : existing.current_value
+  });
+  if (validationError) {
+    return res.status(400).json(validationError);
+  }
   db.prepare(`
     UPDATE assets SET
       category=@category,

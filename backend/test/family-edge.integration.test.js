@@ -421,6 +421,7 @@ test('recent family activity is available to members and capped to the latest fi
     body: {
       category: 'Banking & Deposits',
       name: 'Recent Bank',
+      reach_via: 'Branch',
       current_value: 1000
     }
   });
@@ -432,6 +433,7 @@ test('recent family activity is available to members and capped to the latest fi
     body: {
       loan_type: 'Personal Loan',
       lender: 'Recent Lender',
+      holder_type: 'Self',
       outstanding_amount: 500
     }
   });

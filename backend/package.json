@@ -12,7 +12,8 @@
     "test:ai:live": "node scripts/ai-insights-live-smoke.js",
     "cron:ping": "node scripts/run-render-cron.js ping",
     "cron:maintenance": "node scripts/run-render-cron.js maintenance",
-    "cron:refresh": "node scripts/run-render-cron.js refresh"
+    "cron:refresh": "node scripts/run-render-cron.js refresh",
+    "cron:monthly-snapshot": "node scripts/run-render-cron.js monthly-snapshot"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

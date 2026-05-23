@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Linking, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Linking, Pressable, Modal, ScrollView } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import SectionCard from '../components/SectionCard';
 import StatTile from '../components/StatTile';
@@ -9,6 +9,7 @@ import { formatDate, formatAmountFromInr, formatPct } from '../utils/format';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 import { BRAND } from '../brand';
+import { bucketFromAssetCategory } from '../utils/categoryLabels';
 
 const ASSET_TARGET_CATEGORIES = [
   'Cash & Bank Accounts',
@@ -33,6 +34,9 @@ const PIE_COLORS = [
   '#7FA7D9'
 ];
 const ACCENT = BRAND.colors.accentBlue;
+const ASSETS_COLOR = BRAND.colors.positive;
+const LIABILITIES_COLOR = BRAND.colors.negative;
+const NET_WORTH_COLOR = BRAND.colors.accentCyan;
 const PANEL_OPTIONS = [
   { key: 'allocation', label: 'Allocation', helper: 'View how assets are distributed' },
   { key: 'targets', label: 'Targets', helper: 'Track yearly target progress' },
@@ -44,6 +48,18 @@ const targetSettingKey = (category) =>
 
 const displayAmount = (value, hideSensitive, currency, fxRates) =>
   hideSensitive ? '••••••' : formatAmountFromInr(value, currency, fxRates);
+
+const colorWithAlpha = (color = '#1B6FCC', alpha = '22') => {
+  const hex = String(color || '').trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(hex)) return `${hex}${alpha}`;
+  return hex;
+};
+
+const trendBarWidth = (value, maxValue) => {
+  if (!maxValue || maxValue <= 0) return '0%';
+  const pct = Math.max(0, Math.min(1, Number(value || 0) / maxValue));
+  return `${Math.max(6, Math.round(pct * 100))}%`;
+};
 
 const targetProgressColor = (pct) => {
   const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
@@ -96,6 +112,7 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
   const [snapshotExpanded, setSnapshotExpanded] = useState(false);
   const [targetSortType, setTargetSortType] = useState('percent');
   const [targetSortDirection, setTargetSortDirection] = useState('desc');
+  const [allocationDetail, setAllocationDetail] = useState(null);
 
   const loadSummary = useCallback(async () => {
     const response = await api.getSummary();
@@ -147,7 +164,17 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
         : Number(b.pct || 0) - Number(a.pct || 0);
     });
 
-  const performancePoints = Array.isArray(data.performance) ? data.performance : [];
+  const performancePoints = (Array.isArray(data.performance) ? data.performance : []).slice(-12).map((point) => ({
+    label: point.label || point.snapshotMonth || point.quarterStart || '-',
+    snapshotMonth: point.snapshotMonth || point.quarterStart || '',
+    assets: Number(point.assets ?? point.totalAssets ?? 0),
+    liabilities: Number(point.liabilities ?? point.totalLiabilities ?? 0),
+    netWorth: Number(point.netWorth || 0)
+  }));
+  const performanceMaxY = performancePoints.reduce(
+    (max, point) => Math.max(max, point.assets, point.liabilities, point.netWorth),
+    0
+  );
   const currency = preferredCurrency || settings?.preferred_currency || 'INR';
   const guestPreviewActive = isGuestPreviewActive();
   const snapshotReportDate = new Date().toISOString().slice(0, 10);
@@ -158,6 +185,26 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
   const toggleTargetPercentSort = () => {
     setTargetSortType('percent');
     setTargetSortDirection((current) => (targetSortType === 'percent' && current === 'asc' ? 'desc' : 'asc'));
+  };
+  const closeAllocationDetail = () => setAllocationDetail(null);
+  const openAllocationDetail = async (item, color) => {
+    const bucket = String(item?.category || '');
+    setError('');
+    try {
+      const rows = await api.getAssets();
+      const assets = (Array.isArray(rows) ? rows : [])
+        .filter((asset) => bucketFromAssetCategory(asset?.category || '') === bucket)
+        .sort((a, b) => Number(b.current_value || 0) - Number(a.current_value || 0));
+      setAllocationDetail({
+        bucket,
+        color,
+        total: Number(item?.currentValue || 0),
+        pct: Number(item?.pctOfTotal || 0),
+        assets
+      });
+    } catch (e) {
+      setError(e.message || String(e));
+    }
   };
 
   return (
@@ -274,36 +321,41 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
 
         {activePanel === 'allocation' ? (
           <View style={styles.chartWrap}>
-            {sortedAllocation.map((item, idx) => (
-              <View
-                key={item.category}
-                style={[
-                  styles.chartRow,
-                  {
-                    borderColor: theme.border,
-                    backgroundColor: isLight ? theme.card : theme.backgroundElevated,
-                    shadowColor: BRAND.colors.bgDeep
-                  }
-                ]}
-              >
-                <View style={styles.chartLegendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }]} />
-                  <Text style={[styles.allocLabel, { color: theme.text }]}>{t(item.category)}</Text>
-                </View>
-                <View style={styles.chartValueRow}>
-                  <Text style={[styles.allocValue, { color: theme.text }]}>{displayAmount(item.currentValue, hideSensitive, currency, fxRates)}</Text>
-                  <Text style={[styles.allocPct, { color: theme.text }]}>{formatPct(item.pctOfTotal)}</Text>
-                </View>
-                <View style={[styles.progressTrack, { backgroundColor: theme.border }]}> 
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${Math.max(0, Math.min(100, item.pctOfTotal))}%`, backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }
-                    ]}
-                  />
-                </View>
-              </View>
-            ))}
+            {sortedAllocation.map((item, idx) => {
+              const lineColor = PIE_COLORS[idx % PIE_COLORS.length];
+              return (
+                <Pressable
+                  key={item.category}
+                  style={[
+                    styles.chartRow,
+                    {
+                      borderColor: theme.border,
+                      backgroundColor: isLight ? theme.card : theme.backgroundElevated,
+                      shadowColor: BRAND.colors.bgDeep
+                    }
+                  ]}
+                  onPress={() => openAllocationDetail(item, lineColor)}
+                >
+                  <View style={styles.chartLegendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: lineColor }]} />
+                    <Text style={[styles.allocLabel, { color: theme.text }]}>{t(item.category)}</Text>
+                    <Text style={[styles.allocChevron, { color: theme.muted }]}>›</Text>
+                  </View>
+                  <View style={styles.chartValueRow}>
+                    <Text style={[styles.allocValue, { color: theme.text }]}>{displayAmount(item.currentValue, hideSensitive, currency, fxRates)}</Text>
+                    <Text style={[styles.allocPct, { color: theme.text }]}>{formatPct(item.pctOfTotal)}</Text>
+                  </View>
+                  <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${Math.max(0, Math.min(100, item.pctOfTotal))}%`, backgroundColor: lineColor }
+                      ]}
+                    />
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
         ) : null}
 
@@ -313,18 +365,51 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
               <Text style={[styles.subtleInfo, { color: theme.muted }]}>
                 {t('Created from month-end snapshots captured after each month closes.')}
               </Text>
+              <View style={styles.trendLegendRow}>
+                <Text style={[styles.trendLegendItem, styles.trendAssetsText]}>{t('Assets')}</Text>
+                <Text style={[styles.trendLegendItem, styles.trendLiabilitiesText]}>{t('Liabilities')}</Text>
+                <Text style={[styles.trendLegendItem, styles.trendNetWorthText]}>{t('Net Worth')}</Text>
+              </View>
               {performancePoints.map((point) => (
-              <View key={`${point.label}-${point.netWorth}`} style={[styles.targetRow, { borderBottomColor: theme.border }]}>
-                  <View style={styles.targetHeadRow}>
-                    <Text style={[styles.targetLabel, { color: theme.text }]}>{String(point.label || '-')}</Text>
-                    <Text style={[styles.targetPct, { color: theme.accent }]}>{displayAmount(point.netWorth, hideSensitive, currency, fxRates)}</Text>
+                <View
+                  key={`${point.snapshotMonth || point.label}-${point.netWorth}`}
+                  style={[
+                    styles.trendSnapshotCard,
+                    {
+                      borderColor: theme.border,
+                      backgroundColor: isLight ? theme.card : theme.backgroundElevated,
+                      shadowColor: BRAND.colors.bgDeep
+                    }
+                  ]}
+                >
+                  <Text style={[styles.trendMonthLabel, { color: theme.text }]}>{String(point.label || '-')}</Text>
+                  <View style={styles.trendMetricRow}>
+                    <Text style={[styles.trendMetricLabel, styles.trendAssetsText]}>{t('Assets')}</Text>
+                    <View style={[styles.trendTrack, { backgroundColor: theme.border }]}>
+                      <View style={[styles.trendFill, styles.trendAssetsFill, { width: trendBarWidth(point.assets, performanceMaxY) }]} />
+                    </View>
+                    <Text style={[styles.trendMetricValue, { color: theme.muted }]}>
+                      {displayAmount(point.assets, hideSensitive, currency, fxRates)}
+                    </Text>
                   </View>
-                  <Text style={[styles.targetSub, { color: theme.muted }]}>
-                    {t('Assets: {assets} • Liabilities: {liabilities}', {
-                      assets: displayAmount(point.assets, hideSensitive, currency, fxRates),
-                      liabilities: displayAmount(point.liabilities, hideSensitive, currency, fxRates)
-                    })}
-                  </Text>
+                  <View style={styles.trendMetricRow}>
+                    <Text style={[styles.trendMetricLabel, styles.trendLiabilitiesText]}>{t('Liabilities')}</Text>
+                    <View style={[styles.trendTrack, { backgroundColor: theme.border }]}>
+                      <View style={[styles.trendFill, styles.trendLiabilitiesFill, { width: trendBarWidth(point.liabilities, performanceMaxY) }]} />
+                    </View>
+                    <Text style={[styles.trendMetricValue, { color: theme.muted }]}>
+                      {displayAmount(point.liabilities, hideSensitive, currency, fxRates)}
+                    </Text>
+                  </View>
+                  <View style={styles.trendMetricRow}>
+                    <Text style={[styles.trendMetricLabel, styles.trendNetWorthText]}>{t('Net Worth')}</Text>
+                    <View style={[styles.trendTrack, { backgroundColor: theme.border }]}>
+                      <View style={[styles.trendFill, styles.trendNetWorthFill, { width: trendBarWidth(point.netWorth, performanceMaxY) }]} />
+                    </View>
+                    <Text style={[styles.trendMetricValue, { color: theme.muted }]}>
+                      {displayAmount(point.netWorth, hideSensitive, currency, fxRates)}
+                    </Text>
+                  </View>
                 </View>
               ))}
             </>
@@ -398,6 +483,110 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
       </SectionCard>
 
       {error ? <Text style={[styles.muted, { color: theme.danger }]}>{error}</Text> : null}
+      <Modal visible={!!allocationDetail} transparent animationType="slide" onRequestClose={closeAllocationDetail}>
+        <View style={styles.allocationModalRoot}>
+          <Pressable style={styles.allocationModalBackdrop} onPress={closeAllocationDetail} />
+          <View
+            style={[
+              styles.allocationSheet,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                shadowColor: BRAND.colors.bgDeep
+              }
+            ]}
+          >
+            <View style={styles.allocationSheetHandle} />
+            <View style={styles.allocationSheetHeader}>
+              <View style={styles.allocationSheetTitleWrap}>
+                <View style={[styles.legendDot, { backgroundColor: allocationDetail?.color || ACCENT }]} />
+                <Text style={[styles.allocationSheetTitle, { color: theme.text }]} numberOfLines={1}>
+                  {t(allocationDetail?.bucket || '')}
+                </Text>
+              </View>
+              <Pressable
+                style={[
+                  styles.allocationCloseButton,
+                  { borderColor: theme.border, backgroundColor: isLight ? theme.cardAlt : theme.backgroundElevated }
+                ]}
+                onPress={closeAllocationDetail}
+              >
+                <Text style={[styles.allocationCloseText, { color: theme.text }]}>×</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.allocationSummaryRow}>
+              <View
+                style={[
+                  styles.allocationSummaryChip,
+                  {
+                    borderColor: allocationDetail?.color || ACCENT,
+                    backgroundColor: colorWithAlpha(allocationDetail?.color, isLight ? '1A' : '2E')
+                  }
+                ]}
+              >
+                <Text style={[styles.allocationSummaryKey, { color: allocationDetail?.color || theme.accent }]}>{t('Total')}</Text>
+                <Text style={[styles.allocationSummaryValue, { color: theme.text }]}>
+                  {displayAmount(allocationDetail?.total || 0, hideSensitive, currency, fxRates)}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.allocationSummaryChip,
+                  {
+                    borderColor: allocationDetail?.color || ACCENT,
+                    backgroundColor: colorWithAlpha(allocationDetail?.color, isLight ? '1A' : '2E')
+                  }
+                ]}
+              >
+                <Text style={[styles.allocationSummaryKey, { color: allocationDetail?.color || theme.accent }]}>{t('Allocation')}</Text>
+                <Text style={[styles.allocationSummaryValue, { color: theme.text }]}>{formatPct(allocationDetail?.pct || 0)}</Text>
+              </View>
+            </View>
+
+            <ScrollView style={styles.allocationAssetList} contentContainerStyle={styles.allocationAssetListContent}>
+              {(allocationDetail?.assets || []).length ? (
+                allocationDetail.assets.map((asset) => (
+                  <View
+                    key={asset.id || `${asset.name}-${asset.account_ref}`}
+                    style={[
+                      styles.allocationAssetRow,
+                      {
+                        borderColor: theme.border,
+                        backgroundColor: isLight ? theme.cardAlt : theme.backgroundElevated
+                      }
+                    ]}
+                  >
+                    <View style={styles.allocationAssetTop}>
+                      <Text style={[styles.allocationAssetName, { color: theme.text }]} numberOfLines={1}>
+                        {asset.institution || asset.name || t('Unnamed asset')}
+                      </Text>
+                      <Text style={[styles.allocationAssetValue, { color: theme.text }]}>
+                        {displayAmount(asset.current_value || 0, hideSensitive, currency, fxRates)}
+                      </Text>
+                    </View>
+                    <Text style={[styles.allocationAssetSub, { color: theme.muted }]} numberOfLines={1}>
+                      {t(asset.category || allocationDetail.bucket)}
+                    </Text>
+                    <View style={styles.allocationAssetMeta}>
+                      {asset.account_ref ? (
+                        <Text style={[styles.allocationAssetMetaText, { color: theme.muted }]} numberOfLines={1}>
+                          {t('Account Ref: {value}', { value: hideSensitive ? '••••' : asset.account_ref })}
+                        </Text>
+                      ) : null}
+                      <Text style={[styles.allocationAssetMetaText, { color: theme.muted }]} numberOfLines={1}>
+                        {t('Asset Type: {value}', { value: asset.sub_category ? t(asset.sub_category) : t('Not set') })}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.subtleInfo, { color: theme.muted }]}>{t('No assets in this bucket yet.')}</Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -531,6 +720,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontWeight: '700'
   },
+  allocChevron: {
+    fontSize: 26,
+    lineHeight: 26,
+    fontWeight: '600'
+  },
   allocValue: {
     textAlign: 'right',
     fontWeight: '800'
@@ -559,6 +753,77 @@ const styles = StyleSheet.create({
   targetSub: {
     marginTop: 4,
     fontWeight: '600'
+  },
+  trendLegendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+    marginBottom: 12
+  },
+  trendLegendItem: {
+    fontWeight: '900',
+    fontSize: 12
+  },
+  trendSnapshotCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1
+  },
+  trendMonthLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    marginBottom: 8
+  },
+  trendMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginVertical: 5
+  },
+  trendMetricLabel: {
+    width: 72,
+    fontSize: 11,
+    fontWeight: '900'
+  },
+  trendTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden'
+  },
+  trendFill: {
+    height: 8,
+    borderRadius: 999
+  },
+  trendMetricValue: {
+    width: 94,
+    textAlign: 'right',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  trendAssetsText: {
+    color: ASSETS_COLOR
+  },
+  trendLiabilitiesText: {
+    color: LIABILITIES_COLOR
+  },
+  trendNetWorthText: {
+    color: NET_WORTH_COLOR
+  },
+  trendAssetsFill: {
+    backgroundColor: ASSETS_COLOR
+  },
+  trendLiabilitiesFill: {
+    backgroundColor: LIABILITIES_COLOR
+  },
+  trendNetWorthFill: {
+    backgroundColor: NET_WORTH_COLOR
   },
   progressTrack: {
     marginTop: 6,
@@ -626,6 +891,139 @@ const styles = StyleSheet.create({
   subtleInfo: {
     lineHeight: 18,
     fontWeight: '600'
+  },
+  allocationModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end'
+  },
+  allocationModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(3, 8, 18, 0.58)'
+  },
+  allocationSheet: {
+    maxHeight: '82%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 22,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 10
+  },
+  allocationSheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 999,
+    marginBottom: 14,
+    backgroundColor: 'rgba(126, 142, 164, 0.5)'
+  },
+  allocationSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14
+  },
+  allocationSheetTitleWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  allocationSheetTitle: {
+    flex: 1,
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: '900'
+  },
+  allocationCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  allocationCloseText: {
+    fontSize: 24,
+    lineHeight: 26,
+    fontWeight: '700'
+  },
+  allocationSummaryRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14
+  },
+  allocationSummaryChip: {
+    flex: 1,
+    minHeight: 72,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center'
+  },
+  allocationSummaryKey: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '900',
+    marginBottom: 4
+  },
+  allocationSummaryValue: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900'
+  },
+  allocationAssetList: {
+    maxHeight: 390
+  },
+  allocationAssetListContent: {
+    gap: 10,
+    paddingBottom: 4
+  },
+  allocationAssetRow: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    gap: 6
+  },
+  allocationAssetTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  allocationAssetName: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '900'
+  },
+  allocationAssetValue: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '900',
+    textAlign: 'right'
+  },
+  allocationAssetSub: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700'
+  },
+  allocationAssetMeta: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 12,
+    rowGap: 4
+  },
+  allocationAssetMetaText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700'
   },
   muted: {
     marginTop: 8,

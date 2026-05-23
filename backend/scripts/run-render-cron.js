@@ -3,7 +3,8 @@ import process from 'node:process';
 const TASKS = {
   ping: { method: 'GET', path: '/internal/cron/ping' },
   maintenance: { method: 'POST', path: '/internal/cron/shared-news/maintenance' },
-  refresh: { method: 'POST', path: '/internal/cron/shared-news/refresh' }
+  refresh: { method: 'POST', path: '/internal/cron/shared-news/refresh' },
+  'monthly-snapshot': { method: 'POST', path: '/internal/cron/performance/monthly-snapshot' }
 };
 
 function resolveBaseUrl() {

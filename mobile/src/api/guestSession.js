@@ -109,8 +109,8 @@ function computePerformanceSnapshots(state) {
     totalAssets: state.assets.reduce((sum, item) => sum + Number(item.current_value || 0), 0),
     totalLiabilities: state.liabilities.reduce((sum, item) => sum + Number(item.outstanding_amount || 0), 0)
   };
-  const assetFactors = [0.74, 0.79, 0.84, 0.9, 0.96, 1];
-  const liabilityFactors = [1.08, 1.05, 1.03, 1.01, 1, 1];
+  const assetFactors = [0.68, 0.71, 0.75, 0.78, 0.81, 0.84, 0.88, 0.91, 0.94, 0.96, 0.98, 1];
+  const liabilityFactors = [1.16, 1.14, 1.12, 1.1, 1.08, 1.06, 1.05, 1.04, 1.03, 1.02, 1.01, 1];
   return assetFactors.map((assetFactor, index) => {
     const date = new Date();
     date.setMonth(date.getMonth() - (assetFactors.length - index - 1));
@@ -118,7 +118,8 @@ function computePerformanceSnapshots(state) {
     const totalAssets = Math.round(summary.totalAssets * assetFactor);
     const totalLiabilities = Math.round(summary.totalLiabilities * liabilityFactors[index]);
     return {
-      quarterStart: date.toISOString(),
+      snapshotMonth: date.toISOString().slice(0, 10),
+      quarterStart: date.toISOString().slice(0, 10),
       totalAssets,
       totalLiabilities,
       netWorth: totalAssets - totalLiabilities
@@ -265,6 +266,7 @@ function createGuestState() {
     {
       id: 1,
       category: 'Cash & Bank Accounts',
+      sub_category: 'Savings Account',
       name: 'HDFC Bank Emergency Fund',
       institution: 'HDFC Bank Emergency Fund',
       reach_via: 'Branch',
@@ -279,6 +281,7 @@ function createGuestState() {
     {
       id: 2,
       category: 'Market Stocks & RSUs',
+      sub_category: 'Direct Stocks',
       name: 'Zerodha Equity Portfolio',
       institution: 'Zerodha Equity Portfolio',
       reach_via: 'Portal',
@@ -293,6 +296,7 @@ function createGuestState() {
     {
       id: 3,
       category: 'Retirement Funds',
+      sub_category: 'EPF',
       name: 'EPF and NPS',
       institution: 'EPF and NPS',
       reach_via: 'Portal',
@@ -307,6 +311,7 @@ function createGuestState() {
     {
       id: 4,
       category: 'Real Estate',
+      sub_category: 'Residential Property',
       name: 'Pune Apartment',
       institution: 'Pune Apartment',
       reach_via: 'Branch',
@@ -321,6 +326,7 @@ function createGuestState() {
     {
       id: 5,
       category: 'Precious Metals',
+      sub_category: 'Sovereign Gold Bond',
       name: 'Sovereign Gold Bonds',
       institution: 'Sovereign Gold Bonds',
       reach_via: 'Portal',
@@ -619,6 +625,9 @@ export const guestApi = {
   getPerformanceLastSix() {
     return { snapshots: computePerformanceSnapshots(ensureGuestState()) };
   },
+  getPerformanceLastTwelve() {
+    return { snapshots: computePerformanceSnapshots(ensureGuestState()) };
+  },
   getAssets() {
     const state = ensureGuestState();
     return clone(state.assets);
@@ -642,6 +651,7 @@ export const guestApi = {
     const item = {
       id: nextId('asset'),
       category: ASSET_CATEGORIES.includes(payload.category) ? payload.category : 'Insurance & Other',
+      sub_category: String(payload.sub_category || '').trim(),
       name: String(payload.name || payload.institution || 'Preview Asset').trim(),
       institution: String(payload.institution || payload.name || 'Preview Asset').trim(),
       reach_via: String(payload.reach_via || 'Branch').trim() || 'Branch',

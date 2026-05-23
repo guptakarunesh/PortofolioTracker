@@ -5,7 +5,7 @@ import FeedbackBanner from '../components/FeedbackBanner';
 import SectionCard from '../components/SectionCard';
 import PillButton from '../components/PillButton';
 import { formatAmountFromInr } from '../utils/format';
-import { getCategoryDisplayParts } from '../utils/categoryLabels';
+import { getAssetTypeOptions, getCategoryDisplayParts } from '../utils/categoryLabels';
 import { useTheme } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -22,9 +22,10 @@ const CATEGORY_OPTIONS = [
   'Insurance & Other'
 ];
 
-const REACH_OPTIONS = ['Branch', 'RM', 'Customer Care', 'Portal'];
+const LEGACY_REACH_DEFAULT = 'Portal';
 const blankForm = {
   category: '',
+  sub_category: '',
   reach_via: '',
   name: '',
   account_ref: '',
@@ -85,7 +86,7 @@ export default function AssetsScreen({
   const [messageKind, setMessageKind] = useState('info');
   const [fieldErrors, setFieldErrors] = useState({});
   const [showCategoryOptions, setShowCategoryOptions] = useState(false);
-  const [showReachOptions, setShowReachOptions] = useState(false);
+  const [showAssetTypeOptions, setShowAssetTypeOptions] = useState(false);
   const [assetSortType, setAssetSortType] = useState('amount');
   const [assetSortDirection, setAssetSortDirection] = useState('desc');
   const [limitReached, setLimitReached] = useState(false);
@@ -151,7 +152,7 @@ export default function AssetsScreen({
     setEditingId(null);
     setFieldErrors({});
     setShowCategoryOptions(false);
-    setShowReachOptions(false);
+    setShowAssetTypeOptions(false);
   };
 
   const setFieldOffset = useCallback((key, layoutY) => {
@@ -181,6 +182,7 @@ export default function AssetsScreen({
     setEditingId(item.id);
     setForm({
       category: item.category || '',
+      sub_category: item.sub_category || '',
       reach_via: item.reach_via || '',
       name: item.institution || item.name || '',
       account_ref: '',
@@ -190,7 +192,7 @@ export default function AssetsScreen({
       notes_for_family: ''
     });
     setShowCategoryOptions(false);
-    setShowReachOptions(false);
+    setShowAssetTypeOptions(false);
     setFieldErrors({});
     scrollToField();
   };
@@ -248,11 +250,11 @@ export default function AssetsScreen({
     if (!String(form.category || '').trim()) {
       registerError('category', t('Category is required.'));
     }
+    if (!String(form.sub_category || '').trim()) {
+      registerError('sub_category', t('Asset Type is required.'));
+    }
     if (!form.name.trim()) {
       registerError('name', t('Institution Name is required.'));
-    }
-    if (!String(form.reach_via || '').trim()) {
-      registerError('reach_via', t('How to reach this institution is required.'));
     }
 
     const trackingUrl = String(form.tracking_url || '').trim();
@@ -292,9 +294,10 @@ export default function AssetsScreen({
     const normalizedNotes = form.notes_for_family?.trim() || '';
     const basePayload = {
       category: form.category,
+      sub_category: form.sub_category,
       name: form.name.trim(),
       institution: form.name.trim(),
-      reach_via: form.reach_via,
+      reach_via: form.reach_via || LEGACY_REACH_DEFAULT,
       tracking_url: form.tracking_url?.trim() || '',
       current_value: Number(form.current_value || 0),
       invested_amount: Number(form.invested_amount || 0)
@@ -420,6 +423,7 @@ export default function AssetsScreen({
   const maxAssets = subscriptionStatus?.limits?.maxAssets;
   const totalAssetValue = visibleItems.reduce((sum, item) => sum + Number(item.current_value || 0), 0);
   const selectedCategory = getCategoryDisplayParts(form.category, t);
+  const assetTypeOptions = getAssetTypeOptions(form.category);
   const latestAssetUpdate = visibleItems.reduce((latest, item) => {
     const current = Date.parse(String(item?.updated_at || ''));
     if (!Number.isFinite(current)) return latest;
@@ -468,8 +472,13 @@ export default function AssetsScreen({
                   ]}
                   onPress={() => {
                     clearFieldError('category');
-                    setForm((f) => ({ ...f, category }));
+                    setForm((f) => ({
+                      ...f,
+                      category,
+                      sub_category: getAssetTypeOptions(category).includes(f.sub_category) ? f.sub_category : ''
+                    }));
                     setShowCategoryOptions(false);
+                    setShowAssetTypeOptions(false);
                   }}
                 >
                   <View style={styles.dropdownCopy}>
@@ -501,6 +510,73 @@ export default function AssetsScreen({
           ) : null}
           {!!fieldErrors.category ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.category}</Text> : null}
 
+          <FieldInfoLabel
+            label={t('Asset Type')}
+            theme={theme}
+            infoText={t('Choose the sub type within the selected main category.')}
+            onPress={() =>
+              openFieldInfo(
+                t('Asset Type'),
+                t('Choose the sub type within the selected main category.')
+              )
+            }
+          />
+          <Pressable
+            onLayout={(event) => setFieldOffset('sub_category', event.nativeEvent.layout.y)}
+            style={[
+              styles.dropdownTrigger,
+              {
+                borderColor: fieldErrors.sub_category ? theme.danger : theme.border,
+                backgroundColor: theme.inputBg
+              }
+            ]}
+            disabled={readOnly || !form.category}
+            onPress={() => {
+              if (!form.category) {
+                setMessage(t('Select category first.'));
+                setMessageKind('error');
+                scrollToField('category');
+                return;
+              }
+              setShowAssetTypeOptions((v) => !v);
+            }}
+          >
+            <Text style={[styles.dropdownText, { color: form.sub_category ? theme.inputText : theme.subtle }]}>
+              {t(form.sub_category || 'Select asset type')}
+            </Text>
+            <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showAssetTypeOptions ? '▲' : '▼'}</Text>
+          </Pressable>
+          {showAssetTypeOptions ? (
+            <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              {assetTypeOptions.map((assetType) => (
+                <Pressable
+                  key={assetType}
+                  style={[
+                    styles.dropdownItem,
+                    { borderBottomColor: theme.border },
+                    form.sub_category === assetType && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
+                  ]}
+                  onPress={() => {
+                    clearFieldError('sub_category');
+                    setForm((f) => ({ ...f, sub_category: assetType }));
+                    setShowAssetTypeOptions(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      { color: theme.text },
+                      form.sub_category === assetType && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
+                    ]}
+                  >
+                    {t(assetType)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          {!!fieldErrors.sub_category ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.sub_category}</Text> : null}
+
           <Text style={[styles.label, { color: theme.muted }]}>{t('Institution Name')}</Text>
           <TextInput
             ref={nameInputRef}
@@ -521,65 +597,6 @@ export default function AssetsScreen({
             editable={!readOnly}
           />
           {!!fieldErrors.name ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.name}</Text> : null}
-
-          <FieldInfoLabel
-            label={t('How to reach this institution')}
-            theme={theme}
-            infoText={t('This tells your family the fastest next step to reach the institution.')}
-            onPress={() =>
-              openFieldInfo(
-                t('How to reach this institution'),
-                t('This tells your family the fastest next step to reach the institution.')
-              )
-            }
-          />
-          <Pressable
-            onLayout={(event) => setFieldOffset('reach_via', event.nativeEvent.layout.y)}
-            style={[
-              styles.dropdownTrigger,
-              {
-                borderColor: fieldErrors.reach_via ? theme.danger : theme.border,
-                backgroundColor: theme.inputBg
-              }
-            ]}
-            disabled={readOnly}
-            onPress={() => setShowReachOptions((v) => !v)}
-          >
-            <Text style={[styles.dropdownText, { color: form.reach_via ? theme.inputText : theme.subtle }]}>
-              {t(form.reach_via || 'Select reach option')}
-            </Text>
-            <Text style={[styles.dropdownArrow, { color: theme.muted }]}>{showReachOptions ? '▲' : '▼'}</Text>
-          </Pressable>
-          {showReachOptions ? (
-            <View style={[styles.dropdownMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
-              {REACH_OPTIONS.map((reachVia) => (
-                <Pressable
-                  key={reachVia}
-                  style={[
-                    styles.dropdownItem,
-                    { borderBottomColor: theme.border },
-                    form.reach_via === reachVia && { backgroundColor: isLight ? theme.accentSoft : '#155EAF' }
-                  ]}
-                  onPress={() => {
-                    clearFieldError('reach_via');
-                    setForm((f) => ({ ...f, reach_via: reachVia }));
-                    setShowReachOptions(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.dropdownItemText,
-                      { color: theme.text },
-                      form.reach_via === reachVia && { color: isLight ? theme.accent : '#FFFFFF', fontWeight: '700' }
-                    ]}
-                  >
-                    {t(reachVia)}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          {!!fieldErrors.reach_via ? <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.reach_via}</Text> : null}
 
           <FieldInfoLabel
             label={t('Asset Account / Unique Number')}
@@ -806,6 +823,9 @@ export default function AssetsScreen({
             <Pressable style={styles.rowHeader} onPress={() => toggleExpanded(item.id)}>
               <View style={styles.rowTitleWrap}>
                 <Text style={[styles.name, { color: theme.text }]}>{t(item.category)}</Text>
+                <Text style={[styles.sub, { color: theme.muted }]}>
+                  {t('Asset Type: {value}', { value: hasInfo(item.sub_category) ? t(item.sub_category) : t('Not set') })}
+                </Text>
                 <Text style={[styles.sub, { color: theme.muted }]}>{item.institution || item.name}</Text>
               </View>
               <View style={styles.amountBlock}>

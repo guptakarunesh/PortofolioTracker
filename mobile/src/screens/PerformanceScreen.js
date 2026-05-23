@@ -28,7 +28,7 @@ export default function PerformanceScreen({
   const [message, setMessage] = useState('');
 
   const load = useCallback(async () => {
-    const response = await api.getPerformanceLastSix();
+    const response = await api.getPerformanceLastTwelve();
     setRows(response?.snapshots || []);
   }, []);
 
@@ -50,7 +50,7 @@ export default function PerformanceScreen({
 
   return (
     <View>
-      <SectionCard title={t('Net Worth Trend (Last 6 Months)')}>
+      <SectionCard title={t('Net Worth Trend (Last 12 Months)')}>
         <Text style={[styles.sub, { color: theme.muted }]}>{t('Built from month-end snapshots of assets, liabilities, and net worth.')}</Text>
         <View style={styles.legendRow}>
           <Text style={[styles.legendItem, styles.assetsLegend]}>{t('Assets')}</Text>
@@ -65,10 +65,10 @@ export default function PerformanceScreen({
             const netWorth = Number(row.netWorth || 0);
             return (
               <View
-                key={row.quarterStart}
+                key={row.snapshotMonth || row.quarterStart}
                 style={[styles.group, { borderColor: theme.border, backgroundColor: theme.card, shadowColor: theme.text }]}
               >
-                <Text style={[styles.axisLabel, { color: theme.text }]}>{formatMonthLabel(row.quarterStart)}</Text>
+                <Text style={[styles.axisLabel, { color: theme.text }]}>{formatMonthLabel(row.snapshotMonth || row.quarterStart)}</Text>
 
                 <View style={styles.metricRow}>
                   <Text style={[styles.metricKey, styles.assetsLegend]}>{t('Assets')}</Text>

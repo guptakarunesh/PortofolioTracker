@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../lib/db.js';
 import { bucketFromAssetCategory } from '../lib/financialHealth.js';
+import { fetchPerformanceSnapshots, formatSnapshotLabel } from '../lib/performanceSnapshots.js';
 
 const router = Router();
 
@@ -95,13 +96,21 @@ router.get('/summary', (req, res) => {
       .get(userId).total
   );
   const netWorth = totalAssets - totalLiabilities;
+  const performance = fetchPerformanceSnapshots(userId, { limit: 12 }).map((row) => ({
+    label: formatSnapshotLabel(row.snapshotMonth),
+    snapshotMonth: row.snapshotMonth,
+    assets: row.totalAssets,
+    liabilities: row.totalLiabilities,
+    netWorth: row.netWorth
+  }));
 
   res.json({
     lastUpdated: new Date().toISOString(),
     totalAssets,
     totalLiabilities,
     netWorth,
-    allocation
+    allocation,
+    performance
   });
 });
 

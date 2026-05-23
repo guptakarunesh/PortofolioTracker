@@ -723,9 +723,9 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
       `);
 
       const normalized = snapshots.map((row) => {
-        const quarterStart = String(row?.quarter_start || row?.quarterStart || '').trim();
+        const quarterStart = String(row?.snapshot_month || row?.snapshotMonth || row?.quarter_start || row?.quarterStart || '').trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(quarterStart)) {
-          throw new Error('invalid_quarter_start');
+          throw new Error('invalid_snapshot_month');
         }
         const totalAssets = Number(row?.total_assets ?? row?.totalAssets ?? 0);
         const totalLiabilities = Number(row?.total_liabilities ?? row?.totalLiabilities ?? 0);
@@ -759,6 +759,7 @@ apiRouter.post('/users/:id/actions', async (req, res) => {
       result = {
         ok: true,
         snapshots_upserted: normalized.length,
+        snapshot_months: normalized.map((row) => row.quarterStart),
         quarter_starts: normalized.map((row) => row.quarterStart)
       };
     } else if (action === 'clear_ai_insights_cache') {

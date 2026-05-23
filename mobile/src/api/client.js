@@ -323,6 +323,7 @@ export const api = {
   snoozeReminder: guestAware('snoozeReminder', (id, days = 1) =>
     apiRequest(`/api/reminders/${id}/snooze`, { method: 'PATCH', body: JSON.stringify({ days }) })),
 
+  getPerformanceLastTwelve: guestAware('getPerformanceLastTwelve', () => apiRequest('/api/performance/last-twelve')),
   getPerformanceLastSix: guestAware('getPerformanceLastSix', () => apiRequest('/api/performance/last-six')),
   getSnapshotReport: (date) =>
     apiRequest(`/api/reports/snapshot${date ? `?date=${encodeURIComponent(date)}` : ''}`),

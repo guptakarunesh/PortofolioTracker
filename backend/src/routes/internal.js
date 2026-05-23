@@ -6,6 +6,7 @@ import {
   triggerSharedCuratedNewsRefresh
 } from '../lib/newsPipeline.js';
 import { resolveOpenAiApiKey } from '../lib/openai.js';
+import { captureMonthlyPerformanceSnapshotsForAllUsers } from '../lib/performanceSnapshots.js';
 
 const router = Router();
 
@@ -14,6 +15,8 @@ const SHARED_CURATED_NEWS_REFRESH_HOURS = Math.max(
   1,
   Number.parseInt(process.env.SHARED_CURATED_NEWS_REFRESH_HOURS || '12', 10)
 );
+const PERFORMANCE_SNAPSHOT_TIME_ZONE =
+  String(process.env.PERFORMANCE_SNAPSHOT_TIME_ZONE || 'Asia/Kolkata').trim() || 'Asia/Kolkata';
 
 function summarizeSharedCuratedNewsState(state = {}) {
   return {
@@ -129,6 +132,26 @@ router.post('/cron/shared-news/refresh', (_req, res, next) => {
       now: nowIso(),
       refresh_job: summarizeRefreshJobState(refresh.status)
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/cron/performance/monthly-snapshot', (req, res, next) => {
+  try {
+    const forceValue = String(req.query?.force ?? req.body?.force ?? '').trim().toLowerCase();
+    const force = forceValue === '1' || forceValue === 'true';
+    const requestedNow = String(req.query?.now || req.body?.now || '').trim();
+    const now = requestedNow ? new Date(requestedNow) : new Date();
+    if (Number.isNaN(now.getTime())) {
+      return res.status(400).json({ error: 'invalid_now' });
+    }
+    const result = captureMonthlyPerformanceSnapshotsForAllUsers({
+      now,
+      timeZone: PERFORMANCE_SNAPSHOT_TIME_ZONE,
+      force
+    });
+    return res.json(result);
   } catch (error) {
     return next(error);
   }

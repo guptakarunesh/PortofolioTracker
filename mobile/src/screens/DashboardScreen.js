@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Linking, Pressable, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Linking, Pressable, Modal, ScrollView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import SectionCard from '../components/SectionCard';
 import StatTile from '../components/StatTile';
@@ -104,7 +105,9 @@ function BrandSummaryIntro({ theme, isLight, t }) {
 export default function DashboardScreen({ hideSensitive = false, preferredCurrency = 'INR', fxRates = { INR: 1 } }) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
   const isLight = theme.key === 'light';
+  const bottomInset = Math.max(Number(insets?.bottom || 0), Platform.OS === 'android' ? 16 : 0);
   const [data, setData] = useState(null);
   const [settings, setSettings] = useState({});
   const [error, setError] = useState('');
@@ -492,7 +495,8 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
               {
                 backgroundColor: theme.card,
                 borderColor: theme.border,
-                shadowColor: BRAND.colors.bgDeep
+                shadowColor: BRAND.colors.bgDeep,
+                paddingBottom: 22 + bottomInset
               }
             ]}
           >
@@ -544,7 +548,10 @@ export default function DashboardScreen({ hideSensitive = false, preferredCurren
               </View>
             </View>
 
-            <ScrollView style={styles.allocationAssetList} contentContainerStyle={styles.allocationAssetListContent}>
+            <ScrollView
+              style={styles.allocationAssetList}
+              contentContainerStyle={[styles.allocationAssetListContent, { paddingBottom: 8 + bottomInset }]}
+            >
               {(allocationDetail?.assets || []).length ? (
                 allocationDetail.assets.map((asset) => (
                   <View

@@ -21,7 +21,7 @@ import {
   KeyboardAvoidingView,
   Keyboard
 } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext, SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
@@ -2528,81 +2528,89 @@ export default function App() {
       </Modal>
 
       {activeTab !== 'subscription' && !keyboardVisible ? (
-        <View
-          style={[
-            styles.bottomNav,
-            {
-              backgroundColor: isDarkTheme ? 'rgba(11,31,58,0.94)' : theme.card,
-              borderTopColor: isDarkTheme ? 'rgba(255,255,255,0.12)' : theme.border
-            }
-          ]}
-        >
-          {PRIMARY_TAB_KEYS.map((key) => {
-            const tab = TABS.find((t) => t.key === key);
-            const active = activeTab === key;
-            const locked = PREMIUM_TAB_KEYS.has(key) && !premiumActive;
-            const label = t(tab?.labelKey || key);
-            const onboardingKey =
-              key === 'dashboard'
-                ? 'tab_dashboard'
-                : key === 'assets'
-                  ? 'tab_assets'
-                  : key === 'loans'
-                    ? 'tab_loans'
-                    : key === 'settings'
-                      ? 'tab_settings'
-                      : key === 'reminders'
-                        ? 'tab_reminders'
-                    : null;
+        <SafeAreaInsetsContext.Consumer>
+          {(insets) => {
+            const bottomInset = Math.max(Number(insets?.bottom || 0), Platform.OS === 'android' ? 16 : 0);
             return (
-              <AnimatedPressable
-                key={key}
-                ref={onboardingKey ? (node) => setOnboardingTargetRef(onboardingKey, node) : undefined}
-                collapsable={false}
-                onLayout={onboardingKey ? () => measureOnboardingTarget(onboardingKey) : undefined}
+              <View
                 style={[
-                  styles.navItem,
-                  active && {
-                    backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.10)' : theme.accentSoft,
-                    borderColor: isDarkTheme ? 'rgba(255,255,255,0.16)' : 'rgba(11,31,58,0.08)'
-                  },
-                  getOnboardingZoomStyle(onboardingKey)
+                  styles.bottomNav,
+                  {
+                    backgroundColor: isDarkTheme ? 'rgba(11,31,58,0.94)' : theme.card,
+                    borderTopColor: isDarkTheme ? 'rgba(255,255,255,0.12)' : theme.border,
+                    paddingBottom: 10 + bottomInset
+                  }
                 ]}
-                onPress={() => handleTabSelect(key)}
               >
-                <View style={styles.navTextWrap}>
-                  <View style={styles.navIconWrap}>
-                    <Text
+                {PRIMARY_TAB_KEYS.map((key) => {
+                  const tab = TABS.find((t) => t.key === key);
+                  const active = activeTab === key;
+                  const locked = PREMIUM_TAB_KEYS.has(key) && !premiumActive;
+                  const label = t(tab?.labelKey || key);
+                  const onboardingKey =
+                    key === 'dashboard'
+                      ? 'tab_dashboard'
+                      : key === 'assets'
+                        ? 'tab_assets'
+                        : key === 'loans'
+                          ? 'tab_loans'
+                          : key === 'settings'
+                            ? 'tab_settings'
+                            : key === 'reminders'
+                              ? 'tab_reminders'
+                      : null;
+                  return (
+                    <AnimatedPressable
+                      key={key}
+                      ref={onboardingKey ? (node) => setOnboardingTargetRef(onboardingKey, node) : undefined}
+                      collapsable={false}
+                      onLayout={onboardingKey ? () => measureOnboardingTarget(onboardingKey) : undefined}
                       style={[
-                        styles.navIcon,
-                        {
-                          color: active
-                            ? (isDarkTheme ? '#FFFFFF' : theme.accent)
-                            : (isDarkTheme ? theme.textMuted || '#C9D4E5' : theme.muted)
-                        }
+                        styles.navItem,
+                        active && {
+                          backgroundColor: isDarkTheme ? 'rgba(255,255,255,0.10)' : theme.accentSoft,
+                          borderColor: isDarkTheme ? 'rgba(255,255,255,0.16)' : 'rgba(11,31,58,0.08)'
+                        },
+                        getOnboardingZoomStyle(onboardingKey)
                       ]}
+                      onPress={() => handleTabSelect(key)}
                     >
-                      {TAB_ICONS[key] || '•'}
-                    </Text>
-                    {locked ? <PremiumBadgeIcon /> : null}
-                  </View>
-                  <Text style={[
-                    styles.navText,
-                    { color: isDarkTheme ? (theme.textSecondary || '#C9D4E5') : theme.muted },
-                    active && { color: isDarkTheme ? '#FFFFFF' : theme.accent },
-                    locked && !active && { color: isDarkTheme ? '#D9E3F2' : theme.muted }
-                  ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.82}
-                  >
-                    {label}
-                  </Text>
-                </View>
-              </AnimatedPressable>
+                      <View style={styles.navTextWrap}>
+                        <View style={styles.navIconWrap}>
+                          <Text
+                            style={[
+                              styles.navIcon,
+                              {
+                                color: active
+                                  ? (isDarkTheme ? '#FFFFFF' : theme.accent)
+                                  : (isDarkTheme ? theme.textMuted || '#C9D4E5' : theme.muted)
+                              }
+                            ]}
+                          >
+                            {TAB_ICONS[key] || '•'}
+                          </Text>
+                          {locked ? <PremiumBadgeIcon /> : null}
+                        </View>
+                        <Text style={[
+                          styles.navText,
+                          { color: isDarkTheme ? (theme.textSecondary || '#C9D4E5') : theme.muted },
+                          active && { color: isDarkTheme ? '#FFFFFF' : theme.accent },
+                          locked && !active && { color: isDarkTheme ? '#D9E3F2' : theme.muted }
+                        ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.82}
+                        >
+                          {label}
+                        </Text>
+                      </View>
+                    </AnimatedPressable>
+                  );
+                })}
+              </View>
             );
-          })}
-        </View>
+          }}
+        </SafeAreaInsetsContext.Consumer>
       ) : null}
 
     </SafeAreaView>

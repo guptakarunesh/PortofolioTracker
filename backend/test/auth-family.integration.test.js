@@ -18,7 +18,7 @@ test('auth + family sharing + access roles', async (t) => {
     firebase_id_token: 'mock:9999999999',
     consent_privacy: true,
     consent_terms: true,
-    privacy_policy_version: 'v1.1',
+    privacy_policy_version: 'v1.2',
     terms_version: 'v1.1',
     device_context: { device_id: 'test-device' }
   };
@@ -91,7 +91,7 @@ test('auth + family sharing + access roles', async (t) => {
       firebase_id_token: 'mock:8888888888',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -175,7 +175,7 @@ test('otp login flow (mock)', async (t) => {
       firebase_id_token: 'mock:7777777777',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -220,7 +220,7 @@ test('biometric login can create a fresh session after logout on the same truste
       firebase_id_token: 'mock:7777777778',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -283,7 +283,7 @@ test('logout invalidates a recently cached auth session', async () => {
       firebase_id_token: 'mock:7777777791',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'cache-test-device' }
     }
@@ -333,7 +333,7 @@ test('otp verify returns 503 instead of crashing on transient database timeout',
       firebase_id_token: 'mock:7777777792',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'timeout-device' }
     }
@@ -389,7 +389,7 @@ test('protected routes return 503 on transient session lookup timeout', async (t
       firebase_id_token: 'mock:7777777793',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'timeout-session-device' }
     }
@@ -441,7 +441,7 @@ test('expired family members can login, see admin renewal info, and leave into t
       firebase_id_token: 'mock:7777777781',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -481,7 +481,7 @@ test('expired family members can login, see admin renewal info, and leave into t
       firebase_id_token: 'mock:7777777782',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -564,7 +564,7 @@ test('family admins can renew the owner subscription', async () => {
       firebase_id_token: 'mock:7777777783',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -593,7 +593,7 @@ test('family admins can renew the owner subscription', async () => {
       firebase_id_token: 'mock:7777777784',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }

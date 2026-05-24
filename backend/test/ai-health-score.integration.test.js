@@ -14,7 +14,7 @@ async function registerTestUser(app, suffix) {
       firebase_id_token: `mock:77777779${suffix}`,
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }

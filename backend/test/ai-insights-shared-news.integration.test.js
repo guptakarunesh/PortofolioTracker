@@ -22,7 +22,7 @@ test('ai insights use shared curated news cache without live ingest on user requ
       firebase_id_token: 'mock:7777777782',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }

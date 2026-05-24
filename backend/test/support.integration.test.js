@@ -20,7 +20,7 @@ test('support can expire a user trial with a past period end for expiry-flow tes
       firebase_id_token: 'mock:6666666601',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -84,7 +84,7 @@ test('support can search users by exact 10-digit mobile number', async () => {
       firebase_id_token: 'mock:6666666602',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -128,7 +128,7 @@ test('support can force-expire a pending family invite before its natural expiry
       firebase_id_token: 'mock:6666666608',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'family-owner-device' }
     }
@@ -192,7 +192,7 @@ test('support can disable an account with a reason and block session + otp acces
       firebase_id_token: 'mock:6666666603',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'test-device' }
     }
@@ -268,7 +268,7 @@ test('support can delete an account and clear linked references with a reason no
       firebase_id_token: 'mock:6666666604',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'owner-device' }
     }
@@ -286,7 +286,7 @@ test('support can delete an account and clear linked references with a reason no
       firebase_id_token: 'mock:6666666605',
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: 'target-device' }
     }

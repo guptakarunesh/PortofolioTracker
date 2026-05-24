@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { LEGAL_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION, TERMS_VERSION } from '../lib/legal.js';
+import { LEGAL_EFFECTIVE_DATE, PRIVACY_POLICY_EFFECTIVE_DATE, PRIVACY_POLICY_VERSION, TERMS_VERSION } from '../lib/legal.js';
 
 const router = Router();
 
@@ -28,18 +28,30 @@ router.get('/versions', (_req, res) => {
   res.json({
     privacyPolicyVersion: PRIVACY_POLICY_VERSION,
     termsVersion: TERMS_VERSION,
-    effectiveDate: LEGAL_EFFECTIVE_DATE
+    effectiveDate: PRIVACY_POLICY_EFFECTIVE_DATE,
+    privacyPolicyEffectiveDate: PRIVACY_POLICY_EFFECTIVE_DATE,
+    termsEffectiveDate: LEGAL_EFFECTIVE_DATE
   });
 });
 
 router.get('/privacy', (_req, res) => {
   const body = `
   <h1>Privacy Policy</h1>
-  <div class="meta">Version ${PRIVACY_POLICY_VERSION} | Effective ${LEGAL_EFFECTIVE_DATE}</div>
+  <div class="meta">Version ${PRIVACY_POLICY_VERSION} | Effective ${PRIVACY_POLICY_EFFECTIVE_DATE}</div>
   <h2>1. Scope</h2>
   <p>This Privacy Policy explains how Worthio ("we", "our", "us") handles personal data when you use the mobile app and connected services. We process personal data in line with applicable Indian law, including the Digital Personal Data Protection Act, 2023.</p>
 
-  <h2>2. Data We Collect</h2>
+  <h2>2. Privacy Principles</h2>
+  <p>Worthio is designed around customer trust, clear customer benefit, transparency, user control, data minimization, limited sharing, secure software practices, and responsible deletion.</p>
+  <ul>
+    <li>We collect and use personal data only where it supports an understandable product, security, compliance, billing, support, or family-sharing purpose.</li>
+    <li>We aim to make our collection, use, and sharing of personal data clear and unsurprising.</li>
+    <li>We provide in-app controls to edit records, export data, manage family access, manage trusted devices, and delete your account.</li>
+    <li>We do not sell personal data. When limited sharing is necessary, we aim to share only the minimum data needed for that purpose.</li>
+    <li>We design and review our app, backend systems, and support tools to protect personal data and reduce unnecessary access.</li>
+  </ul>
+
+  <h2>3. Data We Collect</h2>
   <ul>
     <li><strong>Account data:</strong> two-letter initials, mobile number, optional email, country, and consent records.</li>
     <li><strong>Authentication data:</strong> MPIN hash, login/session records, OTP request and verification records, and reset events.</li>
@@ -51,7 +63,7 @@ router.get('/privacy', (_req, res) => {
     <li><strong>Notification data:</strong> push token, in-app notification records, and reminder delivery status.</li>
   </ul>
 
-  <h2>3. Data We Do Not Collect</h2>
+  <h2>4. Data We Do Not Collect</h2>
   <ul>
     <li>Bank passwords or internet banking credentials.</li>
     <li>Card CVV.</li>
@@ -59,7 +71,8 @@ router.get('/privacy', (_req, res) => {
     <li>Fingerprint or Face ID templates (biometric matching is handled by your device OS).</li>
   </ul>
 
-  <h2>4. Why We Process Data</h2>
+  <h2>5. Why We Process Data</h2>
+  <p>We process personal data for lawful and disclosed purposes connected to providing, maintaining, securing, and improving Worthio. We avoid collecting more personal data than is reasonably necessary for those purposes.</p>
   <ul>
     <li>Create and secure your account.</li>
     <li>Show assets/liabilities and family-access workflow.</li>
@@ -71,7 +84,7 @@ router.get('/privacy', (_req, res) => {
     <li>Meet legal, compliance, and fraud-prevention obligations.</li>
   </ul>
 
-  <h2>5. Security and Storage Controls</h2>
+  <h2>6. Security and Storage Controls</h2>
   <ul>
     <li>Data is protected in transit using TLS.</li>
     <li>Selected sensitive fields are stored encrypted at rest.</li>
@@ -79,28 +92,32 @@ router.get('/privacy', (_req, res) => {
     <li>Sensitive-detail access attempts (success/failure) are logged.</li>
     <li>Trusted-device controls are used for login flows.</li>
     <li>When sensitive details are revealed, notifications may be sent to owner and family members in that account.</li>
+    <li>Operational views and logs are designed to use masked, minimized, aggregated, pseudonymized, or de-identified data where practical.</li>
+    <li>Authorized support and development personnel are given limited, role-based access for support, debugging, security, and operations. Wherever practical, they work with masked or de-identified data rather than raw personal or financial details.</li>
   </ul>
 
-  <h2>6. Sharing of Data</h2>
-  <p>We do not sell personal data. We may share data only as needed for service operation:</p>
+  <h2>7. Sharing of Data</h2>
+  <p>We do not sell personal data. We may share data only as needed for service operation, and we aim to share the least amount necessary:</p>
   <ul>
     <li>With family members you authorize under your family role settings.</li>
     <li>With service providers that support OTP delivery, push notifications, hosting, payment processing, app-store billing validation, and AI response generation.</li>
     <li>With legal/regulatory authorities when required by law.</li>
   </ul>
 
-  <h2>7. AI Insights Data Use</h2>
+  <h2>8. AI Insights Data Use</h2>
   <p>For AI Insights, we send limited context such as country code, preferred currency, portfolio totals, and allocation percentages. We do not intentionally send full account identifiers, contact numbers, or raw sensitive notes for this feature.</p>
   <p>AI output may be incomplete or incorrect and is provided for informational awareness only.</p>
 
-  <h2>8. Retention</h2>
+  <h2>9. Data Accuracy, Retention, and Deletion</h2>
   <ul>
+    <li>You are responsible for keeping portfolio records accurate and current. We provide edit and delete controls so you can correct records when needed.</li>
     <li>Primary account and portfolio data is retained while your account is active.</li>
     <li>On account deletion request, core account data is deleted from active tables.</li>
     <li>Certain operational/security records (for example deletion logs or fraud/security telemetry) may be retained in minimized or de-identified form where required or permitted by law.</li>
+    <li>We do not retain personal data for undisclosed purposes, and we delete, de-identify, or minimize data when the purpose for keeping it has been completed, unless retention is required for legal, security, billing, dispute, or fraud-prevention reasons.</li>
   </ul>
 
-  <h2>9. Your Controls and Rights</h2>
+  <h2>10. Your Controls and Rights</h2>
   <ul>
     <li>Export your data from the app.</li>
     <li>Edit or delete assets/liabilities/reminders.</li>
@@ -110,16 +127,16 @@ router.get('/privacy', (_req, res) => {
   </ul>
   <p>For account deletion instructions, visit <a href="/legal/delete-account">Worthio Account Deletion</a>.</p>
 
-  <h2>10. Cross-Border Processing</h2>
+  <h2>11. Cross-Border Processing</h2>
   <p>Some service providers used for notifications, analytics/security, or AI processing may operate from multiple regions. By using the app, you consent to such processing subject to applicable law and contractual safeguards.</p>
 
-  <h2>11. Children</h2>
+  <h2>12. Children</h2>
   <p>The app is not intended for children under 18.</p>
 
-  <h2>12. Grievance Contact</h2>
+  <h2>13. Grievance Contact</h2>
   <p>For privacy/security requests: <strong>worthio-escalation@nexralabs.in</strong>. We target response within 15 working days.</p>
 
-  <h2>13. Updates to This Policy</h2>
+  <h2>14. Updates to This Policy</h2>
   <p>We may revise this Privacy Policy as features or legal requirements evolve. Updated versions are published in-app, and continued use after update means acceptance of the revised policy.</p>`;
 
   res.type('html').send(htmlPage('Privacy Policy', body));

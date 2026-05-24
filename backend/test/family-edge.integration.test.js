@@ -14,7 +14,7 @@ async function registerUser(app, { initials, mobile, email, deviceId = 'test-dev
       firebase_id_token: `mock:${mobile}`,
       consent_privacy: true,
       consent_terms: true,
-      privacy_policy_version: 'v1.1',
+      privacy_policy_version: 'v1.2',
       terms_version: 'v1.1',
       device_context: { device_id: deviceId }
     }

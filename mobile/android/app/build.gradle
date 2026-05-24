@@ -16,6 +16,7 @@ def releaseKeyAlias = "${keystoreProperties.getProperty("MYAPP_UPLOAD_KEY_ALIAS"
 def releaseStorePassword = "${keystoreProperties.getProperty("MYAPP_UPLOAD_STORE_PASSWORD", System.getenv("MYAPP_UPLOAD_STORE_PASSWORD") ?: "")}".trim()
 def releaseKeyPassword = "${keystoreProperties.getProperty("MYAPP_UPLOAD_KEY_PASSWORD", System.getenv("MYAPP_UPLOAD_KEY_PASSWORD") ?: "")}".trim()
 def hasReleaseSigningConfig = releaseStoreFile && releaseKeyAlias && releaseStorePassword && releaseKeyPassword
+def skipRenderVersionReminder = "${findProperty("skipRenderVersionReminder") ?: ""}".trim().equalsIgnoreCase("true")
 
 gradle.taskGraph.whenReady { taskGraph ->
     def wantsRelease = taskGraph.allTasks.any { task ->
@@ -221,6 +222,53 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+def confirmRenderVersionAfterAab = tasks.register("confirmRenderVersionAfterAab") {
+    group = "release"
+    description = "Reminds the developer to update Render's Android latest-version env var after creating a release AAB."
+
+    doLast {
+        def versionName = "${android.defaultConfig.versionName ?: ""}".trim()
+        def versionCode = "${android.defaultConfig.versionCode ?: ""}".trim()
+        def bundlePath = file("$buildDir/outputs/bundle/release/app-release.aab")
+        def renderVersion = versionName ?: "(unknown)"
+
+        logger.lifecycle("")
+        logger.lifecycle("======================================================================")
+        logger.lifecycle("ANDROID RELEASE AAB CREATED")
+        logger.lifecycle("AAB: ${bundlePath}")
+        logger.lifecycle("Version: ${renderVersion}${versionCode ? " (versionCode ${versionCode})" : ""}")
+        logger.lifecycle("")
+        logger.lifecycle("Before or immediately after the Play Store release goes live, update Render:")
+        logger.lifecycle("  Service: networth-manager-backend-preprod")
+        logger.lifecycle("  Env var: ANDROID_LATEST_VERSION=${renderVersion}")
+        logger.lifecycle("  Env var: ANDROID_PLAY_STORE_URL=https://play.google.com/store/apps/details?id=com.networthmanager.app")
+        logger.lifecycle("======================================================================")
+        logger.lifecycle("")
+
+        if (skipRenderVersionReminder) {
+            logger.lifecycle("Skipped interactive Render version confirmation because -PskipRenderVersionReminder=true was supplied.")
+            return
+        }
+
+        def console = System.console()
+        if (console == null) {
+            logger.lifecycle("Non-interactive Gradle session: reminder shown, but confirmation input was not requested.")
+            logger.lifecycle("Run with -PskipRenderVersionReminder=true only when this reminder is intentionally acknowledged elsewhere.")
+            return
+        }
+
+        def answer = console.readLine("Type YES after acknowledging the Render version update reminder, or SKIP for a non-Play test AAB: ")
+        def normalized = "${answer ?: ""}".trim().toUpperCase()
+        if (normalized != "YES" && normalized != "SKIP") {
+            throw new GradleException("Render Android version reminder was not acknowledged. Type YES or SKIP when creating a release AAB.")
+        }
+    }
+}
+
+tasks.matching { it.name == "bundleRelease" }.configureEach {
+    finalizedBy(confirmRenderVersionAfterAab)
 }
 
 apply plugin: 'com.google.gms.google-services'

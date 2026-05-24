@@ -29,7 +29,6 @@ const blankForm = {
   reach_via: '',
   name: '',
   account_ref: '',
-  tracking_url: '',
   current_value: '',
   invested_amount: '',
   notes_for_family: ''
@@ -101,7 +100,6 @@ export default function AssetsScreen({
   const [infoModalTitle, setInfoModalTitle] = useState('');
   const [infoModalText, setInfoModalText] = useState('');
   const nameInputRef = useRef(null);
-  const trackingUrlInputRef = useRef(null);
   const currentValueInputRef = useRef(null);
   const investedAmountInputRef = useRef(null);
   const fieldOffsetsRef = useRef({});
@@ -142,7 +140,6 @@ export default function AssetsScreen({
 
   const focusField = useCallback((key) => {
     if (key === 'name' && nameInputRef.current?.focus) nameInputRef.current.focus();
-    if (key === 'tracking_url' && trackingUrlInputRef.current?.focus) trackingUrlInputRef.current.focus();
     if (key === 'current_value' && currentValueInputRef.current?.focus) currentValueInputRef.current.focus();
     if (key === 'invested_amount' && investedAmountInputRef.current?.focus) investedAmountInputRef.current.focus();
   }, []);
@@ -186,7 +183,6 @@ export default function AssetsScreen({
       reach_via: item.reach_via || '',
       name: item.institution || item.name || '',
       account_ref: '',
-      tracking_url: item.tracking_url || '',
       current_value: String(item.current_value ?? ''),
       invested_amount: String(item.invested_amount ?? ''),
       notes_for_family: ''
@@ -257,14 +253,6 @@ export default function AssetsScreen({
       registerError('name', t('Institution Name is required.'));
     }
 
-    const trackingUrl = String(form.tracking_url || '').trim();
-    if (trackingUrl) {
-      const host = trackingUrl.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
-      if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) {
-        registerError('tracking_url', t('Enter a valid website URL or domain.'));
-      }
-    }
-
     const parseAmount = (raw, key, label, { required = false } = {}) => {
       const cleaned = String(raw || '').trim().replace(/,/g, '');
       if (!cleaned) {
@@ -298,7 +286,6 @@ export default function AssetsScreen({
       name: form.name.trim(),
       institution: form.name.trim(),
       reach_via: form.reach_via || LEGACY_REACH_DEFAULT,
-      tracking_url: form.tracking_url?.trim() || '',
       current_value: Number(form.current_value || 0),
       invested_amount: Number(form.invested_amount || 0)
     };
@@ -617,45 +604,11 @@ export default function AssetsScreen({
             ]}
             value={form.account_ref}
             onChangeText={(v) => setForm((f) => ({ ...f, account_ref: v }))}
-            placeholder={editingId ? t('Enter new identifier to replace existing') : t('Folio / Account No / Demat ID')}
+            placeholder={t('Enter only last 4 digits')}
             autoCapitalize="none"
             placeholderTextColor={theme.muted}
             editable={!readOnly}
           />
-
-          <FieldInfoLabel
-            label={t('Tracking Website URL')}
-            theme={theme}
-            infoText={t('Only domain is stored (for example, bankname.com) to keep details minimal and discreet.')}
-            onPress={() =>
-              openFieldInfo(
-                t('Tracking Website URL'),
-                t('Only domain is stored (for example, bankname.com) to keep details minimal and discreet.')
-              )
-            }
-          />
-          <TextInput
-            ref={trackingUrlInputRef}
-            onLayout={(event) => setFieldOffset('tracking_url', event.nativeEvent.layout.y)}
-            onFocus={() => scrollToField('tracking_url')}
-            style={[
-              styles.input,
-              { backgroundColor: theme.inputBg, borderColor: fieldErrors.tracking_url ? theme.danger : theme.border, color: theme.inputText },
-              readOnly && { backgroundColor: theme.background, color: theme.muted }
-            ]}
-            value={form.tracking_url}
-            onChangeText={(v) => {
-              clearFieldError('tracking_url');
-              setForm((f) => ({ ...f, tracking_url: v }));
-            }}
-            placeholder={t('https://...')}
-            autoCapitalize="none"
-            placeholderTextColor={theme.muted}
-            editable={!readOnly}
-          />
-          {!!fieldErrors.tracking_url ? (
-            <Text style={[styles.fieldError, { color: theme.danger }]}>{fieldErrors.tracking_url}</Text>
-          ) : null}
 
           <Text style={[styles.label, { color: theme.muted }]}>{t('Current Value')}</Text>
           <TextInput
@@ -845,9 +798,6 @@ export default function AssetsScreen({
                   {hasInfo(item.account_ref) ? (
                     <Text style={[styles.sub, { color: theme.muted }]}>{t('Account Ref: {value}', { value: item.account_ref })}</Text>
                   ) : null}
-                  {hasInfo(item.tracking_url) ? (
-                    <Text style={[styles.sub, { color: theme.muted }]}>{t('Website: {value}', { value: item.tracking_url })}</Text>
-                  ) : null}
                   {Number(item.invested_amount || 0) > 0 ? (
                     <Text style={[styles.sub, { color: theme.muted }]}>{t('Invested: {value}', { value: displayAmount(item.invested_amount, hideSensitive, preferredCurrency, fxRates) })}</Text>
                   ) : null}
@@ -891,7 +841,6 @@ export default function AssetsScreen({
             {revealData ? (
               <View style={styles.revealDetails}>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Identifier: {value}', { value: revealData.account_ref || '-' })}</Text>
-                <Text style={[styles.revealLine, { color: theme.text }]}>{t('Tracking URL: {value}', { value: revealData.tracking_url || '-' })}</Text>
                 <Text style={[styles.revealLine, { color: theme.text }]}>{t('Notes: {value}', { value: revealData.notes || '-' })}</Text>
               </View>
             ) : (

@@ -311,6 +311,7 @@ const translations = {
     'Name': 'नाम',
     'HDFC Flexi Cap / SBI FD': 'HDFC Flexi Cap / SBI FD',
     'Asset Account / Unique Number': 'एसेट अकाउंट / यूनिक नंबर',
+    'Enter only last 4 digits': 'केवल अंतिम 4 अंक दर्ज करें',
     'Folio / Account No / Demat ID': 'फोलियो / अकाउंट नंबर / डीमैट आईडी',
     'Tracking Website URL': 'ट्रैकिंग वेबसाइट यूआरएल',
     'https://...': 'https://...',

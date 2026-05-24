@@ -595,7 +595,6 @@ export default function App() {
   const handledNotificationResponses = React.useRef(new Set());
   const lastAccessContextSyncAtRef = React.useRef(0);
   const aiExplainRequestLockRef = React.useRef(false);
-  const dismissedStoreUpdateVersionRef = React.useRef('');
   const premiumActive =
     subscriptionStatus?.status === 'active' &&
     ['trial_premium', 'premium_monthly', 'premium_yearly'].includes(subscriptionStatus?.plan);
@@ -698,9 +697,7 @@ export default function App() {
         source: String(payload?.source || '')
       };
       setStoreUpdateInfo(nextInfo);
-      if (dismissedStoreUpdateVersionRef.current !== latestVersion) {
-        setStoreUpdateVisible(true);
-      }
+      setStoreUpdateVisible(true);
     } catch (_e) {
       // Ignore update check failures and continue using the app normally.
     }
@@ -2634,12 +2631,7 @@ export default function App() {
             visible={storeUpdateVisible && !launchSplashVisible}
             transparent
             animationType="fade"
-            onRequestClose={() => {
-              if (storeUpdateInfo?.latestVersion) {
-                dismissedStoreUpdateVersionRef.current = storeUpdateInfo.latestVersion;
-              }
-              setStoreUpdateVisible(false);
-            }}
+            onRequestClose={() => {}}
           >
             <View style={styles.modalBackdrop}>
               <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -2655,27 +2647,14 @@ export default function App() {
                 </Text>
                 <View style={styles.modalActions}>
                   <PillButton
-                    label={t('Later')}
-                    kind="ghost"
+                    label={t('Update Now')}
                     onPress={() => {
-                      if (storeUpdateInfo?.latestVersion) {
-                        dismissedStoreUpdateVersionRef.current = storeUpdateInfo.latestVersion;
-                      }
-                      setStoreUpdateVisible(false);
-                    }}
-                  />
-                  {storeUpdateInfo?.storeUrl ? (
-                    <PillButton
-                      label={t('Update Now')}
-                      onPress={() => {
-                        if (storeUpdateInfo?.latestVersion) {
-                          dismissedStoreUpdateVersionRef.current = storeUpdateInfo.latestVersion;
-                        }
-                        setStoreUpdateVisible(false);
+                      if (storeUpdateInfo?.storeUrl) {
                         Linking.openURL(storeUpdateInfo.storeUrl).catch(() => {});
-                      }}
-                    />
-                  ) : null}
+                      }
+                    }}
+                    disabled={!storeUpdateInfo?.storeUrl}
+                  />
                 </View>
               </View>
             </View>

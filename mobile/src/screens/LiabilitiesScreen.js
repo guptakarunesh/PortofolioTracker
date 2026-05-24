@@ -624,7 +624,7 @@ export default function LiabilitiesScreen({
             ]}
             value={form.account_ref}
             onChangeText={(v) => setForm((f) => ({ ...f, account_ref: v }))}
-            placeholder={editingId ? t('Enter new identifier to replace existing') : t('Loan Account Number')}
+            placeholder={t('Enter only last 4 digits')}
             autoCapitalize="none"
             placeholderTextColor={theme.muted}
             editable={!readOnly}

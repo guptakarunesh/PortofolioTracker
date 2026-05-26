@@ -2527,7 +2527,11 @@ export default function App() {
       {activeTab !== 'subscription' && !keyboardVisible ? (
         <SafeAreaInsetsContext.Consumer>
           {(insets) => {
-            const bottomInset = Math.max(Number(insets?.bottom || 0), Platform.OS === 'android' ? 16 : 0);
+            const rawBottomInset = Number(insets?.bottom || 0);
+            const bottomInset =
+              Platform.OS === 'android'
+                ? Math.min(rawBottomInset || 6, 18)
+                : Math.min(rawBottomInset, 24);
             return (
               <View
                 style={[
@@ -2535,7 +2539,7 @@ export default function App() {
                   {
                     backgroundColor: isDarkTheme ? 'rgba(11,31,58,0.94)' : theme.card,
                     borderTopColor: isDarkTheme ? 'rgba(255,255,255,0.12)' : theme.border,
-                    paddingBottom: 10 + bottomInset
+                    paddingBottom: 6 + bottomInset
                   }
                 ]}
               >
